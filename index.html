@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Travel Earth</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5/dist/maplibre-gl.css">
+<link rel="stylesheet" href="style.css">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icons/icon-32.png" sizes="32x32">
+<link rel="icon" href="icons/icon-192.png" sizes="192x192">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="theme-color" content="#1b1b1f">
+</head>
+<body>
+
+<canvas id="stars"></canvas>
+<div id="map"></div>
+
+<div class="top-bar">
+  <div class="search-wrap">
+    <div class="search-box">
+      <input id="search-input" type="search" placeholder="Поиск места" autocomplete="off" spellcheck="false">
+      <button id="search-btn" title="Найти">
+        <svg viewBox="0 0 24 24" width="20" height="20"><circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M15.5 15.5 21 21" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      </button>
+      <button id="search-clear-btn" title="Очистить" hidden>
+        <svg viewBox="0 0 24 24" width="18" height="18"><path d="M6 6l12 12M18 6 6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+    <div id="search-results" class="search-results" hidden></div>
+  </div>
+  <div class="lang-wrap">
+    <button id="lang-btn" class="lang-btn" title="Язык подписей на карте"><span id="lang-btn-label"></span> ▾</button>
+    <div id="lang-menu" class="lang-menu" hidden></div>
+  </div>
+  <div id="category-chips" class="category-chips"></div>
+</div>
+
+<div id="shop-menu" class="lang-menu shop-menu" hidden></div>
+
+<div id="map-status" class="map-status" hidden></div>
+
+<div id="basemap-switcher" class="basemap-switcher">
+  <button id="basemap-main" class="basemap-main"></button>
+  <div id="basemap-panel" class="basemap-panel"></div>
+</div>
+
+<div id="about-modal" class="modal" hidden>
+  <div class="modal-content">
+    <button id="about-close-btn" class="modal-close" title="Закрыть"><img src="icons/X WIT.png" alt=""></button>
+    <h2>О программе Travel Earth</h2>
+    <hr class="about-divider">
+    <div class="about-brand">
+      <img src="icons/icon-512.png" alt="Travel Earth" class="about-logo">
+      <div>
+        <div class="about-wordmark">Travel Earth</div>
+      </div>
+    </div>
+    <p class="about-text">Личный некоммерческий проект — единый глобус и карта для путешествий из <a href="https://gregory-gittools.github.io/travel-globe/" target="_blank" rel="noopener">Travel Globe</a>. Нет рекламы и сбора данных.</p>
+    <p class="about-text">Эта страница полностью сгенерирована ИИ-помощником Claude.</p>
+    <p class="about-text">Больше — на канале <a href="https://www.youtube.com/@Gregory-Flow" target="_blank" rel="noopener">Gregory Flow</a>.</p>
+    <hr class="about-divider">
+    <p class="about-install-hint">Приложение работает через локальный сервер — перед запуском установленного ярлыка убедитесь, что <code>start.bat</code> запущен.</p>
+    <p class="about-credits">Сделано на основе открытых инструментов: <a href="https://maplibre.org/" target="_blank" rel="noopener">MapLibre GL JS</a> (глобус и карта), карты — <a href="https://carto.com/basemaps" target="_blank" rel="noopener">CARTO</a> и <a href="https://openfreemap.org/" target="_blank" rel="noopener">OpenFreeMap</a> по данным <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>, спутниковые снимки — Esri World Imagery, поиск — Nominatim, места — векторные тайлы OpenFreeMap и OpenStreetMap API, шрифт — Google Fonts (Poppins).</p>
+    <button id="install-btn" class="text-btn about-install-btn" title="Установить на рабочий стол" disabled>
+      <img src="icons/icon-32.png" alt="">
+      Установить на рабочий стол
+    </button>
+  </div>
+</div>
+
+<script src="https://unpkg.com/maplibre-gl@5/dist/maplibre-gl.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

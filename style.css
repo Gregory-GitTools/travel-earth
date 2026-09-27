@@ -1,0 +1,602 @@
+:root {
+  color-scheme: dark;
+  --light-panel: #fff;
+  --light-hover: #f1f3f4;
+  --light-text: #3c4043;
+  --light-muted: #70757a;
+  --light-accent: #1a73e8;
+  --bg: #1b1b1f;
+  --panel: #26262c;
+  --accent: #4da3ff;
+  --text: #e8e8ec;
+  --muted: #9a9aa5;
+  font-family: "Poppins", system-ui, "Segoe UI", sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+[hidden] { display: none !important; }
+
+html, body {
+  height: 100%;
+  margin: 0;
+  background: #000;
+  color: var(--text);
+}
+
+#map {
+  position: fixed;
+  inset: 0;
+}
+
+/* звёздное небо под прозрачным холстом карты — рисует app.js */
+#stars {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+/* окно "О программе" перенесено из photo-editor */
+.modal-close {
+  width: 21px;
+  height: 21px;
+  padding: 0;
+  border: none;
+  border-radius: 1px;
+  background: transparent;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.modal-close:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.modal-close img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+/* шестерёнка — контрол MapLibre в правом нижнем углу, в одном столбике с масштабом */
+#settings-btn img {
+  width: 18px;
+  height: 18px;
+  object-fit: contain;
+}
+
+/* верхняя панель по образцу Google Maps: поиск, язык подписей, чипы категорий —
+   белая, как кнопки MapLibre справа внизу */
+.top-bar {
+  position: fixed;
+  top: 10px;
+  left: 10px;
+  right: 10px;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  z-index: 10;
+  pointer-events: none; /* пустое место панели не должно мешать тащить карту */
+}
+
+.top-bar > * {
+  pointer-events: auto;
+}
+
+.search-wrap {
+  position: relative;
+  flex: 0 0 340px;
+}
+
+.search-box {
+  display: flex;
+  align-items: center;
+  height: 44px;
+  padding: 0 6px 0 16px;
+  background: var(--light-panel);
+  border-radius: 22px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+}
+
+.search-box input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--light-text);
+  font: inherit;
+  font-size: 0.95rem;
+}
+
+.search-box input::-webkit-search-cancel-button {
+  display: none; /* своя кнопка-крестик */
+}
+
+.search-box button {
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--light-muted);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.search-box button:hover {
+  background: var(--light-hover);
+}
+
+.search-results {
+  position: absolute;
+  top: 50px;
+  left: 0;
+  right: 0;
+  max-height: 60vh;
+  overflow-y: auto;
+  padding: 6px;
+  background: var(--light-panel);
+  border-radius: 12px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+}
+
+.search-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  width: 100%;
+  padding: 8px 10px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--light-text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.search-item:hover {
+  background: var(--light-hover);
+}
+
+.search-item-title {
+  font-size: 0.9rem;
+}
+
+.search-item-sub {
+  font-size: 0.75rem;
+  color: var(--light-muted);
+}
+
+.search-note {
+  padding: 8px 10px;
+  font-size: 0.85rem;
+  color: var(--light-muted);
+}
+
+.lang-wrap {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.lang-btn {
+  height: 44px;
+  padding: 0 14px;
+  border: none;
+  border-radius: 22px;
+  background: var(--light-panel);
+  color: var(--light-text);
+  font: inherit;
+  font-size: 0.9rem;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+}
+
+.lang-btn:hover {
+  background: var(--light-hover);
+}
+
+.lang-menu {
+  position: absolute;
+  top: 50px;
+  left: 0;
+  display: flex;
+  flex-direction: column;
+  min-width: 190px;
+  padding: 6px;
+  background: var(--light-panel);
+  border-radius: 12px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+}
+
+/* меню профилей магазинов — вне полосы чипов, координаты ставит app.js */
+.shop-menu {
+  position: fixed;
+  z-index: 11;
+}
+
+.lang-item {
+  padding: 7px 10px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--light-text);
+  font: inherit;
+  font-size: 0.85rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.lang-item:hover {
+  background: var(--light-hover);
+}
+
+.lang-item.active {
+  color: var(--light-accent);
+  font-weight: 500;
+}
+
+.category-chips {
+  display: flex;
+  gap: 8px;
+  min-width: 0;
+  padding: 6px 2px 8px; /* место под тень чипов внутри прокручиваемой полосы */
+  margin-top: -6px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.chip {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 36px;
+  margin-top: 4px;
+  padding: 0 14px;
+  border: 1px solid transparent;
+  border-radius: 18px;
+  background: var(--light-panel);
+  color: var(--light-text);
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+}
+
+.chip:hover {
+  background: var(--light-hover);
+}
+
+/* включённый фильтр — негативом, чтобы не забыть его выключить */
+.chip.active {
+  background: #5f6368;
+  color: #fff;
+}
+
+.chip.active:hover {
+  background: #4d5156;
+}
+
+/* "Магазины": название включает/выключает, стрелка открывает выбор профиля */
+.chip-split {
+  padding: 0;
+  gap: 0;
+  overflow: hidden;
+}
+
+.chip-split button {
+  height: 100%;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.chip-split .chip-main {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px 0 14px;
+}
+
+.chip-split .chip-arrow {
+  padding: 0 12px 0 10px;
+  border-left: 1px solid rgba(0, 0, 0, 0.15);
+}
+
+.chip-split.active .chip-arrow {
+  border-left-color: rgba(255, 255, 255, 0.35);
+}
+
+.chip-split button:hover {
+  background: rgba(0, 0, 0, 0.06);
+}
+
+.chip-split.active button:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+/* сам контейнер-чип подсвечивает половины по отдельности */
+.chip-split:hover,
+.chip-split.active:hover {
+  background: var(--light-panel);
+}
+
+.chip-split.active:hover {
+  background: #5f6368;
+}
+
+.chip-icon {
+  display: inline-flex;
+}
+
+.map-status {
+  position: fixed;
+  top: 64px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 8px 16px;
+  background: var(--light-panel);
+  color: var(--light-text);
+  border-radius: 18px;
+  font-size: 0.85rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+  z-index: 10;
+}
+
+/* попапы мест и результата поиска */
+.maplibregl-popup-content {
+  font-family: "Poppins", system-ui, "Segoe UI", sans-serif;
+  color: #222;
+}
+
+.popup-title {
+  font-weight: 600;
+  font-size: 0.9rem;
+  margin-bottom: 2px;
+}
+
+.popup-kind {
+  font-size: 0.78rem;
+  color: #666;
+}
+
+.popup-row {
+  font-size: 0.8rem;
+  margin-top: 4px;
+}
+
+.popup-muted {
+  color: #999;
+}
+
+/* переключатель карт внизу слева — по образцу Google Maps: плитка "другого" вида +
+   ряд всех вариантов, раскрывающийся при наведении */
+.basemap-switcher {
+  position: fixed;
+  left: 10px;
+  bottom: 24px;
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  z-index: 10;
+}
+
+.basemap-main {
+  position: relative;
+  width: 76px;
+  height: 76px;
+  padding: 0;
+  border: 2px solid #fff;
+  border-radius: 8px;
+  overflow: hidden;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
+}
+
+.basemap-main img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.basemap-main .basemap-label {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 10px 4px 4px;
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.7));
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 500;
+  text-align: center;
+}
+
+.basemap-panel {
+  display: none;
+  gap: 6px;
+  padding: 8px;
+  background: var(--light-panel);
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+/* :focus-visible, а не :focus-within — иначе после клика мышью фокус остаётся на кнопке
+   и ряд не закрывается, пока не кликнешь куда-нибудь ещё */
+.basemap-switcher:hover .basemap-panel,
+.basemap-switcher:has(:focus-visible) .basemap-panel {
+  display: flex;
+}
+
+.basemap-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  width: 64px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--light-text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.basemap-item img {
+  width: 56px;
+  height: 56px;
+  object-fit: cover;
+  border: 2px solid transparent;
+  border-radius: 6px;
+}
+
+.basemap-item:hover img {
+  border-color: #dadce0;
+}
+
+.basemap-item.active img {
+  border-color: var(--light-accent);
+}
+
+.basemap-item .basemap-label {
+  font-size: 0.68rem;
+  line-height: 1.2;
+  text-align: center;
+}
+
+.basemap-item.active .basemap-label {
+  color: var(--light-accent);
+  font-weight: 500;
+}
+
+.modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+}
+
+.modal-content {
+  position: relative;
+  background: var(--panel);
+  border-radius: 10px;
+  padding: 24px;
+  max-width: 480px;
+  max-height: 80vh;
+  overflow-y: auto;
+}
+
+.modal-content h2 { margin: 0 0 12px; font-size: 0.9rem; font-weight: 400; }
+
+.modal-close {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+}
+
+.about-divider {
+  border: none;
+  border-top: 1px solid #3a3a42;
+  margin: 0 0 16px;
+}
+
+.about-brand {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 4px;
+  margin: 0 0 16px;
+}
+
+.about-logo {
+  width: 160px;
+  height: 160px;
+  object-fit: contain;
+  border-radius: 24px;
+}
+
+.about-wordmark {
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.modal-content .about-text {
+  color: var(--text);
+  font-size: 0.9rem;
+  line-height: 1.5;
+  margin: 0 0 8px;
+}
+
+.modal-content .about-credits {
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.5;
+  margin: 0 0 16px;
+}
+
+.modal-content a { color: var(--accent); text-decoration: none; }
+.modal-content a:hover { text-decoration: underline; }
+
+.about-install-hint {
+  color: var(--muted);
+  font-size: 0.8rem;
+  margin: 0 0 12px;
+}
+
+.about-install-hint code {
+  font: inherit;
+  background: var(--bg);
+  border: 1px solid #3a3a42;
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+
+.text-btn {
+  padding: 8px 14px;
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid #3a3a42;
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.text-btn:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.text-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.about-install-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.about-install-btn img {
+  width: 18px;
+  height: 18px;
+}
