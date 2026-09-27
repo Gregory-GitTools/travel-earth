@@ -298,6 +298,144 @@ function selectBasemap(b) {
 
 renderBasemapSwitcher();
 
+// ---------- слои поверх карты ----------
+
+// Карта — это основа (переключатель выше), а слои ложатся поверх любой из них, и
+// включать можно сразу несколько. Все бесплатные и без ключа. Высоты — AWS Terrain
+// Tiles (формат terrarium): из них MapLibre рисует тени склонов и 3D, а maplibre-contour
+// прямо в браузере строит горизонтали. Тропы — готовые прозрачные картинки Waymarked
+// Trails. Железные дороги рисуются из тех же векторных тайлов OpenFreeMap, что и места:
+// тайлы OpenRailwayMap закрыты для чужих сайтов (403)
+const DEM_URL = "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png";
+const DEM_ATTRIBUTION = 'Высоты: <a href="https://registry.opendata.aws/terrain-tiles/" target="_blank">AWS Terrain Tiles</a> (Mapzen, SRTM, USGS…)';
+const TRAILS_ATTRIBUTION = 'Маршруты: <a href="https://waymarkedtrails.org" target="_blank">Waymarked Trails</a> (CC BY-SA)';
+// библиотека горизонталей грузится с unpkg; если не загрузилась — слой просто недоступен
+const demSource = window.mlcontour && new mlcontour.DemSource({ url: DEM_URL, encoding: "terrarium", maxzoom: 13, worker: true });
+demSource?.setupMaplibre(maplibregl);
+
+// layers — id слоёв карты, из которых состоит пункт меню
+const OVERLAYS = [
+  { id: "hillshade", name: "Рельеф", hint: "Тени склонов — горы становятся объёмными", layers: ["ov-hillshade"] },
+  { id: "contours", name: "Горизонтали", hint: "Линии равной высоты с подписями в метрах",
+    layers: ["ov-contours", "ov-contour-labels"], available: () => !!demSource },
+  { id: "terrain3d", name: "3D-рельеф", hint: "Настоящий объёмный рельеф — наклоните карту (правая кнопка мыши или два пальца)", layers: [] },
+  { id: "hiking", name: "Пешие тропы", hint: "Маркированные пешие маршруты", trails: "hiking", layers: ["ov-hiking"] },
+  { id: "cycling", name: "Велодорожки", hint: "Веломаршруты", trails: "cycling", layers: ["ov-cycling"] },
+  { id: "mtb", name: "Маунтинбайк", hint: "Маршруты для горного велосипеда", trails: "mtb", layers: ["ov-mtb"] },
+  { id: "railways", name: "Железные дороги", hint: "Поезда, метро, трамваи и фуникулёры — каждый своим цветом",
+    layers: ["ov-rail-tunnel", "ov-rail"] },
+];
+const OVERLAYS_STORAGE_KEY = "travel-earth.overlays";
+const activeOverlays = new Set(JSON.parse(localStorage.getItem(OVERLAYS_STORAGE_KEY) || "[]"));
+
+// шрифт подписей высот — тот же, что у подписей самой карты: у каждого стиля свой
+// сервер шрифтов, и чужого шрифта на нём может не быть
+function styleFont() {
+  const layer = map.getStyle().layers.find((l) => l.type === "symbol" && Array.isArray(l.layout?.["text-font"]));
+  return layer ? layer.layout["text-font"] : ["Noto Sans Regular"];
+}
+
+// слои встают под подписи карты (флажки мест и так выше — они добавляются последними)
+const firstLabelLayer = () => map.getStyle().layers.find((l) => l.type === "symbol")?.id;
+const darkBasemap = () => currentBasemap.id === "satellite" || currentBasemap.id === "dark";
+
+function addOverlay(id) {
+  const overlay = OVERLAYS.find((o) => o.id === id);
+  const before = firstLabelLayer();
+  // у теней и у 3D свои источники высот — MapLibre просит не делить один на двоих;
+  // через maplibre-contour — общий с горизонталями кэш картинок
+  const dem = (sourceId) => map.getSource(sourceId) || map.addSource(sourceId, {
+    type: "raster-dem", tiles: [demSource ? demSource.sharedDemProtocolUrl : DEM_URL],
+    encoding: "terrarium", tileSize: 256, maxzoom: 13, attribution: DEM_ATTRIBUTION });
+  if (id === "hillshade") {
+    dem("ov-hillshade");
+    map.addLayer({ id: "ov-hillshade", type: "hillshade", source: "ov-hillshade", paint: {
+      "hillshade-exaggeration": 0.5,
+      "hillshade-shadow-color": darkBasemap() ? "rgba(0,0,0,0.6)" : "rgba(60,50,40,0.45)",
+      "hillshade-highlight-color": "rgba(255,255,255,0.25)" } }, before);
+  } else if (id === "contours") {
+    map.addSource("ov-contours", { type: "vector", maxzoom: 15, attribution: DEM_ATTRIBUTION, tiles: [demSource.contourProtocolUrl({
+      // зум: [шаг линий, шаг толстых линий с подписями], метры
+      thresholds: { 11: [200, 1000], 12: [100, 500], 13: [50, 250], 14: [20, 100], 15: [10, 50] },
+      contourLayer: "contours", elevationKey: "ele", levelKey: "level" })] });
+    const color = darkBasemap() ? "#f0d9b5" : "#9c6b3f";
+    map.addLayer({ id: "ov-contours", type: "line", source: "ov-contours", "source-layer": "contours", minzoom: 11,
+      paint: { "line-color": color, "line-opacity": 0.6, "line-width": ["match", ["get", "level"], 1, 1.4, 0.6] } }, before);
+    map.addLayer({ id: "ov-contour-labels", type: "symbol", source: "ov-contours", "source-layer": "contours", minzoom: 11,
+      filter: [">", ["get", "level"], 0],
+      layout: { "symbol-placement": "line", "text-field": ["concat", ["number-format", ["get", "ele"], {}], " м"],
+        "text-font": styleFont(), "text-size": 11 },
+      paint: { "text-color": color, "text-halo-width": 1.2,
+        "text-halo-color": darkBasemap() ? "rgba(0,0,0,0.7)" : "rgba(255,255,255,0.85)" } }, before);
+  } else if (id === "terrain3d") {
+    dem("ov-terrain3d");
+    map.setTerrain({ source: "ov-terrain3d", exaggeration: 1.3 });
+  } else if (overlay.trails) {
+    map.addSource(`ov-${id}`, { type: "raster", tileSize: 256, maxzoom: 17, attribution: TRAILS_ATTRIBUTION,
+      tiles: [`https://tile.waymarkedtrails.org/${overlay.trails}/{z}/{x}/{y}.png`] });
+    map.addLayer({ id: `ov-${id}`, type: "raster", source: `ov-${id}` }, before);
+  } else if (id === "railways") {
+    // цвет пути по виду транспорта — те же цвета, что у флажков станций
+    const color = ["match", ["get", "subclass"],
+      "subway", "#e53935", "tram", "#fb8c00", "light_rail", "#8e24aa", "monorail", "#8e24aa",
+      "funicular", FUNICULAR_PIN.color, "#3949ab"];
+    // тоннели — пунктиром и бледнее: метро почти всё под землёй
+    const rails = (layerId, tunnel) => map.addLayer({
+      id: layerId, type: "line", source: "te-poi", "source-layer": "transportation", minzoom: 5,
+      filter: ["all", ["in", ["get", "class"], ["literal", ["rail", "transit"]]],
+        tunnel ? ["==", ["get", "brunnel"], "tunnel"] : ["!=", ["get", "brunnel"], "tunnel"]],
+      layout: { "line-cap": tunnel ? "butt" : "round" },
+      paint: { "line-color": color, "line-opacity": tunnel ? 0.55 : 0.9,
+        "line-width": ["interpolate", ["linear"], ["zoom"], 5, 0.8, 10, 1.6, 16, 4],
+        ...(tunnel && { "line-dasharray": [2, 1.5] }) } }, before);
+    rails("ov-rail-tunnel", true);
+    rails("ov-rail", false);
+  }
+}
+
+function removeOverlay(id) {
+  const overlay = OVERLAYS.find((o) => o.id === id);
+  for (const layerId of overlay.layers) if (map.getLayer(layerId)) map.removeLayer(layerId);
+  if (id === "terrain3d") map.setTerrain(null);
+  if (map.getSource(`ov-${id}`)) map.removeSource(`ov-${id}`);
+}
+
+// после каждой смены карты (setStyle стирает всё добавленное) — заново все включённые
+function applyOverlays() {
+  for (const o of OVERLAYS) if (activeOverlays.has(o.id) && (o.available?.() ?? true)) addOverlay(o.id);
+}
+
+function toggleOverlay(id) {
+  if (activeOverlays.has(id)) {
+    activeOverlays.delete(id);
+    removeOverlay(id);
+  } else {
+    activeOverlays.add(id);
+    addOverlay(id);
+  }
+  localStorage.setItem(OVERLAYS_STORAGE_KEY, JSON.stringify([...activeOverlays]));
+  renderOverlayMenu();
+}
+
+function renderOverlayMenu() {
+  el("layers-btn").classList.toggle("active", activeOverlays.size > 0);
+  el("layers-menu").replaceChildren(...OVERLAYS.filter((o) => o.available?.() ?? true).map((o) => {
+    const item = document.createElement("button");
+    item.className = "layers-item" + (activeOverlays.has(o.id) ? " active" : "");
+    item.title = o.hint;
+    item.innerHTML = `<span class="layers-check"></span><span></span>`;
+    item.lastChild.textContent = o.name;
+    item.addEventListener("click", () => toggleOverlay(o.id));
+    return item;
+  }));
+}
+
+el("layers-btn").addEventListener("click", () => { el("layers-menu").hidden = !el("layers-menu").hidden; });
+document.addEventListener("click", (evt) => {
+  if (!el("layers-wrap").contains(evt.target)) el("layers-menu").hidden = true;
+});
+renderOverlayMenu();
+
 // ---------- категории мест (как чипы "Рестораны", "Гостиницы"… в Google Maps) ----------
 
 // Места берутся прямо из векторных тайлов OpenFreeMap (слой poi схемы OpenMapTiles) —
@@ -876,6 +1014,7 @@ map.on("style.load", () => {
   showCableStations();
   pinLayer("poi-air", "aerodrome_label", { minzoom: 0, filter: ["in", ["get", "class"], ["literal", AIRPORT_CLASSES]] });
   applyPoiLayer();
+  applyOverlays();
 });
 
 renderCategoryChips();

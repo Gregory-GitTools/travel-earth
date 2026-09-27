@@ -51,6 +51,14 @@
 
 <div id="map-status" class="map-status" hidden></div>
 
+<div id="layers-wrap" class="layers-wrap">
+  <button id="layers-btn" class="layers-btn" title="Слои поверх карты: рельеф, тропы, железные дороги">
+    <svg viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M12 16.54l-7.38-5.74L3 12.07l9 7 9-7-1.63-1.27zM12 14l7.36-5.73L21 7l-9-7-9 7 1.63 1.27z"/></svg>
+    <span>Слои</span>
+  </button>
+  <div id="layers-menu" class="layers-menu" hidden></div>
+</div>
+
 <div id="basemap-switcher" class="basemap-switcher">
   <button id="basemap-main" class="basemap-main"></button>
   <div id="basemap-panel" class="basemap-panel"></div>
@@ -72,7 +80,7 @@
     <p class="about-text">Больше — на канале <a href="https://www.youtube.com/@Gregory-Flow" target="_blank" rel="noopener">Gregory Flow</a>.</p>
     <hr class="about-divider">
     <p id="about-install-hint" class="about-install-hint">Приложение работает через локальный сервер — перед запуском установленного ярлыка убедитесь, что <code>start.bat</code> запущен.</p>
-    <p class="about-credits">Сделано на основе открытых инструментов: <a href="https://maplibre.org/" target="_blank" rel="noopener">MapLibre GL JS</a> (глобус и карта), карты — <a href="https://carto.com/basemaps" target="_blank" rel="noopener">CARTO</a> и <a href="https://openfreemap.org/" target="_blank" rel="noopener">OpenFreeMap</a> по данным <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>, спутниковые снимки — Esri World Imagery, поиск — Nominatim, места — векторные тайлы OpenFreeMap и OpenStreetMap API, шрифт — Google Fonts (Poppins).</p>
+    <p class="about-credits">Сделано на основе открытых инструментов: <a href="https://maplibre.org/" target="_blank" rel="noopener">MapLibre GL JS</a> (глобус и карта), карты — <a href="https://carto.com/basemaps" target="_blank" rel="noopener">CARTO</a> и <a href="https://openfreemap.org/" target="_blank" rel="noopener">OpenFreeMap</a> по данным <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>, спутниковые снимки — Esri World Imagery, высоты — AWS Terrain Tiles и <a href="https://github.com/onthegomap/maplibre-contour" target="_blank" rel="noopener">maplibre-contour</a>, маршруты — <a href="https://waymarkedtrails.org" target="_blank" rel="noopener">Waymarked Trails</a>, поиск — Nominatim, места — векторные тайлы OpenFreeMap и OpenStreetMap API, шрифт — Google Fonts (Poppins).</p>
     <button id="install-btn" class="text-btn about-install-btn" title="Установить на рабочий стол" disabled>
       <img src="icons/icon-32.png" alt="">
       Установить на рабочий стол
@@ -81,6 +89,7 @@
 </div>
 
 <script src="https://unpkg.com/maplibre-gl@5/dist/maplibre-gl.js"></script>
+<script src="https://unpkg.com/maplibre-contour@0.1.1/dist/index.min.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

@@ -554,6 +554,87 @@ html, body {
   color: #999;
 }
 
+/* "Слои" — над переключателем карт; меню галочек раскрывается вверх */
+.layers-wrap {
+  position: fixed;
+  left: 10px;
+  bottom: 110px;
+  z-index: 10;
+}
+
+.layers-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 14px;
+  border: none;
+  border-radius: 18px;
+  background: var(--light-panel);
+  color: var(--light-text);
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+}
+
+.layers-btn:hover {
+  background: var(--light-hover);
+}
+
+/* включён хоть один слой — негативом, как активный фильтр мест */
+.layers-btn.active {
+  background: #9aa0a6;
+  color: #fff;
+}
+
+.layers-btn.active:hover {
+  background: #8a9096;
+}
+
+.layers-menu {
+  position: absolute;
+  left: 0;
+  bottom: 44px;
+  min-width: 190px;
+  padding: 6px 0;
+  background: var(--light-panel);
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.layers-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 14px;
+  border: none;
+  background: transparent;
+  color: var(--light-text);
+  font: inherit;
+  font-size: 0.85rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.layers-item:hover {
+  background: var(--light-hover);
+}
+
+.layers-check {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  border: 2px solid #9aa0a6;
+  border-radius: 3px;
+}
+
+.layers-item.active .layers-check {
+  border-color: var(--light-accent);
+  background: var(--light-accent) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M5 12l5 5 9-10' fill='none' stroke='white' stroke-width='3'/%3E%3C/svg%3E") center / 14px no-repeat;
+}
+
 /* переключатель карт внизу слева — по образцу Google Maps: плитка "другого" вида +
    ряд всех вариантов, раскрывающийся при наведении */
 .basemap-switcher {
