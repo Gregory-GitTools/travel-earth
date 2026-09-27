@@ -327,8 +327,11 @@ const PIN_GLYPHS = {
   train: "M12 2c-4 0-8 .5-8 4v9.5C4 17.43 5.57 19 7.5 19L6 20.5v.5h2.23l2-2H14l2 2h2v-.5L16.5 19c1.93 0 3.5-1.57 3.5-3.5V6c0-3.5-3.58-4-8-4zM7.5 17c-.83 0-1.5-.67-1.5-1.5S6.67 14 7.5 14s1.5.67 1.5 1.5S8.33 17 7.5 17zm3.5-7H6V6h5v4zm2 0V6h5v4h-5zm3.5 7c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5z",
   boat: "M20 21c-1.39 0-2.78-.47-4-1.32-2.44 1.71-5.56 1.71-8 0C6.78 20.53 5.39 21 4 21H2v2h2c1.38 0 2.74-.35 4-.99 2.52 1.29 5.48 1.29 8 0 1.26.65 2.62.99 4 .99h2v-2h-2zM3.95 19H4c1.6 0 3.02-.88 4-2 .98 1.12 2.4 2 4 2s3.02-.88 4-2c.98 1.12 2.4 2 4 2h.05l1.89-6.68c.08-.26.06-.54-.06-.78s-.34-.42-.6-.5L20 10.62V6c0-1.1-.9-2-2-2h-3V1H9v3H6c-1.1 0-2 .9-2 2v4.62l-1.29.42c-.26.08-.48.26-.6.5s-.15.52-.06.78L3.95 19zM6 6h12v3.97L12 8 6 9.97V6z",
   plane: "M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z",
+  // кабинка канатной дороги (Material Design Icons "gondola")
+  cable: "M18,10H13V7.59L22.12,6.07L21.88,4.59L16.41,5.5C16.46,5.35 16.5,5.18 16.5,5A1.5,1.5 0 0,0 15,3.5A1.5,1.5 0 0,0 13.5,5C13.5,5.35 13.63,5.68 13.84,5.93L13,6.07V6.07L11,6.4V6.4L1.88,7.93L2.12,9.41L11,7.93V10H6A2,2 0 0,0 4,12V18A2,2 0 0,0 6,20H18A2,2 0 0,0 20,18V12A2,2 0 0,0 18,10M6,12H8.25V16H6V12M9.75,16V12H14.25V16H9.75M18,16H15.75V12H18V16Z",
+  // метро — буквой "М", как на входах в метро почти везде
+  metro: "text:M",
 };
-const PLANE_ICON = `<svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="${PIN_GLYPHS.plane}"/></svg>`;
 
 // у эмодзи кровати цветная картинка, выбивающаяся из ряда, — вместо неё монохромный
 // значок в стиле Material Icons ("hotel")
@@ -342,12 +345,15 @@ const CATEGORIES = [
   { id: "fun", name: "Развлечения", icon: "📷", color: "#d81b60",
     subclasses: ["attraction", "viewpoint", "theme_park", "zoo", "petting_zoo", "aquarium", "castle", "monument", "theatre", "cinema", "arts_centre", "escape_game"] },
   { id: "museums", name: "Музеи", icon: "🏛️", color: "#3949ab", subclasses: ["museum", "gallery"] },
-  // только вокзалы и терминалы — остановки автобусов и трамваев засыпали бы город флажками.
-  // glyphs: значок во флажке по классу места в тайлах; airports — плюс аэропорты
+  // вокзалы, станции, метро, паромы, аэропорты и автобусные остановки (трамвайные
+  // засыпали бы центр флажками). station — и ж/д станции, и станции канатных дорог
+  // (class aerialway); фуникулёры в OSM чаще всего размечены как ж/д станции.
+  // glyphs: значок во флажке — сначала по subclass, затем по class места в тайлах;
+  // airports — плюс аэропорты из отдельного слоя
   { id: "transport", name: "Транспорт", icon: "🚌", color: "#00897b", airports: true,
-    subclasses: ["bus_station", "station", "halt", "ferry_terminal"],
-    glyphs: { bus: "bus", railway: "train", ferry_terminal: "boat" } },
-  { id: "airports", name: "Аэропорты", icon: PLANE_ICON, color: "#546e7a", airports: true, subclasses: [] },
+    subclasses: ["bus_stop", "bus_station", "station", "halt", "subway", "ferry_terminal"],
+    glyphs: { subclass: { subway: "metro" },
+      class: { bus: "bus", railway: "train", aerialway: "cable", ferry_terminal: "boat" } } },
   { id: "shops", name: "Магазины", icon: "🛒", color: "#1e88e5", subcategories: [
     { id: "grocery", name: "Продукты", subclasses: ["supermarket", "convenience", "greengrocer", "bakery", "pastry", "butcher", "seafood", "deli", "cheese", "dairy", "frozen_food", "health_food", "confectionery", "chocolate", "coffee", "tea", "farm"] },
     { id: "market", name: "Рынки", subclasses: ["marketplace"] },
@@ -390,9 +396,11 @@ const POI_KIND_NAMES = {
   attraction: "Достопримечательность", viewpoint: "Смотровая площадка", theme_park: "Парк развлечений", zoo: "Зоопарк",
   petting_zoo: "Контактный зоопарк", aquarium: "Аквариум", castle: "Замок", monument: "Памятник", theatre: "Театр",
   cinema: "Кинотеатр", arts_centre: "Арт-центр", escape_game: "Квест-комната", museum: "Музей", gallery: "Галерея",
-  bus_stop: "Остановка автобуса", bus_station: "Автовокзал", station: "Станция", halt: "Остановка поезда",
-  tram_stop: "Остановка трамвая", ferry_terminal: "Паромный терминал",
+  bus_stop: "Остановка автобуса", bus_station: "Автовокзал", station: "Железнодорожная станция", halt: "Остановка поезда",
+  subway: "Станция метро", tram_stop: "Остановка трамвая", ferry_terminal: "Паромный терминал",
 };
+// там, где subclass не различает, — подпись по class (станции канатных дорог тоже station)
+const POI_CLASS_KIND_NAMES = { aerialway: "Станция канатной дороги" };
 const AIRPORT_KIND_NAMES = { international: "Международный аэропорт", public: "Аэропорт", regional: "Региональный аэропорт" };
 
 // что сейчас показано: категория или профиль магазинов — { id, name, color, subclasses }
@@ -509,10 +517,12 @@ function applyPoiLayer() {
   map.setLayoutProperty("poi-air", "visibility", airports ? "visible" : "none");
   if (places) {
     map.setFilter("poi", ["in", ["get", "subclass"], ["literal", activePoi.subclasses]]);
-    const glyphs = Object.entries(activePoi.glyphs || {});
-    map.setLayoutProperty("poi", "icon-image", glyphs.length
-      ? ["match", ["get", "class"], ...glyphs.flatMap(([cls, g]) => [cls, pinImage(activePoi.color, g)]), pinImage(activePoi.color)]
-      : pinImage(activePoi.color));
+    const { color, glyphs } = activePoi;
+    const byKey = (key, table, fallback) => Object.keys(table || {}).length
+      ? ["match", ["get", key], ...Object.entries(table).flatMap(([k, g]) => [k, pinImage(color, g)]), fallback]
+      : fallback;
+    map.setLayoutProperty("poi", "icon-image",
+      byKey("subclass", glyphs?.subclass, byKey("class", glyphs?.class, pinImage(color))));
   }
   if (airports) map.setLayoutProperty("poi-air", "icon-image", pinImage(activePoi.color, "plane"));
   updateAirportZoom();
@@ -524,11 +534,9 @@ function updateAirportZoom() {
 map.on("moveend", updateAirportZoom);
 
 // с какого зума у категории что-то появляется (min) и с какого можно честно сказать
-// "не найдено" (full): для одних аэропортов это один и тот же порог
+// "не найдено" (full) — аэропорты видны раньше остальных мест
 function poiZoomRange(poi) {
-  const air = airportMinZoom();
-  if (!poi.subclasses.length) return { min: air, full: air };
-  return { min: poi.airports ? Math.min(air, POI_MIN_ZOOM) : POI_MIN_ZOOM, full: POI_FULL_ZOOM };
+  return { min: poi.airports ? Math.min(airportMinZoom(), POI_MIN_ZOOM) : POI_MIN_ZOOM, full: POI_FULL_ZOOM };
 }
 
 // флажок-булавка цвета категории — заметнее точки, не теряется среди подписей карты.
@@ -550,11 +558,17 @@ function pinImage(color, glyph) {
   ctx.fill();
   ctx.stroke();
   ctx.fillStyle = "#fff";
-  if (glyph) {
+  const shape = PIN_GLYPHS[glyph];
+  if (shape?.startsWith("text:")) {
+    ctx.font = "bold 24px Arial, sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(shape.slice(5), 22, 22);
+  } else if (shape) {
     // значок 24×24 → 22 px в центре головки
     ctx.translate(11, 10);
     ctx.scale(22 / 24, 22 / 24);
-    ctx.fill(new Path2D(PIN_GLYPHS[glyph]));
+    ctx.fill(new Path2D(shape));
     ctx.setTransform(1, 0, 0, 1, 0, 0);
   } else {
     ctx.beginPath();
@@ -618,7 +632,7 @@ map.on("click", POI_LAYERS, async (evt) => {
   const name = p[`name:${uiLanguageCode()}`] || p.name;
   const kind = f.layer.id === "poi-air"
     ? [AIRPORT_KIND_NAMES[p.class] || "Аэропорт", p.iata].filter(Boolean).join(" · ")
-    : POI_KIND_NAMES[p.subclass] || p.subclass;
+    : POI_CLASS_KIND_NAMES[p.class] || POI_KIND_NAMES[p.subclass] || p.subclass;
   const click = ++poiClick;
   poiPopup?.remove();
   let details = "";
