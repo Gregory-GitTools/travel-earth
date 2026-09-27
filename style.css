@@ -62,7 +62,37 @@ html, body {
   object-fit: contain;
 }
 
-/* шестерёнка — контрол MapLibre в правом нижнем углу, в одном столбике с масштабом */
+/* внизу справа в одну строку: шкала, ⓘ, шестерёнка (собирает app.js) */
+.bottom-row {
+  clear: both; /* кнопки масштаба MapLibre "плавают" справа — строка встаёт под ними */
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin: 0 10px 10px 0;
+}
+
+.bottom-row .maplibregl-ctrl {
+  margin: 0;
+}
+
+/* ячейка под ⓘ: раскрытая строка источников растёт влево поверх шкалы */
+.attrib-slot {
+  position: relative;
+  width: 24px;
+  height: 24px;
+}
+
+.attrib-slot .maplibregl-ctrl-attrib {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  z-index: 1;
+  width: max-content;
+  max-width: calc(100vw - 160px); /* не закрывает плитку карт внизу слева */
+}
+
+/* шестерёнка — свой контрол MapLibre */
 #settings-btn img {
   width: 18px;
   height: 18px;
@@ -87,9 +117,11 @@ html, body {
   pointer-events: auto;
 }
 
+/* на телефоне поиск сжимается, чтобы рядом поместились кнопки языка и "Места" */
 .search-wrap {
   position: relative;
-  flex: 0 0 340px;
+  flex: 0 1 340px;
+  min-width: 0;
 }
 
 .search-box {
@@ -217,9 +249,10 @@ html, body {
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
 }
 
-/* меню профилей магазинов — вне полосы чипов, координаты ставит app.js */
+/* меню профилей магазинов — поверх карты, координаты ставит app.js */
 .shop-menu {
   position: fixed;
+  left: auto; /* прижато к правому краю чипа — right ставит app.js */
   z-index: 11;
 }
 
@@ -244,14 +277,72 @@ html, body {
   font-weight: 500;
 }
 
+/* кнопка "Места" в правом верхнем углу и выпадающий под ней столбик категорий */
+.places-wrap {
+  position: relative;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+.places-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 44px;
+  padding: 0 14px;
+  border: none;
+  border-radius: 22px;
+  background: var(--light-panel);
+  color: var(--light-text);
+  font: inherit;
+  font-size: 0.9rem;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+}
+
+.places-btn:hover {
+  background: var(--light-hover);
+}
+
+.places-btn.active {
+  background: #5f6368;
+  color: #fff;
+}
+
+.places-dot {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  width: 10px;
+  height: 10px;
+  border: 2px solid #fff;
+  border-radius: 50%;
+}
+
 .category-chips {
+  position: absolute;
+  top: 44px;
+  right: 0;
   display: flex;
+  flex-direction: column;
+  align-items: flex-end;
   gap: 8px;
-  min-width: 0;
-  padding: 6px 2px 8px; /* место под тень чипов внутри прокручиваемой полосы */
-  margin-top: -6px;
-  overflow-x: auto;
-  scrollbar-width: none;
+  padding-top: 4px;
+  pointer-events: none; /* промежутки между кнопками не мешают тащить карту */
+}
+
+.category-chips > * {
+  pointer-events: auto;
+}
+
+@media (max-width: 520px) {
+  .places-label {
+    display: none;
+  }
+  .places-btn {
+    padding: 0 12px;
+  }
 }
 
 .chip {
@@ -260,7 +351,6 @@ html, body {
   align-items: center;
   gap: 6px;
   height: 36px;
-  margin-top: 4px;
   padding: 0 14px;
   border: 1px solid transparent;
   border-radius: 18px;
@@ -599,4 +689,13 @@ html, body {
 .about-install-btn img {
   width: 18px;
   height: 18px;
+}
+
+/* на телефоне по центру сверху стоит столбик категорий — надпись уходит влево под поиск */
+@media (max-width: 520px) {
+  .map-status {
+    left: 10px;
+    transform: none;
+    max-width: calc(100vw - 190px);
+  }
 }

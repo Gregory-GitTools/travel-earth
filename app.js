@@ -312,6 +312,15 @@ const POI_FULL_ZOOM = 14;
 const HOTEL_ICON = `<svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M7 13c1.66 0 3-1.34 3-3S8.66 7 7 7s-3 1.34-3 3 1.34 3 3 3zm12-6h-8v7H3V5H1v15h2v-3h18v3h2v-9c0-2.21-1.79-4-4-4z"/></svg>`;
 
 const CATEGORIES = [
+  { id: "food", name: "Рестораны", icon: "🍴", color: "#f57c00",
+    subclasses: ["restaurant", "cafe", "fast_food", "food_court", "bar", "pub", "biergarten", "ice_cream"] },
+  { id: "hotels", name: "Гостиницы", icon: HOTEL_ICON, color: "#8e24aa",
+    subclasses: ["hotel", "hostel", "guest_house", "motel", "apartment", "chalet", "camp_site", "caravan_site"] },
+  { id: "fun", name: "Развлечения", icon: "📷", color: "#d81b60",
+    subclasses: ["attraction", "viewpoint", "theme_park", "zoo", "petting_zoo", "aquarium", "castle", "monument", "theatre", "cinema", "arts_centre", "escape_game"] },
+  { id: "museums", name: "Музеи", icon: "🏛️", color: "#3949ab", subclasses: ["museum", "gallery"] },
+  { id: "transport", name: "Транспорт", icon: "🚌", color: "#00897b",
+    subclasses: ["bus_stop", "bus_station", "station", "halt", "tram_stop", "ferry_terminal"] },
   { id: "shops", name: "Магазины", icon: "🛒", color: "#1e88e5", subcategories: [
     { id: "grocery", name: "Продукты", subclasses: ["supermarket", "convenience", "greengrocer", "bakery", "pastry", "butcher", "seafood", "deli", "cheese", "dairy", "frozen_food", "health_food", "confectionery", "chocolate", "coffee", "tea", "farm"] },
     { id: "market", name: "Рынки", subclasses: ["marketplace"] },
@@ -323,15 +332,6 @@ const CATEGORIES = [
     { id: "gifts", name: "Сувениры и книги", subclasses: ["gift", "souvenir", "books", "antiques", "art", "toys", "stationery", "music"] },
     { id: "alcohol", name: "Алкоголь и напитки", subclasses: ["alcohol", "wine", "beverages"] },
   ] },
-  { id: "food", name: "Рестораны", icon: "🍴", color: "#f57c00",
-    subclasses: ["restaurant", "cafe", "fast_food", "food_court", "bar", "pub", "biergarten", "ice_cream"] },
-  { id: "hotels", name: "Гостиницы", icon: HOTEL_ICON, color: "#8e24aa",
-    subclasses: ["hotel", "hostel", "guest_house", "motel", "apartment", "chalet", "camp_site", "caravan_site"] },
-  { id: "fun", name: "Развлечения", icon: "📷", color: "#d81b60",
-    subclasses: ["attraction", "viewpoint", "theme_park", "zoo", "petting_zoo", "aquarium", "castle", "monument", "theatre", "cinema", "arts_centre", "escape_game"] },
-  { id: "museums", name: "Музеи", icon: "🏛️", color: "#3949ab", subclasses: ["museum", "gallery"] },
-  { id: "transport", name: "Транспорт", icon: "🚌", color: "#00897b",
-    subclasses: ["bus_stop", "bus_station", "station", "halt", "tram_stop", "ferry_terminal"] },
 ];
 const SHOPS = CATEGORIES.find((c) => c.subcategories);
 // "Все магазины" — объединение всех профилей
@@ -383,6 +383,9 @@ function setActivePoi(chipId, poi) {
   renderCategoryChips();
   applyPoiLayer();
   updatePoiStatus();
+  // цветная точка на кнопке "Места" — фильтр включён, даже если столбик кнопок закрыт
+  el("places-dot").hidden = !poi;
+  if (poi) el("places-dot").style.background = poi.color;
 }
 
 function chipLabel(button, icon, text) {
@@ -430,7 +433,7 @@ function toggleShopMenu(chip) {
   const menu = el("shop-menu");
   if (!menu.hidden) { menu.hidden = true; return; }
   const rect = chip.getBoundingClientRect();
-  menu.style.left = `${rect.left}px`;
+  menu.style.right = `${window.innerWidth - rect.right}px`;
   menu.style.top = `${rect.bottom + 6}px`;
   menu.replaceChildren(...SHOPS.subcategories.map((s) => {
     const item = document.createElement("button");
@@ -447,6 +450,14 @@ function toggleShopMenu(chip) {
 }
 document.addEventListener("click", (evt) => {
   if (!el("shop-menu").contains(evt.target)) el("shop-menu").hidden = true;
+});
+
+// кнопка "Места" в правом верхнем углу показывает и прячет столбик категорий
+el("places-btn").addEventListener("click", () => {
+  const open = el("category-chips").hidden;
+  el("category-chips").hidden = !open;
+  el("places-btn").classList.toggle("active", open);
+  if (!open) el("shop-menu").hidden = true;
 });
 
 function showStatus(text) {
@@ -698,6 +709,20 @@ class RuScaleControl extends maplibregl.ScaleControl {
 map.addControl(new RuScaleControl({ unit: "metric" }), "bottom-right");
 map.addControl(new SettingsControl(), "bottom-right");
 map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), "bottom-right");
+
+// Внизу справа в одну строку: шкала, кнопка ⓘ источников, шестерёнка; кнопки масштаба
+// остаются над ними. ⓘ стоит в ячейке своего размера, а раскрытая строка источников
+// ложится поверх шкалы влево — шкала не сдвигается (на телефоне ей некуда)
+{
+  const corner = document.querySelector(".maplibregl-ctrl-bottom-right");
+  const row = document.createElement("div");
+  row.className = "bottom-row";
+  const attribSlot = document.createElement("div");
+  attribSlot.className = "attrib-slot";
+  attribSlot.append(corner.querySelector(".maplibregl-ctrl-attrib"));
+  row.append(corner.querySelector(".maplibregl-ctrl-scale"), attribSlot, el("settings-btn").parentElement);
+  corner.append(row);
+}
 
 // Пока глобус виден целиком на звёздном небе, наклон и поворот только сбивают с толку —
 // шар и так крутится мышью. Они включаются, когда шкала масштаба показывает не больше
