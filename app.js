@@ -573,7 +573,7 @@ map.on("moveend", updateScaleZooms);
 
 // В тайлах станция фуникулёра — обычная railway station/halt, а вот рельсы фуникулёра
 // помечены (transportation, subclass funicular). Станция на этих рельсах (ближе
-// FUNICULAR_STATION_METERS) и считается станцией фуникулёра
+// FUNICULAR_STATION_METERS) или с тегом фуникулёра в OSM и считается станцией фуникулёра
 const FUNICULAR_STATION_METERS = 50;
 let funicularIds = [];
 
@@ -591,18 +591,53 @@ function distanceToLine(line, [x, y]) {
   return best;
 }
 
+// Рельсы фуникулёров есть в тайлах только с zoom 14, а станции — с 12, как метро и
+// поезда. Поэтому станции проверяются ещё и по тегам OSM (station=funicular или
+// funicular=yes): одним запросом к OSM API на все новые станции в кадре, ответ
+// запоминается. Рельсы остаются запасным признаком для станций без этих тегов
+const funicularTags = new Map(); // id станции в тайлах → фуникулёр ли по тегам OSM
+const funicularPending = new Set();
+
+async function checkFunicularTags(ids) {
+  ids.forEach((id) => funicularPending.add(id));
+  const byType = {};
+  for (const id of ids) (byType[OSM_TYPES[id % 10]] ||= []).push(id);
+  await Promise.all(Object.entries(byType).map(async ([type, group]) => {
+    for (let i = 0; i < group.length; i += 100) {
+      const chunk = group.slice(i, i + 100);
+      try {
+        const osmIds = chunk.map((id) => Math.floor(id / 10)).join(",");
+        const resp = await fetch(`https://api.openstreetmap.org/api/0.6/${type}s.json?${type}s=${osmIds}`);
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const tags = new Map((await resp.json()).elements.map((e) => [e.id, e.tags || {}]));
+        for (const id of chunk) {
+          const t = tags.get(Math.floor(id / 10)) || {};
+          funicularTags.set(id, t.station === "funicular" || t.funicular === "yes");
+        }
+      } catch (err) {
+        console.warn("OSM API", err);
+        chunk.forEach((id) => funicularTags.set(id, false));
+      }
+    }
+  }));
+  ids.forEach((id) => funicularPending.delete(id));
+  updateFunicularStations();
+}
+
 function updateFunicularStations() {
   if (!activePoi?.funicular || !map.getLayer("poi")) return;
   const lines = map.querySourceFeatures("te-poi", { sourceLayer: "transportation", filter: ["==", ["get", "subclass"], "funicular"] })
     .flatMap((f) => (f.geometry.type === "LineString" ? [f.geometry.coordinates]
       : f.geometry.type === "MultiLineString" ? f.geometry.coordinates : []));
   const ids = new Set();
-  if (lines.length) {
-    for (const s of map.querySourceFeatures("te-poi", { sourceLayer: "poi", filter: ["==", ["get", "class"], "railway"] })) {
-      if (s.id == null || !["station", "halt"].includes(s.properties.subclass)) continue;
-      if (lines.some((line) => distanceToLine(line, s.geometry.coordinates) < FUNICULAR_STATION_METERS)) ids.add(s.id);
-    }
+  const unknown = new Set();
+  for (const s of map.querySourceFeatures("te-poi", { sourceLayer: "poi", filter: ["==", ["get", "class"], "railway"] })) {
+    if (s.id == null || !["station", "halt"].includes(s.properties.subclass)) continue;
+    if (funicularTags.get(s.id)) ids.add(s.id);
+    else if (lines.some((line) => distanceToLine(line, s.geometry.coordinates) < FUNICULAR_STATION_METERS)) ids.add(s.id);
+    if (!funicularTags.has(s.id) && !funicularPending.has(s.id) && OSM_TYPES[s.id % 10]) unknown.add(s.id);
   }
+  if (unknown.size) checkFunicularTags([...unknown]);
   const next = [...ids].sort((a, b) => a - b);
   if (next.join() === funicularIds.join()) return;
   funicularIds = next;
