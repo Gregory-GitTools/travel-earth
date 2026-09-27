@@ -525,7 +525,8 @@ function showStatus(text) {
 // станции и места, остановки, станции фуникулёров, аэропорты
 const POI_LAYERS = ["poi", "poi-stops", "poi-funicular", "poi-air"];
 const AIRPORT_PIN = { glyph: "plane", color: "#546e7a" };
-const FUNICULAR_PIN = { glyph: "funicular", color: "#c2185b" };
+// ядовито-зелёный с чёрным значком — фуникулёры трудно найти, пусть бросаются в глаза
+const FUNICULAR_PIN = { glyph: "funicular", color: "#39ff14", ink: "#000" };
 
 function applyPoiLayer() {
   if (!map.getLayer("poi")) return;
@@ -542,7 +543,7 @@ function applyPoiLayer() {
   const icon = modeIcon(activePoi);
   map.setLayoutProperty("poi", "icon-image", icon);
   map.setLayoutProperty("poi-stops", "icon-image", icon);
-  map.setLayoutProperty("poi-funicular", "icon-image", pinImage(FUNICULAR_PIN.color, FUNICULAR_PIN.glyph));
+  map.setLayoutProperty("poi-funicular", "icon-image", pinImage(FUNICULAR_PIN.color, FUNICULAR_PIN.glyph, FUNICULAR_PIN.ink));
   map.setLayoutProperty("poi-air", "icon-image", pinImage(AIRPORT_PIN.color, AIRPORT_PIN.glyph));
   applyPoiFilters();
   updateScaleZooms();
@@ -653,9 +654,10 @@ function poiZoomRange(poi) {
 
 // флажок-булавка цвета категории — заметнее точки, не теряется среди подписей карты.
 // Картинки рисуются по требованию и после смены стиля (setStyle их удаляет) — заново.
-// glyph — белый значок из PIN_GLYPHS в головке вместо белого кружка
-function pinImage(color, glyph) {
-  const id = `pin-${color}-${glyph || "dot"}`;
+// glyph — белый значок из PIN_GLYPHS в головке вместо белого кружка;
+// ink — другой цвет значка и обводки для светлых флажков, на которых белое теряется
+function pinImage(color, glyph, ink) {
+  const id = `pin-${color}-${glyph || "dot"}${ink ? `-${ink}` : ""}`;
   if (map.hasImage(id)) return id;
   const w = 44, h = 58; // в двойном размере: pixelRatio 2 — чётко на любом экране
   const ctx = Object.assign(document.createElement("canvas"), { width: w, height: h }).getContext("2d");
@@ -665,11 +667,11 @@ function pinImage(color, glyph) {
   ctx.arc(22, 21, 18, Math.PI, 0);
   ctx.bezierCurveTo(40, 34, 26, 42, 22, 55);
   ctx.fillStyle = color;
-  ctx.strokeStyle = "#fff";
+  ctx.strokeStyle = ink || "#fff";
   ctx.lineWidth = 3;
   ctx.fill();
   ctx.stroke();
-  ctx.fillStyle = "#fff";
+  ctx.fillStyle = ink || "#fff";
   const shape = PIN_GLYPHS[glyph];
   if (typeof shape === "string" && shape.startsWith("text:")) {
     ctx.font = "bold 24px Arial, sans-serif";
