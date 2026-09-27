@@ -38,7 +38,9 @@ function buildSatelliteStyle() {
     sources: {
       esri: {
         type: "raster",
-        tiles: ["https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"],
+        // blankTile=false: где подробного снимка нет, Esri отдаёт 404 вместо картинки
+        // "Map data not yet available" — и MapLibre растягивает последний настоящий снимок
+        tiles: ["https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}?blankTile=false"],
         tileSize: 256,
         maxzoom: 19,
         attribution: "© Esri, Maxar, Earthstar Geographics, and the GIS User Community",
@@ -383,9 +385,13 @@ function setActivePoi(chipId, poi) {
   renderCategoryChips();
   applyPoiLayer();
   updatePoiStatus();
-  // цветная точка на кнопке "Места" — фильтр включён, даже если столбик кнопок закрыт
-  el("places-dot").hidden = !poi;
-  if (poi) el("places-dot").style.background = poi.color;
+  updatePlacesBtn();
+}
+
+// кнопка "Места" серая, пока открыт столбик категорий или включён фильтр —
+// так включённый фильтр не забудется и при свёрнутом столбике
+function updatePlacesBtn() {
+  el("places-btn").classList.toggle("active", !!activePoi || !el("category-chips").hidden);
 }
 
 function chipLabel(button, icon, text) {
@@ -456,7 +462,7 @@ document.addEventListener("click", (evt) => {
 el("places-btn").addEventListener("click", () => {
   const open = el("category-chips").hidden;
   el("category-chips").hidden = !open;
-  el("places-btn").classList.toggle("active", open);
+  updatePlacesBtn();
   if (!open) el("shop-menu").hidden = true;
 });
 

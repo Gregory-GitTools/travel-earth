@@ -306,18 +306,8 @@ html, body {
 }
 
 .places-btn.active {
-  background: #5f6368;
+  background: #9aa0a6;
   color: #fff;
-}
-
-.places-dot {
-  position: absolute;
-  top: 6px;
-  right: 8px;
-  width: 10px;
-  height: 10px;
-  border: 2px solid #fff;
-  border-radius: 50%;
 }
 
 .category-chips {
@@ -368,12 +358,12 @@ html, body {
 
 /* включённый фильтр — негативом, чтобы не забыть его выключить */
 .chip.active {
-  background: #5f6368;
+  background: #9aa0a6;
   color: #fff;
 }
 
 .chip.active:hover {
-  background: #4d5156;
+  background: #8a9096;
 }
 
 /* "Магазины": название включает/выключает, стрелка открывает выбор профиля */
@@ -423,7 +413,7 @@ html, body {
 }
 
 .chip-split.active:hover {
-  background: #5f6368;
+  background: #9aa0a6;
 }
 
 .chip-icon {
