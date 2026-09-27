@@ -316,10 +316,16 @@ const POI_FULL_ZOOM = 14;
 const AIRPORT_MAX_METERS_PER_100PX = 5000;
 const AIRPORT_CLASSES = ["international", "public", "regional"];
 
-function airportMinZoom() {
+// остановки автобусов и трамваев — только когда шкала показывает 100 м и меньше,
+// иначе они засыпают город флажками
+const STOP_MAX_METERS_PER_100PX = 200;
+
+// зум, с которого в 100 px экрана помещается не больше maxMeters (на широте центра)
+function zoomForScale(maxMeters) {
   const lat = map.getCenter().lat;
-  return Math.log2((100 * 40075016.686 * Math.cos((lat * Math.PI) / 180)) / (512 * AIRPORT_MAX_METERS_PER_100PX));
+  return Math.log2((100 * 40075016.686 * Math.cos((lat * Math.PI) / 180)) / (512 * maxMeters));
 }
+const airportMinZoom = () => zoomForScale(AIRPORT_MAX_METERS_PER_100PX);
 
 // Белые значки в головке флажка (контуры Material Icons, viewBox 24×24)
 const PIN_GLYPHS = {
@@ -331,7 +337,10 @@ const PIN_GLYPHS = {
   cable: "M18,10H13V7.59L22.12,6.07L21.88,4.59L16.41,5.5C16.46,5.35 16.5,5.18 16.5,5A1.5,1.5 0 0,0 15,3.5A1.5,1.5 0 0,0 13.5,5C13.5,5.35 13.63,5.68 13.84,5.93L13,6.07V6.07L11,6.4V6.4L1.88,7.93L2.12,9.41L11,7.93V10H6A2,2 0 0,0 4,12V18A2,2 0 0,0 6,20H18A2,2 0 0,0 20,18V12A2,2 0 0,0 18,10M6,12H8.25V16H6V12M9.75,16V12H14.25V16H9.75M18,16H15.75V12H18V16Z",
   // метро — буквой "М", как на входах в метро почти везде
   metro: "text:M",
+  tram: "M19 16.94V8.5c0-2.79-2.61-3.4-6.01-3.49l.76-1.51H17V2H7v1.5h4.75l-.76 1.52C7.86 5.11 5 5.73 5 8.5v8.44c0 1.45 1.19 2.66 2.59 2.97L6 21.5v.5h2.23l2-2H14l2 2h2v-.5L16.5 20h-.08c1.69 0 2.58-1.37 2.58-3.06zm-7 1.56c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zm5-4.5H7V9h10v5z",
 };
+// фуникулёр — вагончик трамвая, наклонённый как на склоне
+PIN_GLYPHS.funicular = { path: PIN_GLYPHS.tram, rotate: -30 };
 
 // у эмодзи кровати цветная картинка, выбивающаяся из ряда, — вместо неё монохромный
 // значок в стиле Material Icons ("hotel")
@@ -345,15 +354,22 @@ const CATEGORIES = [
   { id: "fun", name: "Развлечения", icon: "📷", color: "#d81b60",
     subclasses: ["attraction", "viewpoint", "theme_park", "zoo", "petting_zoo", "aquarium", "castle", "monument", "theatre", "cinema", "arts_centre", "escape_game"] },
   { id: "museums", name: "Музеи", icon: "🏛️", color: "#3949ab", subclasses: ["museum", "gallery"] },
-  // вокзалы, станции, метро, паромы, аэропорты и автобусные остановки (трамвайные
-  // засыпали бы центр флажками). station — и ж/д станции, и станции канатных дорог
-  // (class aerialway); фуникулёры в OSM чаще всего размечены как ж/д станции.
-  // glyphs: значок во флажке — сначала по subclass, затем по class места в тайлах;
-  // airports — плюс аэропорты из отдельного слоя
-  { id: "transport", name: "Транспорт", icon: "🚌", color: "#00897b", airports: true,
-    subclasses: ["bus_stop", "bus_station", "station", "halt", "subway", "ferry_terminal"],
-    glyphs: { subclass: { subway: "metro" },
-      class: { bus: "bus", railway: "train", aerialway: "cable", ferry_terminal: "boat" } } },
+  // вокзалы, станции, метро, паромы и аэропорты (airports — из отдельного слоя), а
+  // остановки (stops) — только на крупном масштабе. station — и ж/д станции, и станции
+  // канатных дорог (class aerialway); станции фуникулёров в тайлах не отличить от ж/д —
+  // их находит updateFunicularStations по рельсам фуникулёра рядом.
+  // modes: цвет и значок флажка по виду транспорта — первое совпадение по subclass/class
+  { id: "transport", name: "Транспорт", icon: "🚌", color: "#00897b", airports: true, funicular: true,
+    subclasses: ["bus_station", "station", "halt", "subway", "ferry_terminal"],
+    stops: ["bus_stop", "tram_stop"],
+    modes: [
+      { subclass: "subway", glyph: "metro", color: "#e53935" },
+      { subclass: "tram_stop", glyph: "tram", color: "#fb8c00" },
+      { class: "bus", glyph: "bus", color: "#43a047" },
+      { class: "aerialway", glyph: "cable", color: "#8e24aa" },
+      { class: "ferry_terminal", glyph: "boat", color: "#0288d1" },
+      { class: "railway", glyph: "train", color: "#3949ab" },
+    ] },
   { id: "shops", name: "Магазины", icon: "🛒", color: "#1e88e5", subcategories: [
     { id: "grocery", name: "Продукты", subclasses: ["supermarket", "convenience", "greengrocer", "bakery", "pastry", "butcher", "seafood", "deli", "cheese", "dairy", "frozen_food", "health_food", "confectionery", "chocolate", "coffee", "tea", "farm"] },
     { id: "market", name: "Рынки", subclasses: ["marketplace"] },
@@ -506,32 +522,93 @@ function showStatus(text) {
   el("map-status").hidden = !text;
 }
 
-const POI_LAYERS = ["poi", "poi-air"];
+// станции и места, остановки, станции фуникулёров, аэропорты
+const POI_LAYERS = ["poi", "poi-stops", "poi-funicular", "poi-air"];
+const AIRPORT_PIN = { glyph: "plane", color: "#546e7a" };
+const FUNICULAR_PIN = { glyph: "funicular", color: "#c2185b" };
 
 function applyPoiLayer() {
   if (!map.getLayer("poi")) return;
   // пока категория не выбрана, слои скрыты — тогда MapLibre и тайлы мест не грузит
-  const places = !!activePoi?.subclasses.length;
-  const airports = !!activePoi?.airports;
-  map.setLayoutProperty("poi", "visibility", places ? "visible" : "none");
-  map.setLayoutProperty("poi-air", "visibility", airports ? "visible" : "none");
-  if (places) {
-    map.setFilter("poi", ["in", ["get", "subclass"], ["literal", activePoi.subclasses]]);
-    const { color, glyphs } = activePoi;
-    const byKey = (key, table, fallback) => Object.keys(table || {}).length
-      ? ["match", ["get", key], ...Object.entries(table).flatMap(([k, g]) => [k, pinImage(color, g)]), fallback]
-      : fallback;
-    map.setLayoutProperty("poi", "icon-image",
-      byKey("subclass", glyphs?.subclass, byKey("class", glyphs?.class, pinImage(color))));
-  }
-  if (airports) map.setLayoutProperty("poi-air", "icon-image", pinImage(activePoi.color, "plane"));
-  updateAirportZoom();
+  const show = {
+    "poi": !!activePoi?.subclasses.length,
+    "poi-stops": !!activePoi?.stops,
+    "poi-funicular": !!activePoi?.funicular,
+    "poi-funicular-line": !!activePoi?.funicular,
+    "poi-air": !!activePoi?.airports,
+  };
+  for (const [id, on] of Object.entries(show)) map.setLayoutProperty(id, "visibility", on ? "visible" : "none");
+  if (!activePoi) return;
+  const icon = modeIcon(activePoi);
+  map.setLayoutProperty("poi", "icon-image", icon);
+  map.setLayoutProperty("poi-stops", "icon-image", icon);
+  map.setLayoutProperty("poi-funicular", "icon-image", pinImage(FUNICULAR_PIN.color, FUNICULAR_PIN.glyph));
+  map.setLayoutProperty("poi-air", "icon-image", pinImage(AIRPORT_PIN.color, AIRPORT_PIN.glyph));
+  applyPoiFilters();
+  updateScaleZooms();
 }
 
-function updateAirportZoom() {
-  if (map.getLayer("poi-air")) map.setLayerZoomRange("poi-air", airportMinZoom(), 24);
+// флажок по виду транспорта (modes) или просто флажок цвета категории
+function modeIcon(poi) {
+  const cases = (poi.modes || []).flatMap((m) => [
+    ["==", ["get", m.subclass ? "subclass" : "class"], m.subclass || m.class], pinImage(m.color, m.glyph)]);
+  return cases.length ? ["case", ...cases, pinImage(poi.color)] : pinImage(poi.color);
 }
-map.on("moveend", updateAirportZoom);
+
+function applyPoiFilters() {
+  if (!activePoi) return;
+  const funicular = ["in", ["id"], ["literal", funicularIds]];
+  map.setFilter("poi", ["all", ["in", ["get", "subclass"], ["literal", activePoi.subclasses]], ["!", funicular]]);
+  map.setFilter("poi-stops", ["in", ["get", "subclass"], ["literal", activePoi.stops || []]]);
+  map.setFilter("poi-funicular", funicular);
+}
+
+// пороги "по шкале" зависят от широты — пересчитываются после каждого движения
+function updateScaleZooms() {
+  if (!map.getLayer("poi-air")) return;
+  map.setLayerZoomRange("poi-air", airportMinZoom(), 24);
+  map.setLayerZoomRange("poi-stops", zoomForScale(STOP_MAX_METERS_PER_100PX), 24);
+}
+map.on("moveend", updateScaleZooms);
+
+// В тайлах станция фуникулёра — обычная railway station/halt, а вот рельсы фуникулёра
+// помечены (transportation, subclass funicular). Станция на этих рельсах (ближе
+// FUNICULAR_STATION_METERS) и считается станцией фуникулёра
+const FUNICULAR_STATION_METERS = 50;
+let funicularIds = [];
+
+function distanceToLine(line, [x, y]) {
+  // в метрах, в плоском приближении — для десятков метров его хватает
+  const kx = 111320 * Math.cos((y * Math.PI) / 180), ky = 110540;
+  let best = Infinity;
+  for (let i = 1; i < line.length; i++) {
+    const ax = (line[i - 1][0] - x) * kx, ay = (line[i - 1][1] - y) * ky;
+    const bx = (line[i][0] - x) * kx, by = (line[i][1] - y) * ky;
+    const dx = bx - ax, dy = by - ay;
+    const t = Math.max(0, Math.min(1, -(ax * dx + ay * dy) / (dx * dx + dy * dy || 1)));
+    best = Math.min(best, Math.hypot(ax + t * dx, ay + t * dy));
+  }
+  return best;
+}
+
+function updateFunicularStations() {
+  if (!activePoi?.funicular || !map.getLayer("poi")) return;
+  const lines = map.querySourceFeatures("te-poi", { sourceLayer: "transportation", filter: ["==", ["get", "subclass"], "funicular"] })
+    .flatMap((f) => (f.geometry.type === "LineString" ? [f.geometry.coordinates]
+      : f.geometry.type === "MultiLineString" ? f.geometry.coordinates : []));
+  const ids = new Set();
+  if (lines.length) {
+    for (const s of map.querySourceFeatures("te-poi", { sourceLayer: "poi", filter: ["==", ["get", "class"], "railway"] })) {
+      if (s.id == null || !["station", "halt"].includes(s.properties.subclass)) continue;
+      if (lines.some((line) => distanceToLine(line, s.geometry.coordinates) < FUNICULAR_STATION_METERS)) ids.add(s.id);
+    }
+  }
+  const next = [...ids].sort((a, b) => a - b);
+  if (next.join() === funicularIds.join()) return;
+  funicularIds = next;
+  applyPoiFilters();
+}
+map.on("idle", updateFunicularStations);
 
 // с какого зума у категории что-то появляется (min) и с какого можно честно сказать
 // "не найдено" (full) — аэропорты видны раньше остальных мест
@@ -559,16 +636,18 @@ function pinImage(color, glyph) {
   ctx.stroke();
   ctx.fillStyle = "#fff";
   const shape = PIN_GLYPHS[glyph];
-  if (shape?.startsWith("text:")) {
+  if (typeof shape === "string" && shape.startsWith("text:")) {
     ctx.font = "bold 24px Arial, sans-serif";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.fillText(shape.slice(5), 22, 22);
   } else if (shape) {
-    // значок 24×24 → 22 px в центре головки
-    ctx.translate(11, 10);
+    // значок 24×24 → 22 px в центре головки, при необходимости наклонённый
+    ctx.translate(22, 21);
+    ctx.rotate(((shape.rotate || 0) * Math.PI) / 180);
     ctx.scale(22 / 24, 22 / 24);
-    ctx.fill(new Path2D(shape));
+    ctx.translate(-12, -12);
+    ctx.fill(new Path2D(shape.path || shape));
     ctx.setTransform(1, 0, 0, 1, 0, 0);
   } else {
     ctx.beginPath();
@@ -632,6 +711,7 @@ map.on("click", POI_LAYERS, async (evt) => {
   const name = p[`name:${uiLanguageCode()}`] || p.name;
   const kind = f.layer.id === "poi-air"
     ? [AIRPORT_KIND_NAMES[p.class] || "Аэропорт", p.iata].filter(Boolean).join(" · ")
+    : f.layer.id === "poi-funicular" ? "Станция фуникулёра"
     : POI_CLASS_KIND_NAMES[p.class] || POI_KIND_NAMES[p.subclass] || p.subclass;
   const click = ++poiClick;
   poiPopup?.remove();
@@ -676,34 +756,38 @@ map.on("style.load", () => {
   applyLabelLanguage();
   // свой источник, а не источник стиля: у стилей CARTO другие тайлы, без subclass
   map.addSource("te-poi", OPENMAPTILES_SOURCE);
+  // рельсы фуникулёров подкрашиваются цветом их флажков
   map.addLayer({
-    id: "poi",
+    id: "poi-funicular-line",
+    type: "line",
+    source: "te-poi",
+    "source-layer": "transportation",
+    minzoom: POI_MIN_ZOOM,
+    filter: ["==", ["get", "subclass"], "funicular"],
+    layout: { visibility: "none", "line-cap": "round" },
+    paint: { "line-color": FUNICULAR_PIN.color, "line-width": ["interpolate", ["linear"], ["zoom"], 12, 2, 17, 5] },
+  });
+  const pinLayer = (id, sourceLayer, extra) => map.addLayer({
+    id,
     type: "symbol",
     source: "te-poi",
-    "source-layer": "poi",
+    "source-layer": sourceLayer,
     minzoom: POI_MIN_ZOOM,
+    ...extra,
     layout: {
       visibility: "none",
       "icon-anchor": "bottom",
-      "icon-size": ["interpolate", ["linear"], ["zoom"], 12, 0.8, 17, 1.1],
+      "icon-size": ["interpolate", ["linear"], ["zoom"], 12, 1, 17, 1.4],
       // показываются все найденные места, даже если флажки перекрываются
       "icon-allow-overlap": true,
       "icon-ignore-placement": true,
     },
   });
-  map.addLayer({
-    id: "poi-air",
-    type: "symbol",
-    source: "te-poi",
-    "source-layer": "aerodrome_label",
-    filter: ["in", ["get", "class"], ["literal", AIRPORT_CLASSES]],
-    layout: {
-      visibility: "none",
-      "icon-anchor": "bottom",
-      "icon-allow-overlap": true,
-      "icon-ignore-placement": true,
-    },
-  });
+  // остановки ниже станций — станция не прячется под флажком остановки
+  pinLayer("poi-stops", "poi");
+  pinLayer("poi", "poi");
+  pinLayer("poi-funicular", "poi");
+  pinLayer("poi-air", "aerodrome_label", { minzoom: 0, filter: ["in", ["get", "class"], ["literal", AIRPORT_CLASSES]] });
   applyPoiLayer();
 });
 
