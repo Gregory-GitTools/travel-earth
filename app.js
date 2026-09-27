@@ -105,16 +105,22 @@ const map = new maplibregl.Map({
 const STAR_COUNT = 12000; // в кадр попадает примерно двадцатая часть неба
 const MAP_FOV = 36.87; // угол обзора камеры MapLibre по вертикали (градусы)
 
+const STAR_TINTS = ["255,255,255", "255,255,255", "190,210,255", "160,190,255", "255,240,200",
+  "255,215,160", "255,180,140", "255,160,160"];
+
 const stars = Array.from({ length: STAR_COUNT }, () => {
   // равномерно по сфере: z равномерно в [-1, 1], долгота равномерно
   const z = Math.random() * 2 - 1;
   const a = Math.random() * Math.PI * 2;
   const r = Math.sqrt(1 - z * z);
-  // большинство звёзд тусклые и мелкие, редкие — яркие, с лёгким голубым или жёлтым оттенком
+  // большинство звёзд тусклые и мелкие, редкие — яркие; цвета как у настоящих звёзд:
+  // от голубых до оранжевых и красноватых
   const bright = Math.random() ** 3;
-  const tint = ["255,255,255", "200,220,255", "255,240,210"][Math.floor(Math.random() * 3)];
-  return { x: r * Math.cos(a), y: r * Math.sin(a), z, size: 0.4 + bright * 1.1,
-    color: `rgba(${tint},${0.25 + bright * 0.75})` };
+  const tint = STAR_TINTS[Math.floor(Math.random() * STAR_TINTS.length)];
+  return { x: r * Math.cos(a), y: r * Math.sin(a), z, size: 0.8 + bright * 2.2, tint,
+    alpha: 0.3 + bright * 0.7,
+    // у каждой звезды своя скорость и фаза мерцания
+    speed: 0.6 + Math.random() * 2.4, phase: Math.random() * Math.PI * 2 };
 });
 
 const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
@@ -148,6 +154,7 @@ function drawStars() {
     combine(up, Math.cos(pitch), center, Math.sin(pitch))];
 
   const focal = h / 2 / Math.tan((MAP_FOV / 2) * rad);
+  const t = performance.now() / 1000;
   for (const s of stars) {
     const v = [s.x, s.y, s.z];
     const depth = dot(v, forward);
@@ -155,21 +162,26 @@ function drawStars() {
     const x = w / 2 + (focal * dot(v, right)) / depth;
     const y = h / 2 - (focal * dot(v, up)) / depth;
     if (x < -2 || y < -2 || x > w + 2 || y > h + 2) continue;
-    ctx.fillStyle = s.color;
+    // мерцание: яркость плавно колеблется от 40 до 100 %
+    ctx.fillStyle = `rgba(${s.tint},${s.alpha * (0.7 + 0.3 * Math.sin(t * s.speed + s.phase))})`;
     ctx.beginPath();
     ctx.arc(x, y, s.size, 0, Math.PI * 2);
     ctx.fill();
   }
 }
 
-// перерисовка не чаще кадра экрана
-let starsFrame = 0;
-function scheduleStars() {
-  if (!starsFrame) starsFrame = requestAnimationFrame(() => { starsFrame = 0; drawStars(); });
+// мерцание требует постоянной перерисовки — ~30 кадров в секунду достаточно для глаза;
+// когда вкладка скрыта, requestAnimationFrame сам останавливается
+let lastStarsFrame = 0;
+function animateStars(now) {
+  // пока карта движется — каждый кадр, чтобы небо не отставало от глобуса
+  if (map.isMoving() || now - lastStarsFrame > 33) {
+    lastStarsFrame = now;
+    drawStars();
+  }
+  requestAnimationFrame(animateStars);
 }
-drawStars();
-map.on("move", scheduleStars);
-window.addEventListener("resize", scheduleStars);
+requestAnimationFrame(animateStars);
 
 // ---------- язык подписей ----------
 
@@ -361,7 +373,11 @@ let activeChipId = null;
 // профиль, который включает клик по самому чипу "Магазины" (стрелка рядом меняет его)
 let shopProfile = SHOPS.subcategories[0];
 
+// открытый попап места — закрывается при смене или выключении фильтра, иначе висит без точки
+let poiPopup = null;
+
 function setActivePoi(chipId, poi) {
+  poiPopup?.remove();
   activeChipId = poi ? chipId : null;
   activePoi = poi;
   renderCategoryChips();
@@ -520,7 +536,8 @@ map.on("click", "poi", async (evt) => {
   const p = f.properties;
   const name = p[`name:${uiLanguageCode()}`] || p.name;
   const kind = POI_KIND_NAMES[p.subclass] || p.subclass;
-  const popup = new maplibregl.Popup({ offset: 8, maxWidth: "260px" })
+  poiPopup?.remove();
+  const popup = poiPopup = new maplibregl.Popup({ offset: 8, maxWidth: "260px" })
     .setLngLat(f.geometry.coordinates)
     .setHTML(`<div class="popup-title">${escapeHtml(name || kind)}</div>`
       + (name ? `<div class="popup-kind">${escapeHtml(kind)}</div>` : "")
@@ -683,29 +700,36 @@ map.addControl(new SettingsControl(), "bottom-right");
 map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), "bottom-right");
 
 // Пока глобус виден целиком на звёздном небе, наклон и поворот только сбивают с толку —
-// шар и так крутится мышью. Они включаются с масштаба страны, а при отдалении карта
-// сама возвращается к северу вверх и виду сверху
-const TILT_MIN_ZOOM = 5;
+// шар и так крутится мышью. Они включаются, когда шкала масштаба показывает не больше
+// 100 км, а при отдалении карта сама возвращается к северу вверх и виду сверху
+const TILT_MAX_METERS_PER_100PX = 100000;
 let tiltLocked = null;
 
-function updateTiltLock() {
-  const locked = map.getZoom() < TILT_MIN_ZOOM;
-  if (locked === tiltLocked) return;
-  tiltLocked = locked;
-  const toggle = locked ? "disable" : "enable";
-  map.dragRotate[toggle]();
-  map.touchPitch[toggle]();
-  map.touchZoomRotate[locked ? "disableRotation" : "enableRotation"]();
-  map.keyboard[locked ? "disableRotation" : "enableRotation"]();
+function metersPer100px() {
+  const { lat } = map.getCenter();
+  return (100 * 40075016.686 * Math.cos((lat * Math.PI) / 180)) / (512 * 2 ** map.getZoom());
 }
 
-map.on("zoom", updateTiltLock);
-// выпрямляем после окончания движения — иначе easeTo оборвал бы текущий зум колёсиком
-map.on("moveend", () => {
-  if (tiltLocked && (map.getBearing() || map.getPitch())) {
+// Переключается только после окончания движения: в режиме глобуса масштаб чуть меняется
+// и при перетаскивании по широте, и отключение поворота посреди жеста мышью могло
+// оставить обработчик мыши в "застрявшем" состоянии
+function updateTiltLock() {
+  const locked = metersPer100px() > TILT_MAX_METERS_PER_100PX;
+  if (locked !== tiltLocked) {
+    tiltLocked = locked;
+    const toggle = locked ? "disable" : "enable";
+    map.dragRotate[toggle]();
+    map.touchPitch[toggle]();
+    map.touchZoomRotate[locked ? "disableRotation" : "enableRotation"]();
+    map.keyboard[locked ? "disableRotation" : "enableRotation"]();
+  }
+  // доли градуса не выпрямляем — иначе easeTo мог бы запускаться снова и снова
+  if (locked && (Math.abs(map.getBearing()) > 0.1 || map.getPitch() > 0.1)) {
     map.easeTo({ bearing: 0, pitch: 0, duration: 600 });
   }
-});
+}
+
+map.on("moveend", updateTiltLock);
 updateTiltLock();
 
 el("about-close-btn").addEventListener("click", closeAboutModal);
