@@ -723,9 +723,22 @@ function updateTiltLock() {
     map.touchZoomRotate[locked ? "disableRotation" : "enableRotation"]();
     map.keyboard[locked ? "disableRotation" : "enableRotation"]();
   }
+  // Выпрямляем не прямо из moveend, а с паузой: moveend приходит изнутри кадра анимации
+  // MapLibre, и новый easeTo оттуда ломает её внутреннюю очередь ("Attempting to run(),
+  // but is already running") — отрисовка останавливается навсегда, глобус "виснет"
+  clearTimeout(straightenTimer);
+  if (locked) straightenTimer = setTimeout(straighten, 300);
+}
+
+let straightenTimer;
+function straighten() {
+  // пока пользователь тащит или крутит карту — не перебиваем его; следующий moveend
+  // после его жеста снова запланирует выравнивание
+  if (!tiltLocked || map.isMoving()) return;
   // доли градуса не выпрямляем — иначе easeTo мог бы запускаться снова и снова
-  if (locked && (Math.abs(map.getBearing()) > 0.1 || map.getPitch() > 0.1)) {
-    map.easeTo({ bearing: 0, pitch: 0, duration: 600 });
+  if (Math.abs(map.getBearing()) > 0.1 || map.getPitch() > 0.1) {
+    // неспешно и с затуханием к концу, чтобы глобус мягко "вставал на место"
+    map.easeTo({ bearing: 0, pitch: 0, duration: 2400, easing: (t) => 1 - (1 - t) ** 3 });
   }
 }
 
