@@ -309,6 +309,27 @@ renderBasemapSwitcher();
 const POI_MIN_ZOOM = 12;
 const POI_FULL_ZOOM = 14;
 
+// Аэропорты — в отдельном слое тайлов (aerodrome_label), их мало, и они видны раньше
+// остальных мест: как только шкала масштаба показывает 3 км и меньше (шкала берёт
+// круглое число не длиннее 100 px, "3 км" — пока в 100 px меньше 5 км). Пороговый зум
+// зависит от широты, поэтому пересчитывается после каждого движения
+const AIRPORT_MAX_METERS_PER_100PX = 5000;
+const AIRPORT_CLASSES = ["international", "public", "regional"];
+
+function airportMinZoom() {
+  const lat = map.getCenter().lat;
+  return Math.log2((100 * 40075016.686 * Math.cos((lat * Math.PI) / 180)) / (512 * AIRPORT_MAX_METERS_PER_100PX));
+}
+
+// Белые значки в головке флажка (контуры Material Icons, viewBox 24×24)
+const PIN_GLYPHS = {
+  bus: "M4 16c0 .88.39 1.67 1 2.22V20c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h8v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1.78c.61-.55 1-1.34 1-2.22V6c0-3.5-3.58-4-8-4s-8 .5-8 4v10zm3.5 1c-.83 0-1.5-.67-1.5-1.5S6.67 14 7.5 14s1.5.67 1.5 1.5S8.33 17 7.5 17zm9 0c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zm1.5-6H6V6h12v5z",
+  train: "M12 2c-4 0-8 .5-8 4v9.5C4 17.43 5.57 19 7.5 19L6 20.5v.5h2.23l2-2H14l2 2h2v-.5L16.5 19c1.93 0 3.5-1.57 3.5-3.5V6c0-3.5-3.58-4-8-4zM7.5 17c-.83 0-1.5-.67-1.5-1.5S6.67 14 7.5 14s1.5.67 1.5 1.5S8.33 17 7.5 17zm3.5-7H6V6h5v4zm2 0V6h5v4h-5zm3.5 7c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5z",
+  boat: "M20 21c-1.39 0-2.78-.47-4-1.32-2.44 1.71-5.56 1.71-8 0C6.78 20.53 5.39 21 4 21H2v2h2c1.38 0 2.74-.35 4-.99 2.52 1.29 5.48 1.29 8 0 1.26.65 2.62.99 4 .99h2v-2h-2zM3.95 19H4c1.6 0 3.02-.88 4-2 .98 1.12 2.4 2 4 2s3.02-.88 4-2c.98 1.12 2.4 2 4 2h.05l1.89-6.68c.08-.26.06-.54-.06-.78s-.34-.42-.6-.5L20 10.62V6c0-1.1-.9-2-2-2h-3V1H9v3H6c-1.1 0-2 .9-2 2v4.62l-1.29.42c-.26.08-.48.26-.6.5s-.15.52-.06.78L3.95 19zM6 6h12v3.97L12 8 6 9.97V6z",
+  plane: "M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z",
+};
+const PLANE_ICON = `<svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="${PIN_GLYPHS.plane}"/></svg>`;
+
 // у эмодзи кровати цветная картинка, выбивающаяся из ряда, — вместо неё монохромный
 // значок в стиле Material Icons ("hotel")
 const HOTEL_ICON = `<svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M7 13c1.66 0 3-1.34 3-3S8.66 7 7 7s-3 1.34-3 3 1.34 3 3 3zm12-6h-8v7H3V5H1v15h2v-3h18v3h2v-9c0-2.21-1.79-4-4-4z"/></svg>`;
@@ -321,8 +342,12 @@ const CATEGORIES = [
   { id: "fun", name: "Развлечения", icon: "📷", color: "#d81b60",
     subclasses: ["attraction", "viewpoint", "theme_park", "zoo", "petting_zoo", "aquarium", "castle", "monument", "theatre", "cinema", "arts_centre", "escape_game"] },
   { id: "museums", name: "Музеи", icon: "🏛️", color: "#3949ab", subclasses: ["museum", "gallery"] },
-  { id: "transport", name: "Транспорт", icon: "🚌", color: "#00897b",
-    subclasses: ["bus_stop", "bus_station", "station", "halt", "tram_stop", "ferry_terminal"] },
+  // только вокзалы и терминалы — остановки автобусов и трамваев засыпали бы город флажками.
+  // glyphs: значок во флажке по классу места в тайлах; airports — плюс аэропорты
+  { id: "transport", name: "Транспорт", icon: "🚌", color: "#00897b", airports: true,
+    subclasses: ["bus_station", "station", "halt", "ferry_terminal"],
+    glyphs: { bus: "bus", railway: "train", ferry_terminal: "boat" } },
+  { id: "airports", name: "Аэропорты", icon: PLANE_ICON, color: "#546e7a", airports: true, subclasses: [] },
   { id: "shops", name: "Магазины", icon: "🛒", color: "#1e88e5", subcategories: [
     { id: "grocery", name: "Продукты", subclasses: ["supermarket", "convenience", "greengrocer", "bakery", "pastry", "butcher", "seafood", "deli", "cheese", "dairy", "frozen_food", "health_food", "confectionery", "chocolate", "coffee", "tea", "farm"] },
     { id: "market", name: "Рынки", subclasses: ["marketplace"] },
@@ -368,6 +393,7 @@ const POI_KIND_NAMES = {
   bus_stop: "Остановка автобуса", bus_station: "Автовокзал", station: "Станция", halt: "Остановка поезда",
   tram_stop: "Остановка трамвая", ferry_terminal: "Паромный терминал",
 };
+const AIRPORT_KIND_NAMES = { international: "Международный аэропорт", public: "Аэропорт", regional: "Региональный аэропорт" };
 
 // что сейчас показано: категория или профиль магазинов — { id, name, color, subclasses }
 let activePoi = null;
@@ -472,19 +498,44 @@ function showStatus(text) {
   el("map-status").hidden = !text;
 }
 
+const POI_LAYERS = ["poi", "poi-air"];
+
 function applyPoiLayer() {
   if (!map.getLayer("poi")) return;
-  // пока категория не выбрана, слой скрыт — тогда MapLibre и тайлы мест не грузит
-  map.setLayoutProperty("poi", "visibility", activePoi ? "visible" : "none");
-  if (!activePoi) return;
-  map.setFilter("poi", ["in", ["get", "subclass"], ["literal", activePoi.subclasses]]);
-  map.setLayoutProperty("poi", "icon-image", pinImage(activePoi.color));
+  // пока категория не выбрана, слои скрыты — тогда MapLibre и тайлы мест не грузит
+  const places = !!activePoi?.subclasses.length;
+  const airports = !!activePoi?.airports;
+  map.setLayoutProperty("poi", "visibility", places ? "visible" : "none");
+  map.setLayoutProperty("poi-air", "visibility", airports ? "visible" : "none");
+  if (places) {
+    map.setFilter("poi", ["in", ["get", "subclass"], ["literal", activePoi.subclasses]]);
+    const glyphs = Object.entries(activePoi.glyphs || {});
+    map.setLayoutProperty("poi", "icon-image", glyphs.length
+      ? ["match", ["get", "class"], ...glyphs.flatMap(([cls, g]) => [cls, pinImage(activePoi.color, g)]), pinImage(activePoi.color)]
+      : pinImage(activePoi.color));
+  }
+  if (airports) map.setLayoutProperty("poi-air", "icon-image", pinImage(activePoi.color, "plane"));
+  updateAirportZoom();
+}
+
+function updateAirportZoom() {
+  if (map.getLayer("poi-air")) map.setLayerZoomRange("poi-air", airportMinZoom(), 24);
+}
+map.on("moveend", updateAirportZoom);
+
+// с какого зума у категории что-то появляется (min) и с какого можно честно сказать
+// "не найдено" (full): для одних аэропортов это один и тот же порог
+function poiZoomRange(poi) {
+  const air = airportMinZoom();
+  if (!poi.subclasses.length) return { min: air, full: air };
+  return { min: poi.airports ? Math.min(air, POI_MIN_ZOOM) : POI_MIN_ZOOM, full: POI_FULL_ZOOM };
 }
 
 // флажок-булавка цвета категории — заметнее точки, не теряется среди подписей карты.
-// Картинки рисуются по требованию и после смены стиля (setStyle их удаляет) — заново
-function pinImage(color) {
-  const id = `pin-${color}`;
+// Картинки рисуются по требованию и после смены стиля (setStyle их удаляет) — заново.
+// glyph — белый значок из PIN_GLYPHS в головке вместо белого кружка
+function pinImage(color, glyph) {
+  const id = `pin-${color}-${glyph || "dot"}`;
   if (map.hasImage(id)) return id;
   const w = 44, h = 58; // в двойном размере: pixelRatio 2 — чётко на любом экране
   const ctx = Object.assign(document.createElement("canvas"), { width: w, height: h }).getContext("2d");
@@ -498,10 +549,18 @@ function pinImage(color) {
   ctx.lineWidth = 3;
   ctx.fill();
   ctx.stroke();
-  ctx.beginPath();
-  ctx.arc(22, 21, 7, 0, Math.PI * 2);
   ctx.fillStyle = "#fff";
-  ctx.fill();
+  if (glyph) {
+    // значок 24×24 → 22 px в центре головки
+    ctx.translate(11, 10);
+    ctx.scale(22 / 24, 22 / 24);
+    ctx.fill(new Path2D(PIN_GLYPHS[glyph]));
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+  } else {
+    ctx.beginPath();
+    ctx.arc(22, 21, 7, 0, Math.PI * 2);
+    ctx.fill();
+  }
   map.addImage(id, ctx.getImageData(0, 0, w, h), { pixelRatio: 2 });
   return id;
 }
@@ -509,13 +568,14 @@ function pinImage(color) {
 function updatePoiStatus() {
   if (!activePoi) { showStatus(""); return; }
   const zoomIn = `Приблизьте карту, чтобы увидеть: ${activePoi.name.toLowerCase()}`;
-  if (map.getZoom() < POI_MIN_ZOOM) { showStatus(zoomIn); return; }
+  const range = poiZoomRange(activePoi);
+  if (map.getZoom() < range.min) { showStatus(zoomIn); return; }
   // пока тайлы грузятся, надпись не трогаем — иначе она мигала бы при каждом сдвиге
   if (!map.areTilesLoaded()) return;
-  const found = map.queryRenderedFeatures({ layers: ["poi"] }).length;
+  const found = map.queryRenderedFeatures({ layers: POI_LAYERS }).length;
   if (found) showStatus("");
-  // до POI_FULL_ZOOM в тайлах лишь часть мест — пустота ещё не значит, что их нет
-  else if (map.getZoom() < POI_FULL_ZOOM) showStatus(zoomIn);
+  // до полного зума в тайлах лишь часть мест — пустота ещё не значит, что их нет
+  else if (map.getZoom() < range.full) showStatus(zoomIn);
   else showStatus(`В этой части карты не найдено: ${activePoi.name.toLowerCase()}`);
 }
 map.on("idle", updatePoiStatus);
@@ -552,11 +612,13 @@ function poiDetailsHtml(tags) {
 // Попап открывается один раз, уже с подробностями: если показать его сразу с "Загрузка…"
 // и дописать потом, он меняет размер и прыгает. Медленный ответ ждём не дольше 1,5 с
 let poiClick = 0;
-map.on("click", "poi", async (evt) => {
+map.on("click", POI_LAYERS, async (evt) => {
   const f = evt.features[0];
   const p = f.properties;
   const name = p[`name:${uiLanguageCode()}`] || p.name;
-  const kind = POI_KIND_NAMES[p.subclass] || p.subclass;
+  const kind = f.layer.id === "poi-air"
+    ? [AIRPORT_KIND_NAMES[p.class] || "Аэропорт", p.iata].filter(Boolean).join(" · ")
+    : POI_KIND_NAMES[p.subclass] || p.subclass;
   const click = ++poiClick;
   poiPopup?.remove();
   let details = "";
@@ -575,22 +637,23 @@ map.on("click", "poi", async (evt) => {
       + (details ? `<div class="popup-details">${details}</div>` : ""))
     .addTo(map);
   poiPopup.featureId = f.id;
+  poiPopup.layerId = f.layer.id;
 });
-// попап живёт, пока на карте виден его флажок: при отдалении ниже POI_MIN_ZOOM слой
-// мест скрывается сразу, а на средних зумах флажок может пропасть вместе с тайлом
+// попап живёт, пока на карте виден его флажок: при отдалении ниже нижнего зума слоя
+// флажки скрываются сразу, а на средних зумах флажок может пропасть вместе с тайлом
 map.on("zoom", () => {
-  if (map.getZoom() < POI_MIN_ZOOM) poiPopup?.remove();
+  if (poiPopup && map.getZoom() < map.getLayer(poiPopup.layerId).minzoom) poiPopup.remove();
 });
 map.on("idle", () => {
   if (!poiPopup?.isOpen()) return;
   const { x, y } = map.project(poiPopup.getLngLat());
   const id = poiPopup.featureId;
   // флажок стоит над точкой — ищем его в рамке над ней
-  const pins = map.queryRenderedFeatures([[x - 20, y - 35], [x + 20, y + 5]], { layers: ["poi"] });
+  const pins = map.queryRenderedFeatures([[x - 20, y - 35], [x + 20, y + 5]], { layers: [poiPopup.layerId] });
   if (!pins.some((pin) => pin.id === id)) poiPopup.remove();
 });
-map.on("mouseenter", "poi", () => { map.getCanvas().style.cursor = "pointer"; });
-map.on("mouseleave", "poi", () => { map.getCanvas().style.cursor = ""; });
+map.on("mouseenter", POI_LAYERS, () => { map.getCanvas().style.cursor = "pointer"; });
+map.on("mouseleave", POI_LAYERS, () => { map.getCanvas().style.cursor = ""; });
 
 // setStyle заменяет стиль целиком вместе с проекцией и своими слоями — поэтому globe,
 // язык подписей и слой мест выставляются заново после каждой загрузки стиля
@@ -614,6 +677,19 @@ map.on("style.load", () => {
       "icon-ignore-placement": true,
     },
   });
+  map.addLayer({
+    id: "poi-air",
+    type: "symbol",
+    source: "te-poi",
+    "source-layer": "aerodrome_label",
+    filter: ["in", ["get", "class"], ["literal", AIRPORT_CLASSES]],
+    layout: {
+      visibility: "none",
+      "icon-anchor": "bottom",
+      "icon-allow-overlap": true,
+      "icon-ignore-placement": true,
+    },
+  });
   applyPoiLayer();
 });
 
@@ -625,6 +701,46 @@ renderCategoryChips();
 // автодополнение на каждую букву — поэтому поиск только по Enter/кнопке
 const NOMINATIM_URL = "https://nominatim.openstreetmap.org/search";
 let searchMarker = null;
+
+// история: последние выбранные результаты (не запросы) — повторный клик сразу ведёт
+// на место, без нового обращения к Nominatim. Показывается в пустой строке поиска
+const SEARCH_HISTORY_KEY = "travel-earth-search-history";
+const SEARCH_HISTORY_SIZE = 10;
+
+function loadSearchHistory() {
+  try { return JSON.parse(localStorage.getItem(SEARCH_HISTORY_KEY)) || []; } catch { return []; }
+}
+
+function rememberSearch(r) {
+  const entry = { display_name: r.display_name, lat: r.lat, lon: r.lon, boundingbox: r.boundingbox };
+  const history = loadSearchHistory().filter((h) => h.display_name !== entry.display_name);
+  localStorage.setItem(SEARCH_HISTORY_KEY, JSON.stringify([entry, ...history].slice(0, SEARCH_HISTORY_SIZE)));
+}
+
+function searchItem(r, recent) {
+  const item = document.createElement("button");
+  item.className = "search-item" + (recent ? " search-item-recent" : "");
+  const [title, ...rest] = r.display_name.split(", ");
+  item.innerHTML = `<span class="search-item-title"></span><span class="search-item-sub"></span>`;
+  item.firstChild.textContent = title;
+  item.lastChild.textContent = rest.join(", ");
+  item.addEventListener("click", () => showSearchResult(r, title));
+  return item;
+}
+
+function showSearchHistory() {
+  const history = loadSearchHistory();
+  if (el("search-input").value.trim() || !history.length) { clearSearchResults(); return; }
+  const clear = document.createElement("button");
+  clear.className = "search-history-clear";
+  clear.textContent = "Очистить историю";
+  clear.addEventListener("click", () => {
+    localStorage.removeItem(SEARCH_HISTORY_KEY);
+    clearSearchResults();
+  });
+  el("search-results").replaceChildren(...history.map((r) => searchItem(r, true)), clear);
+  el("search-results").hidden = false;
+}
 
 function clearSearchResults() {
   el("search-results").replaceChildren();
@@ -650,16 +766,7 @@ async function runSearch() {
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     const results = await resp.json();
     if (!results.length) { list.innerHTML = `<div class="search-note">Ничего не найдено</div>`; return; }
-    list.replaceChildren(...results.map((r) => {
-      const item = document.createElement("button");
-      item.className = "search-item";
-      const [title, ...rest] = r.display_name.split(", ");
-      item.innerHTML = `<span class="search-item-title"></span><span class="search-item-sub"></span>`;
-      item.firstChild.textContent = title;
-      item.lastChild.textContent = rest.join(", ");
-      item.addEventListener("click", () => showSearchResult(r, title));
-      return item;
-    }));
+    list.replaceChildren(...results.map((r) => searchItem(r, false)));
   } catch (err) {
     console.error("Nominatim", err);
     list.innerHTML = `<div class="search-note">Поиск не удался — проверьте интернет и попробуйте ещё раз</div>`;
@@ -668,7 +775,9 @@ async function runSearch() {
 
 function showSearchResult(r, title) {
   clearSearchResults();
+  rememberSearch(r);
   el("search-input").value = title;
+  el("search-clear-btn").hidden = false;
   const lngLat = [Number(r.lon), Number(r.lat)];
   searchMarker?.remove();
   searchMarker = new maplibregl.Marker({ color: "#e53935" })
@@ -687,6 +796,13 @@ el("search-input").addEventListener("keydown", (evt) => {
 });
 el("search-input").addEventListener("input", () => {
   el("search-clear-btn").hidden = !el("search-input").value;
+  // стёрли запрос — снова видна история, начали печатать — она прячется
+  showSearchHistory();
+});
+el("search-input").addEventListener("focus", showSearchHistory);
+// клик мимо поиска закрывает список
+document.addEventListener("click", (evt) => {
+  if (!evt.target.closest(".search-wrap")) clearSearchResults();
 });
 el("search-btn").addEventListener("click", runSearch);
 el("search-clear-btn").addEventListener("click", () => {
@@ -696,6 +812,7 @@ el("search-clear-btn").addEventListener("click", () => {
   searchMarker?.remove();
   searchMarker = null;
   el("search-input").focus();
+  showSearchHistory();
 });
 
 // ---------- элементы управления справа внизу ----------

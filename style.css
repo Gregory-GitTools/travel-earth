@@ -269,6 +269,35 @@ html, body {
   color: var(--light-muted);
 }
 
+/* недавние места — со значком часов, как в Google Maps */
+.search-item-recent {
+  position: relative;
+  padding-left: 36px;
+}
+
+.search-item-recent::before {
+  content: "";
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  width: 18px;
+  height: 18px;
+  margin-top: -9px;
+  background: no-repeat center / contain url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%2370757a' d='M13 3a9 9 0 0 0-9 9H1l3.89 3.89.07.14L9 12H6c0-3.87 3.13-7 7-7s7 3.13 7 7-3.13 7-7 7c-1.93 0-3.68-.79-4.94-2.06l-1.42 1.42A8.95 8.95 0 0 0 13 21a9 9 0 0 0 0-18zm-1 5v5l4.28 2.54.72-1.21-3.5-2.08V8H12z'/%3E%3C/svg%3E");
+}
+
+.search-history-clear {
+  display: block;
+  margin: 4px 10px 2px auto;
+  padding: 4px 0;
+  border: none;
+  background: none;
+  color: var(--light-accent);
+  font: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
 .search-note {
   padding: 8px 10px;
   font-size: 0.85rem;
