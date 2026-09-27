@@ -76,11 +76,21 @@ html, body {
   margin: 0;
 }
 
+/* шкала без подложки: белые линия и цифры с тёмной обводкой видны и на карте, и на звёздах */
+.bottom-row .maplibregl-ctrl-scale {
+  background: transparent;
+  border-color: #fff;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  filter: drop-shadow(0 0 1px #000) drop-shadow(0 0 1px #000);
+}
+
 /* ячейка под ⓘ: раскрытая строка источников растёт влево поверх шкалы */
 .attrib-slot {
   position: relative;
-  width: 24px;
-  height: 24px;
+  width: 32px;
+  height: 32px;
 }
 
 .attrib-slot .maplibregl-ctrl-attrib {
@@ -90,6 +100,33 @@ html, body {
   z-index: 1;
   width: max-content;
   max-width: calc(100vw - 160px); /* не закрывает плитку карт внизу слева */
+}
+
+/* ⓘ крупная и без подложки; белая подложка — только у раскрытой строки */
+.attrib-slot .maplibregl-ctrl-attrib.maplibregl-compact {
+  min-height: 32px;
+  padding: 0 32px 0 0;
+  border-radius: 16px;
+  background: transparent;
+}
+
+.attrib-slot .maplibregl-ctrl-attrib.maplibregl-compact-show {
+  display: flex;
+  align-items: center;
+  padding: 4px 36px 4px 10px;
+  background: #fff;
+  box-sizing: border-box;
+}
+
+.attrib-slot .maplibregl-ctrl-attrib-button {
+  top: auto;
+  bottom: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background-color: transparent;
+  background-size: 32px;
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Ccircle cx='10' cy='10' r='7.5' fill='%233c4043' stroke='%23fff' stroke-width='1.5'/%3E%3Ccircle cx='10' cy='6.6' r='1.1' fill='%23fff'/%3E%3Crect x='9' y='8.8' width='2' height='5.2' rx='1' fill='%23fff'/%3E%3C/svg%3E");
 }
 
 /* шестерёнка — свой контрол MapLibre */
@@ -420,17 +457,21 @@ html, body {
   display: inline-flex;
 }
 
+/* подсказки внизу по центру над строкой шкалы, без подложки — белый текст с тёмной
+   обводкой (как подписи на спутнике) читается и на карте, и на звёздах. По бокам место плитки карт и кнопок */
 .map-status {
   position: fixed;
-  top: 64px;
+  bottom: 52px;
   left: 50%;
   transform: translateX(-50%);
-  padding: 8px 16px;
-  background: var(--light-panel);
-  color: var(--light-text);
-  border-radius: 18px;
-  font-size: 0.85rem;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+  width: max-content;
+  max-width: calc(100vw - 200px);
+  text-align: center;
+  color: #fff;
+  font-size: 0.9rem;
+  font-weight: 600;
+  text-shadow: 0 0 2px #000, 0 0 3px #000, 0 0 4px rgba(0, 0, 0, 0.8), 0 0 8px rgba(0, 0, 0, 0.6);
+  pointer-events: none;
   z-index: 10;
 }
 
@@ -679,13 +720,4 @@ html, body {
 .about-install-btn img {
   width: 18px;
   height: 18px;
-}
-
-/* на телефоне по центру сверху стоит столбик категорий — надпись уходит влево под поиск */
-@media (max-width: 520px) {
-  .map-status {
-    left: 10px;
-    transform: none;
-    max-width: calc(100vw - 190px);
-  }
 }

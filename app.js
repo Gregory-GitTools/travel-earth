@@ -380,6 +380,7 @@ let poiPopup = null;
 
 function setActivePoi(chipId, poi) {
   poiPopup?.remove();
+  poiClick++;
   activeChipId = poi ? chipId : null;
   activePoi = poi;
   renderCategoryChips();
@@ -548,26 +549,31 @@ function poiDetailsHtml(tags) {
   return rows.join("");
 }
 
+// Попап открывается один раз, уже с подробностями: если показать его сразу с "Загрузка…"
+// и дописать потом, он меняет размер и прыгает. Медленный ответ ждём не дольше 1,5 с
+let poiClick = 0;
 map.on("click", "poi", async (evt) => {
   const f = evt.features[0];
   const p = f.properties;
   const name = p[`name:${uiLanguageCode()}`] || p.name;
   const kind = POI_KIND_NAMES[p.subclass] || p.subclass;
+  const click = ++poiClick;
   poiPopup?.remove();
-  const popup = poiPopup = new maplibregl.Popup({ offset: 8, maxWidth: "260px" })
+  let details = "";
+  try {
+    const tags = await Promise.race([loadPoiTags(f.id), new Promise((r) => setTimeout(r, 1500, null))]);
+    if (tags) details = poiDetailsHtml(tags);
+  } catch (err) {
+    console.warn("OSM API", err);
+  }
+  // пока ждали ответа, успели щёлкнуть другое место или выключить фильтр
+  if (click !== poiClick || !activePoi) return;
+  poiPopup = new maplibregl.Popup({ offset: 8, maxWidth: "260px" })
     .setLngLat(f.geometry.coordinates)
     .setHTML(`<div class="popup-title">${escapeHtml(name || kind)}</div>`
       + (name ? `<div class="popup-kind">${escapeHtml(kind)}</div>` : "")
-      + `<div class="popup-details"><div class="popup-row popup-muted">Загрузка…</div></div>`)
+      + (details ? `<div class="popup-details">${details}</div>` : ""))
     .addTo(map);
-  const details = popup.getElement().querySelector(".popup-details");
-  try {
-    const tags = await loadPoiTags(f.id);
-    details.innerHTML = tags ? poiDetailsHtml(tags) : "";
-  } catch (err) {
-    console.warn("OSM API", err);
-    details.innerHTML = "";
-  }
 });
 map.on("mouseenter", "poi", () => { map.getCanvas().style.cursor = "pointer"; });
 map.on("mouseleave", "poi", () => { map.getCanvas().style.cursor = ""; });
