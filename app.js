@@ -710,6 +710,27 @@ function metersPer100px() {
   return (100 * 40075016.686 * Math.cos((lat * Math.PI) / 180)) / (512 * 2 ** map.getZoom());
 }
 
+// Глобус не уменьшается до "юлы": на компьютере — не мельче шкалы 500 км (радиус шара
+// 660 px — шар примерно во всю высоту экрана), на узком экране телефона — не шире
+// ~1,1 ширины экрана, иначе шар целиком не разглядеть
+const GLOBE_MIN_RADIUS_PX = 660;
+const GLOBE_MAX_SCREEN_SHARE = 1.1;
+
+// Минимальный зум, при котором видимый диск глобуса не меньше нужного. MapLibre рисует
+// шар радиусом worldSize / 2π / cos(широта центра), а камера (угол обзора 36,87°) стоит
+// на расстоянии 1,5 высоты экрана от поверхности — из-за перспективы диск виден меньше
+// радиуса шара. Проверено замером по пикселям холста с точностью до нескольких px
+function minGlobeZoom(lat) {
+  const { clientWidth: w, clientHeight: h } = map.getContainer();
+  const f = 1.5 * h;
+  const diskOf = (r) => 2 * f * Math.tan(Math.asin(r / (f + r)));
+  const disk = Math.min(diskOf(GLOBE_MIN_RADIUS_PX), GLOBE_MAX_SCREEN_SHARE * w);
+  const t = disk / (2 * f);
+  const s = t / Math.sqrt(1 + t * t);
+  const radius = (f * s) / (1 - s);
+  return Math.log2((radius * 2 * Math.PI * Math.cos((lat * Math.PI) / 180)) / 512);
+}
+
 // Переключается только после окончания движения: в режиме глобуса масштаб чуть меняется
 // и при перетаскивании по широте, и отключение поворота посреди жеста мышью могло
 // оставить обработчик мыши в "застрявшем" состоянии
@@ -723,27 +744,50 @@ function updateTiltLock() {
     map.touchZoomRotate[locked ? "disableRotation" : "enableRotation"]();
     map.keyboard[locked ? "disableRotation" : "enableRotation"]();
   }
-  // Выпрямляем не прямо из moveend, а с паузой: moveend приходит изнутри кадра анимации
+  // Выравниваем не прямо из moveend, а с паузой: moveend приходит изнутри кадра анимации
   // MapLibre, и новый easeTo оттуда ломает её внутреннюю очередь ("Attempting to run(),
   // but is already running") — отрисовка останавливается навсегда, глобус "виснет"
-  clearTimeout(straightenTimer);
-  if (locked) straightenTimer = setTimeout(straighten, 300);
+  clearTimeout(settleTimer);
+  settleTimer = setTimeout(settleGlobe, 300);
 }
 
-let straightenTimer;
-function straighten() {
+let settleTimer;
+function settleGlobe() {
   // пока пользователь тащит или крутит карту — не перебиваем его; следующий moveend
   // после его жеста снова запланирует выравнивание
-  if (!tiltLocked || map.isMoving()) return;
+  if (map.isMoving()) return;
+  // нижняя граница зума зависит от широты центра — при переезде к экватору шар мельчает,
+  // тогда он плавно приближается до нужного размера, а колёсико дальше не отдаляет
+  const minZoom = minGlobeZoom(map.getCenter().lat);
+  const target = {};
+  if (map.getZoom() < minZoom - 0.01) target.zoom = minZoom;
   // доли градуса не выпрямляем — иначе easeTo мог бы запускаться снова и снова
-  if (Math.abs(map.getBearing()) > 0.1 || map.getPitch() > 0.1) {
+  if (tiltLocked && (Math.abs(map.getBearing()) > 0.1 || map.getPitch() > 0.1)) {
+    target.bearing = 0;
+    target.pitch = 0;
+  }
+  if (Object.keys(target).length) {
     // неспешно и с затуханием к концу, чтобы глобус мягко "вставал на место"
-    map.easeTo({ bearing: 0, pitch: 0, duration: 2400, easing: (t) => 1 - (1 - t) ** 3 });
+    map.easeTo({ ...target, duration: 2400, easing: (t) => 1 - (1 - t) ** 3 });
+  } else {
+    map.setMinZoom(minZoom);
   }
 }
 
 map.on("moveend", updateTiltLock);
+map.on("resize", updateTiltLock);
+// стартовый вид — сразу минимального размера, без анимации
+map.jumpTo({ zoom: minGlobeZoom(map.getCenter().lat) });
+map.setMinZoom(map.getZoom());
 updateTiltLock();
+
+// строка источников карты (обязательная по лицензиям OpenStreetMap, CARTO, Esri)
+// по умолчанию свёрнута в кнопку ⓘ — MapLibre на широком экране раскрывает её сам
+map.once("load", () => {
+  const attrib = document.querySelector(".maplibregl-ctrl-attrib");
+  attrib?.classList.remove("maplibregl-compact-show");
+  attrib?.removeAttribute("open");
+});
 
 el("about-close-btn").addEventListener("click", closeAboutModal);
 el("about-modal").addEventListener("click", (evt) => {
@@ -774,6 +818,9 @@ window.addEventListener("appinstalled", () => {
   deferredInstallPrompt = null;
   el("install-btn").disabled = true;
 });
+// подсказка про start.bat нужна только при запуске с локального сервера, не на GitHub Pages
+el("about-install-hint").hidden = !["localhost", "127.0.0.1"].includes(location.hostname);
+
 if ("serviceWorker" in navigator) {
   navigator.serviceWorker.register("sw.js").catch(() => {});
 }
