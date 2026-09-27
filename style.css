@@ -154,6 +154,30 @@ html, body {
   pointer-events: auto;
 }
 
+/* установленное приложение: заголовок окна прозрачный (window-controls-overlay в
+   manifest.json), под ним видны глобус и звёзды. Полоска заголовка остаётся, чтобы
+   таскать окно, а верхняя панель опускается под неё */
+.titlebar-drag {
+  display: none;
+}
+
+@media (display-mode: window-controls-overlay) {
+  .titlebar-drag {
+    display: block;
+    position: fixed;
+    left: env(titlebar-area-x, 0);
+    top: env(titlebar-area-y, 0);
+    width: env(titlebar-area-width, 100%);
+    height: env(titlebar-area-height, 0);
+    app-region: drag;
+    -webkit-app-region: drag;
+    z-index: 20;
+  }
+  .top-bar {
+    top: calc(env(titlebar-area-height, 0px) + 10px);
+  }
+}
+
 /* на телефоне поиск сжимается, чтобы рядом поместились кнопки языка и "Места" */
 .search-wrap {
   position: relative;

@@ -574,6 +574,20 @@ map.on("click", "poi", async (evt) => {
       + (name ? `<div class="popup-kind">${escapeHtml(kind)}</div>` : "")
       + (details ? `<div class="popup-details">${details}</div>` : ""))
     .addTo(map);
+  poiPopup.featureId = f.id;
+});
+// попап живёт, пока на карте виден его флажок: при отдалении ниже POI_MIN_ZOOM слой
+// мест скрывается сразу, а на средних зумах флажок может пропасть вместе с тайлом
+map.on("zoom", () => {
+  if (map.getZoom() < POI_MIN_ZOOM) poiPopup?.remove();
+});
+map.on("idle", () => {
+  if (!poiPopup?.isOpen()) return;
+  const { x, y } = map.project(poiPopup.getLngLat());
+  const id = poiPopup.featureId;
+  // флажок стоит над точкой — ищем его в рамке над ней
+  const pins = map.queryRenderedFeatures([[x - 20, y - 35], [x + 20, y + 5]], { layers: ["poi"] });
+  if (!pins.some((pin) => pin.id === id)) poiPopup.remove();
 });
 map.on("mouseenter", "poi", () => { map.getCanvas().style.cursor = "pointer"; });
 map.on("mouseleave", "poi", () => { map.getCanvas().style.cursor = ""; });
