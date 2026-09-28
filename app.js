@@ -319,15 +319,20 @@ demSource?.setupMaplibre(maplibregl);
 // Картинки троп на мелком масштабе — сплошные толстые размытые линии по всей стране,
 // поэтому тропы видны только с TRAILS_MIN_ZOOM (шкала около 10 км)
 const TRAILS_MIN_ZOOM = 9;
+// с этого зума (шкала около 500 м) вместо картинок — свои линии троп с номерами
+const TRAILS_VECTOR_ZOOM = 14;
 
 const OVERLAYS = [
   { id: "hillshade", name: "Рельеф", icon: "⛰️", hint: "Тени склонов — горы становятся объёмными", layers: ["ov-hillshade"] },
   { id: "contours", name: "Горизонтали", icon: "〰️", hint: "Линии равной высоты с подписями в метрах",
     layers: ["ov-contours", "ov-contour-labels"], available: () => !!demSource },
   { id: "terrain3d", name: "3D-рельеф", icon: "🏔️", hint: "Настоящий объёмный рельеф — наклоните карту (правая кнопка мыши или два пальца)", layers: [] },
-  { id: "hiking", name: "Пешие тропы", icon: "🥾", hint: "Маркированные пешие маршруты — видны с масштаба около 10 км", trails: "hiking", layers: ["ov-hiking"] },
-  { id: "cycling", name: "Велодорожки", icon: "🚲", hint: "Веломаршруты — видны с масштаба около 10 км", trails: "cycling", layers: ["ov-cycling"] },
-  { id: "mtb", name: "Маунтинбайк", icon: "🚵", hint: "Маршруты для горного велосипеда — видны с масштаба около 10 км", trails: "mtb", layers: ["ov-mtb"] },
+  { id: "hiking", name: "Пешие тропы", icon: "🥾", hint: "Маркированные пешие маршруты — видны с масштаба около 10 км, вблизи — с номерами", trails: "hiking",
+    layers: ["ov-hiking", "ov-hiking-line", "ov-hiking-label"] },
+  { id: "cycling", name: "Велодорожки", icon: "🚲", hint: "Веломаршруты — видны с масштаба около 10 км, вблизи — с номерами", trails: "cycling",
+    layers: ["ov-cycling", "ov-cycling-line", "ov-cycling-label"] },
+  { id: "mtb", name: "Маунтинбайк", icon: "🚵", hint: "Маршруты для горного велосипеда — видны с масштаба около 10 км, вблизи — с номерами", trails: "mtb",
+    layers: ["ov-mtb", "ov-mtb-line", "ov-mtb-label"] },
   { id: "railways", name: "Железные дороги", icon: "🚆", hint: "Поезда, метро, трамваи и фуникулёры — каждый своим цветом",
     layers: ["ov-rail-tunnel", "ov-rail"] },
 ];
@@ -344,6 +349,114 @@ function styleFont() {
 // слои встают под подписи карты (флажки мест и так выше — они добавляются последними)
 const firstLabelLayer = () => map.getStyle().layers.find((l) => l.type === "symbol")?.id;
 const darkBasemap = () => currentBasemap.id === "satellite" || currentBasemap.id === "dark";
+
+// Вблизи тропы рисуются самим. На картинке линия и номер маршрута нарисованы вместе и
+// растут вместе — получалась широкая мутная полоса. Свои линии тонкие, как у железных
+// дорог, а номер растёт с приближением. Маршруты (relation route=…) берутся у Overpass
+// квадратами по TRAIL_CELL градусов, каждый квадрат — один раз, по очереди, начиная с
+// ближайших к центру
+const TRAIL_CELL = 0.1;
+const TRAIL_MAX_CELLS = 6;
+const TRAIL_RETRY_MS = 30000;
+const OVERPASS_URLS = ["https://overpass-api.de/api/interpreter", "https://maps.mail.ru/osm/tools/overpass/api/interpreter"];
+const TRAIL_ROUTES = { hiking: "hiking|foot|walking", cycling: "bicycle", mtb: "mtb" };
+// цвет по значимости маршрута (первая буква тега network: iwn, ncn, rmn…) — как у
+// Waymarked Trails: международный, национальный, региональный, местный
+const TRAIL_LEVELS = { i: { color: "#c62828", rank: 4 }, n: { color: "#1e53c7", rank: 3 },
+  r: { color: "#ef8a00", rank: 2 }, l: { color: "#8e24aa", rank: 1 } };
+const trailCells = new Map(); // "hiking:247:594" → true | "loading" | когда можно повторить
+const trailFeatures = { hiking: new Map(), cycling: new Map(), mtb: new Map() }; // "маршрут:линия" → feature
+let trailQueue = Promise.resolve();
+// новые данные передаются карте ещё раз на ближайшем idle: если они пришли, пока источник
+// ещё обрабатывал прежние, MapLibre иногда оставлял тайлы пустыми
+const trailDirty = new Set();
+
+const trailData = (id) => ({ type: "FeatureCollection", features: [...trailFeatures[id].values()] });
+// номера троп — под флажками мест, но над подписями карты
+const firstPoiLayer = () => map.getStyle().layers.find((l) => POI_LAYERS.includes(l.id))?.id;
+
+function addTrailLines(id, before) {
+  map.addSource(`ov-${id}-vec`, { type: "geojson", data: trailData(id) });
+  map.addLayer({ id: `ov-${id}-line`, type: "line", source: `ov-${id}-vec`, minzoom: TRAILS_VECTOR_ZOOM,
+    layout: { "line-cap": "round", "line-join": "round", "line-sort-key": ["get", "rank"] },
+    paint: { "line-color": ["get", "color"], "line-opacity": 0.85,
+      "line-width": ["interpolate", ["linear"], ["zoom"], 14, 2.5, 17, 4, 20, 6] } }, before);
+  map.addLayer({ id: `ov-${id}-label`, type: "symbol", source: `ov-${id}-vec`, minzoom: TRAILS_VECTOR_ZOOM,
+    filter: ["has", "label"],
+    layout: { "symbol-placement": "line", "symbol-spacing": 300, "text-field": ["get", "label"], "text-font": styleFont(),
+      "text-size": ["interpolate", ["linear"], ["zoom"], 14, 12, 17, 15, 20, 22] },
+    paint: { "text-color": "#fff", "text-halo-color": ["get", "color"], "text-halo-width": 2.5 } }, firstPoiLayer());
+}
+
+async function overpass(query) {
+  for (const url of OVERPASS_URLS) {
+    try {
+      const res = await fetch(url, { method: "POST", body: new URLSearchParams({ data: query }) });
+      if (res.ok) return await res.json();
+    } catch { /* следующий сервер */ }
+  }
+  throw new Error("Overpass недоступен");
+}
+
+async function loadTrailCell(id, cx, cy) {
+  const key = `${id}:${cx}:${cy}`;
+  const bbox = [cy, cx, cy + 1, cx + 1].map((v) => (v * TRAIL_CELL).toFixed(2)).join(",");
+  const query = `[out:json][timeout:25];rel[type=route][route~"^(${TRAIL_ROUTES[id]})$"](${bbox})->.r;` +
+    `.r out body;way(r.r)(${bbox});out geom qt;`;
+  try {
+    const data = await overpass(query);
+    const ways = new Map(data.elements.filter((e) => e.type === "way" && e.geometry)
+      .map((w) => [w.id, w.geometry.map((p) => [p.lon, p.lat])]));
+    for (const rel of data.elements.filter((e) => e.type === "relation")) {
+      const tags = rel.tags || {};
+      const level = TRAIL_LEVELS[(tags.network || "")[0]] || TRAIL_LEVELS.l;
+      const label = tags.ref || tags.name;
+      for (const m of rel.members) {
+        const coordinates = m.type === "way" && ways.get(m.ref);
+        if (coordinates) trailFeatures[id].set(`${rel.id}:${m.ref}`, { type: "Feature",
+          geometry: { type: "LineString", coordinates },
+          properties: { color: level.color, rank: level.rank, ...(label && { label }) } });
+      }
+    }
+    trailCells.set(key, true);
+    trailDirty.add(id);
+    map.getSource(`ov-${id}-vec`)?.setData(trailData(id));
+  } catch {
+    trailCells.set(key, Date.now() + TRAIL_RETRY_MS);
+    flashStatus("Тропы сейчас не загрузились — сервер занят, чуть позже попробую ещё раз");
+  }
+}
+
+function updateTrails() {
+  for (const id of trailDirty) map.getSource(`ov-${id}-vec`)?.setData(trailData(id));
+  trailDirty.clear();
+  if (map.getZoom() < TRAILS_VECTOR_ZOOM) return;
+  const center = map.getCenter();
+  const bounds = map.getBounds();
+  // у наклонённой карты граница уходит к горизонту — берём не дальше полуградуса от центра
+  const range = (min, max, c) => [Math.floor(Math.max(min, c - 0.5) / TRAIL_CELL), Math.floor(Math.min(max, c + 0.5) / TRAIL_CELL)];
+  const [x0, x1] = range(bounds.getWest(), bounds.getEast(), center.lng);
+  const [y0, y1] = range(bounds.getSouth(), bounds.getNorth(), center.lat);
+  const cells = [];
+  for (let cx = x0; cx <= x1; cx++) {
+    for (let cy = y0; cy <= y1; cy++) {
+      cells.push([cx, cy, Math.hypot((cx + 0.5) * TRAIL_CELL - center.lng, (cy + 0.5) * TRAIL_CELL - center.lat)]);
+    }
+  }
+  cells.sort((a, b) => a[2] - b[2]);
+  for (const o of OVERLAYS) {
+    if (!o.trails || !activeOverlays.has(o.id)) continue;
+    for (const [cx, cy] of cells.slice(0, TRAIL_MAX_CELLS)) {
+      const key = `${o.id}:${cx}:${cy}`;
+      const state = trailCells.get(key);
+      if (state === true || state === "loading" || state > Date.now()) continue;
+      trailCells.set(key, "loading");
+      trailQueue = trailQueue.then(() => loadTrailCell(o.id, cx, cy));
+    }
+  }
+}
+map.on("idle", updateTrails);
+
 
 function addOverlay(id) {
   const overlay = OVERLAYS.find((o) => o.id === id);
@@ -381,7 +494,8 @@ function addOverlay(id) {
     // тоньше и чётче — растянутые 256-е тайлы давали широкую мутную полосу
     map.addSource(`ov-${id}`, { type: "raster", tileSize: 128, maxzoom: 18, attribution: TRAILS_ATTRIBUTION,
       tiles: [`https://tile.waymarkedtrails.org/${overlay.trails}/{z}/{x}/{y}.png`] });
-    map.addLayer({ id: `ov-${id}`, type: "raster", source: `ov-${id}`, minzoom: TRAILS_MIN_ZOOM }, before);
+    map.addLayer({ id: `ov-${id}`, type: "raster", source: `ov-${id}`, minzoom: TRAILS_MIN_ZOOM, maxzoom: TRAILS_VECTOR_ZOOM }, before);
+    addTrailLines(id, before);
   } else if (id === "railways") {
     // цвет пути по виду транспорта — те же цвета, что у флажков станций
     const color = ["match", ["get", "subclass"],
@@ -405,7 +519,7 @@ function removeOverlay(id) {
   const overlay = OVERLAYS.find((o) => o.id === id);
   for (const layerId of overlay.layers) if (map.getLayer(layerId)) map.removeLayer(layerId);
   if (id === "terrain3d") map.setTerrain(null);
-  if (map.getSource(`ov-${id}`)) map.removeSource(`ov-${id}`);
+  for (const sourceId of [`ov-${id}`, `ov-${id}-vec`]) if (map.getSource(sourceId)) map.removeSource(sourceId);
 }
 
 // после каждой смены карты (setStyle стирает всё добавленное) — заново все включённые
