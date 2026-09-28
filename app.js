@@ -14,14 +14,16 @@ const OPENMAPTILES_SOURCE = { type: "vector", url: "https://tiles.openfreemap.or
 const OPENFREEMAP_GLYPHS = "https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf";
 const BASEMAPS = [
   { id: "satellite", name: "Спутник", hint: "Вид из космоса — спутниковые снимки Esri с подписями и границами", style: buildSatelliteStyle },
-  { id: "voyager", name: "Пастельная", hint: "CARTO Voyager", style: "https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json" },
   { id: "liberty", name: "Яркая", hint: "OpenFreeMap Liberty", style: "https://tiles.openfreemap.org/styles/liberty" },
   { id: "bright", name: "Контрастная", hint: "OpenFreeMap Bright", style: "https://tiles.openfreemap.org/styles/bright" },
   { id: "positron", name: "Светлая", hint: "CARTO Positron", style: "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json" },
+  { id: "voyager", name: "Пастельная", hint: "CARTO Voyager", style: "https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json" },
   { id: "dark", name: "Тёмная", hint: "CARTO Dark Matter", style: "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json" },
 ];
 const BASEMAP_STORAGE_KEY = "travel-earth.basemap";
-let currentBasemap = BASEMAPS.find((b) => b.id === localStorage.getItem(BASEMAP_STORAGE_KEY)) || BASEMAPS[1];
+// по умолчанию — Пастельная
+const DEFAULT_BASEMAP = BASEMAPS.find((b) => b.id === "voyager");
+let currentBasemap = BASEMAPS.find((b) => b.id === localStorage.getItem(BASEMAP_STORAGE_KEY)) || DEFAULT_BASEMAP;
 
 // Спутник "как в Google": растровые снимки Esri + поверх них границы, крупные дороги и
 // подписи из тех же векторных тайлов OpenFreeMap — белым текстом с тёмной обводкой
@@ -262,7 +264,7 @@ renderLanguageMenu();
 // (на карте — Спутник, на спутнике — последнюю выбранную карту) и переключает на него
 // одним кликом; при наведении справа раскрывается ряд всех вариантов с подписями
 const SATELLITE = BASEMAPS[0];
-let lastMapBasemap = currentBasemap === SATELLITE ? BASEMAPS[1] : currentBasemap;
+let lastMapBasemap = currentBasemap === SATELLITE ? DEFAULT_BASEMAP : currentBasemap;
 
 function fillBasemapTile(tile, b) {
   tile.innerHTML = `<img alt=""><span class="basemap-label"></span>`;
@@ -314,15 +316,19 @@ const demSource = window.mlcontour && new mlcontour.DemSource({ url: DEM_URL, en
 demSource?.setupMaplibre(maplibregl);
 
 // layers — id слоёв карты, из которых состоит пункт меню
+// Картинки троп на мелком масштабе — сплошные толстые размытые линии по всей стране,
+// поэтому тропы видны только с TRAILS_MIN_ZOOM (шкала около 10 км)
+const TRAILS_MIN_ZOOM = 9;
+
 const OVERLAYS = [
-  { id: "hillshade", name: "Рельеф", hint: "Тени склонов — горы становятся объёмными", layers: ["ov-hillshade"] },
-  { id: "contours", name: "Горизонтали", hint: "Линии равной высоты с подписями в метрах",
+  { id: "hillshade", name: "Рельеф", icon: "⛰️", hint: "Тени склонов — горы становятся объёмными", layers: ["ov-hillshade"] },
+  { id: "contours", name: "Горизонтали", icon: "〰️", hint: "Линии равной высоты с подписями в метрах",
     layers: ["ov-contours", "ov-contour-labels"], available: () => !!demSource },
-  { id: "terrain3d", name: "3D-рельеф", hint: "Настоящий объёмный рельеф — наклоните карту (правая кнопка мыши или два пальца)", layers: [] },
-  { id: "hiking", name: "Пешие тропы", hint: "Маркированные пешие маршруты", trails: "hiking", layers: ["ov-hiking"] },
-  { id: "cycling", name: "Велодорожки", hint: "Веломаршруты", trails: "cycling", layers: ["ov-cycling"] },
-  { id: "mtb", name: "Маунтинбайк", hint: "Маршруты для горного велосипеда", trails: "mtb", layers: ["ov-mtb"] },
-  { id: "railways", name: "Железные дороги", hint: "Поезда, метро, трамваи и фуникулёры — каждый своим цветом",
+  { id: "terrain3d", name: "3D-рельеф", icon: "🏔️", hint: "Настоящий объёмный рельеф — наклоните карту (правая кнопка мыши или два пальца)", layers: [] },
+  { id: "hiking", name: "Пешие тропы", icon: "🥾", hint: "Маркированные пешие маршруты — видны с масштаба около 10 км", trails: "hiking", layers: ["ov-hiking"] },
+  { id: "cycling", name: "Велодорожки", icon: "🚲", hint: "Веломаршруты — видны с масштаба около 10 км", trails: "cycling", layers: ["ov-cycling"] },
+  { id: "mtb", name: "Маунтинбайк", icon: "🚵", hint: "Маршруты для горного велосипеда — видны с масштаба около 10 км", trails: "mtb", layers: ["ov-mtb"] },
+  { id: "railways", name: "Железные дороги", icon: "🚆", hint: "Поезда, метро, трамваи и фуникулёры — каждый своим цветом",
     layers: ["ov-rail-tunnel", "ov-rail"] },
 ];
 const OVERLAYS_STORAGE_KEY = "travel-earth.overlays";
@@ -373,7 +379,7 @@ function addOverlay(id) {
   } else if (overlay.trails) {
     map.addSource(`ov-${id}`, { type: "raster", tileSize: 256, maxzoom: 17, attribution: TRAILS_ATTRIBUTION,
       tiles: [`https://tile.waymarkedtrails.org/${overlay.trails}/{z}/{x}/{y}.png`] });
-    map.addLayer({ id: `ov-${id}`, type: "raster", source: `ov-${id}` }, before);
+    map.addLayer({ id: `ov-${id}`, type: "raster", source: `ov-${id}`, minzoom: TRAILS_MIN_ZOOM }, before);
   } else if (id === "railways") {
     // цвет пути по виду транспорта — те же цвета, что у флажков станций
     const color = ["match", ["get", "subclass"],
@@ -417,22 +423,23 @@ function toggleOverlay(id) {
   renderOverlayMenu();
 }
 
+// по логике кнопки "Места": столбик чипов открыт, пока снова не нажать "Слои" — можно
+// спокойно перещёлкать несколько слоёв; кнопка серая, пока столбик открыт или включён слой
 function renderOverlayMenu() {
-  el("layers-btn").classList.toggle("active", activeOverlays.size > 0);
-  el("layers-menu").replaceChildren(...OVERLAYS.filter((o) => o.available?.() ?? true).map((o) => {
-    const item = document.createElement("button");
-    item.className = "layers-item" + (activeOverlays.has(o.id) ? " active" : "");
-    item.title = o.hint;
-    item.innerHTML = `<span class="layers-check"></span><span></span>`;
-    item.lastChild.textContent = o.name;
-    item.addEventListener("click", () => toggleOverlay(o.id));
-    return item;
+  el("layers-btn").classList.toggle("active", activeOverlays.size > 0 || !el("layers-chips").hidden);
+  el("layers-chips").replaceChildren(...OVERLAYS.filter((o) => o.available?.() ?? true).map((o) => {
+    const chip = document.createElement("button");
+    chip.className = "chip" + (activeOverlays.has(o.id) ? " active" : "");
+    chip.title = o.hint;
+    chipLabel(chip, o.icon, o.name);
+    chip.addEventListener("click", () => toggleOverlay(o.id));
+    return chip;
   }));
 }
 
-el("layers-btn").addEventListener("click", () => { el("layers-menu").hidden = !el("layers-menu").hidden; });
-document.addEventListener("click", (evt) => {
-  if (!el("layers-wrap").contains(evt.target)) el("layers-menu").hidden = true;
+el("layers-btn").addEventListener("click", () => {
+  el("layers-chips").hidden = !el("layers-chips").hidden;
+  renderOverlayMenu();
 });
 renderOverlayMenu();
 
@@ -656,7 +663,11 @@ el("places-btn").addEventListener("click", () => {
   if (!open) el("shop-menu").hidden = true;
 });
 
+// короткое сообщение flashStatus несколько секунд не перебивается подсказками мест
+let statusFlashUntil = 0;
+
 function showStatus(text) {
+  if (Date.now() < statusFlashUntil) return;
   el("map-status").textContent = text;
   el("map-status").hidden = !text;
 }
@@ -880,6 +891,13 @@ function pinImage(color, glyph, ink) {
   return id;
 }
 
+function flashStatus(text) {
+  statusFlashUntil = 0;
+  showStatus(text);
+  statusFlashUntil = Date.now() + 5000;
+  setTimeout(() => { statusFlashUntil = 0; updatePoiStatus(); }, 5000);
+}
+
 function updatePoiStatus() {
   if (!activePoi) { showStatus(""); return; }
   const zoomIn = `Приблизьте карту, чтобы увидеть: ${activePoi.name.toLowerCase()}`;
@@ -968,6 +986,132 @@ map.on("idle", () => {
   const pins = map.queryRenderedFeatures([[x - 20, y - 35], [x + 20, y + 5]], { layers: [poiPopup.layerId] });
   if (!pins.some((pin) => pin.id === id)) poiPopup.remove();
 });
+
+// ---------- подсказка по щелчку на карте ----------
+
+// Щелчок по значку самой карты (достопримечательность, парк, вершина, город, озеро…) —
+// название, вид, часы, сайт и описание из Википедии; щелчок по пустому месту —
+// координаты (щелчок по ним копирует) и адрес. Значок ищется среди подписей этих слоёв
+// тайлов в нескольких пикселях от точки
+const MAP_INFO_SOURCE_LAYERS = ["poi", "place", "water_name", "mountain_peak", "aerodrome_label", "park"];
+const MAP_INFO_KIND_NAMES = {
+  country: "Страна", state: "Регион", province: "Провинция", city: "Город", town: "Город", village: "Деревня",
+  hamlet: "Посёлок", suburb: "Район", quarter: "Квартал", neighbourhood: "Район", island: "Остров", islet: "Остров",
+  peak: "Вершина", volcano: "Вулкан", saddle: "Перевал", lake: "Озеро", sea: "Море", ocean: "Океан",
+  bay: "Залив", park: "Парк", national_park: "Национальный парк", nature_reserve: "Заповедник", protected_area: "Охраняемая территория",
+};
+let mapPopup = null;
+
+const withTimeout = (promise, ms, fallback) => Promise.race([promise, new Promise((r) => setTimeout(r, ms, fallback))]);
+
+// теги OSM значка. У OpenFreeMap id кодирует и тип объекта (как у флажков мест), а у
+// CARTO id с номерами OSM не совпадают — там объект ищется по имени рядом с точкой
+async function featureOsmTags(f) {
+  if (f.source !== "carto") return f.id == null ? null : loadPoiTags(f.id);
+  if (f.geometry.type !== "Point") return null;
+  const [lon, lat] = f.geometry.coordinates;
+  const params = new URLSearchParams({ q: f.properties.name, format: "jsonv2", limit: "1", bounded: "1",
+    viewbox: [lon - 0.005, lat + 0.005, lon + 0.005, lat - 0.005].join(",") });
+  const resp = await fetch(`${NOMINATIM_URL}?${params}`);
+  const [found] = resp.ok ? await resp.json() : [];
+  if (!found?.osm_id) return null;
+  const osm = await fetch(`https://api.openstreetmap.org/api/0.6/${found.osm_type}/${found.osm_id}.json`);
+  return osm.ok ? (await osm.json()).elements[0]?.tags || null : null;
+}
+
+// краткое описание из Википедии: статья на языке подписей, иначе английская, иначе
+// та, что указана в OSM. Язык статьи ищется через Викиданные (тег wikidata)
+async function wikiSummary(tags) {
+  const lang = uiLanguageCode();
+  let site = null, title = null;
+  if (tags.wikidata) {
+    const resp = await fetch(`https://www.wikidata.org/w/api.php?action=wbgetentities&ids=${encodeURIComponent(tags.wikidata)}&props=sitelinks&format=json&origin=*`);
+    const links = resp.ok ? (await resp.json()).entities?.[tags.wikidata]?.sitelinks || {} : {};
+    site = [lang, "en"].find((l) => links[`${l}wiki`]);
+    title = site && links[`${site}wiki`].title;
+  }
+  if (!title && /^[a-z-]+:/.test(tags.wikipedia || "")) {
+    site = tags.wikipedia.slice(0, tags.wikipedia.indexOf(":"));
+    title = tags.wikipedia.slice(site.length + 1);
+  }
+  if (!title) return null;
+  const resp = await fetch(`https://${site}.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title.replace(/ /g, "_"))}`);
+  if (!resp.ok) return null;
+  const summary = await resp.json();
+  return summary.extract ? { text: summary.extract, url: summary.content_urls?.desktop?.page } : null;
+}
+
+async function featureInfoHtml(f) {
+  const p = f.properties;
+  const name = p[`name:${uiLanguageCode()}`] || p.name;
+  const kind = [
+    (f.sourceLayer === "poi" && (POI_CLASS_KIND_NAMES[p.class] || POI_KIND_NAMES[p.subclass])) || MAP_INFO_KIND_NAMES[p.class],
+    p.ele && `${Math.round(p.ele).toLocaleString("ru")} м`,
+  ].filter(Boolean).join(" · ");
+  let details = "";
+  try {
+    details = await withTimeout((async () => {
+      const tags = await featureOsmTags(f);
+      if (!tags) return "";
+      const wiki = await wikiSummary(tags).catch(() => null);
+      const about = wiki
+        ? `<div class="popup-wiki">${escapeHtml(wiki.text)}</div>`
+          + (wiki.url ? `<div class="popup-row"><a href="${escapeHtml(wiki.url)}" target="_blank" rel="noopener">Википедия</a></div>` : "")
+        : tags.description ? `<div class="popup-wiki">${escapeHtml(tags.description)}</div>` : "";
+      return about + poiDetailsHtml(tags);
+    })(), 2500, "");
+  } catch (err) {
+    console.warn("OSM API", err);
+  }
+  return `<div class="popup-title">${escapeHtml(name)}</div>`
+    + (kind ? `<div class="popup-kind">${escapeHtml(kind)}</div>` : "")
+    + (details ? `<div class="popup-details">${details}</div>` : "");
+}
+
+async function pointInfoHtml(lngLat) {
+  const lat = lngLat.lat.toFixed(5), lon = lngLat.lng.toFixed(5);
+  let address = "";
+  try {
+    const params = new URLSearchParams({ lat, lon, format: "jsonv2", zoom: "18", "accept-language": uiLanguageCode() });
+    const place = await withTimeout(fetch(`${NOMINATIM_URL.replace("/search", "/reverse")}?${params}`)
+      .then((resp) => (resp.ok ? resp.json() : null)), 1500, null);
+    address = place?.display_name || "";
+  } catch (err) {
+    console.warn("Nominatim", err);
+  }
+  return `<button class="popup-coords" title="Скопировать координаты" data-coords="${lat}, ${lon}">${lat}, ${lon}</button>`
+    + (address ? `<div class="popup-kind">${escapeHtml(address)}</div>` : "");
+}
+
+map.on("click", async (evt) => {
+  // щелчок по флажку места или по маркеру поиска — у них свои попапы
+  if (evt.originalEvent.target !== map.getCanvas()) return;
+  // щелчок мимо глобуса, по звёздам, — не на Земле, координат у него нет
+  if (map.transform.isPointOnMapSurface?.(evt.point) === false) return;
+  if (map.queryRenderedFeatures(evt.point, { layers: POI_LAYERS.filter((id) => map.getLayer(id)) }).length) return;
+  // первый щелчок только закрывает открытое: попап, список поиска, меню
+  if (poiPopup?.isOpen() || mapPopup?.isOpen() || searchMarker?.getPopup()?.isOpen()
+    || !el("search-results").hidden || !el("lang-menu").hidden || !el("shop-menu").hidden) return;
+  const { x, y } = evt.point;
+  const hit = map.queryRenderedFeatures([[x - 8, y - 8], [x + 8, y + 8]]).find((f) => f.layer.type === "symbol"
+    && MAP_INFO_SOURCE_LAYERS.includes(f.sourceLayer) && f.properties.name && !POI_LAYERS.includes(f.layer.id));
+  const click = ++poiClick;
+  const html = hit ? await featureInfoHtml(hit) : await pointInfoHtml(evt.lngLat);
+  // пока ждали ответа, успели щёлкнуть ещё раз
+  if (click !== poiClick) return;
+  mapPopup?.remove();
+  mapPopup = new maplibregl.Popup({ offset: hit ? 12 : 4, maxWidth: "280px" })
+    .setLngLat(hit?.geometry.type === "Point" ? hit.geometry.coordinates : evt.lngLat)
+    .setHTML(html)
+    .addTo(map);
+});
+document.addEventListener("click", (evt) => {
+  const coords = evt.target.closest(".popup-coords");
+  if (!coords) return;
+  navigator.clipboard?.writeText(coords.dataset.coords);
+  coords.textContent = "Скопировано";
+  setTimeout(() => { coords.textContent = coords.dataset.coords; }, 1500);
+});
 map.on("mouseenter", POI_LAYERS, () => { map.getCanvas().style.cursor = "pointer"; });
 map.on("mouseleave", POI_LAYERS, () => { map.getCanvas().style.cursor = ""; });
 
@@ -1029,21 +1173,26 @@ let searchMarker = null;
 // история: последние выбранные результаты (не запросы) — повторный клик сразу ведёт
 // на место, без нового обращения к Nominatim. Показывается в пустой строке поиска
 const SEARCH_HISTORY_KEY = "travel-earth-search-history";
-const SEARCH_HISTORY_SIZE = 10;
+const SEARCH_HISTORY_SIZE = 20;
 
 function loadSearchHistory() {
   try { return JSON.parse(localStorage.getItem(SEARCH_HISTORY_KEY)) || []; } catch { return []; }
 }
 
+const saveSearchHistory = (history) => localStorage.setItem(SEARCH_HISTORY_KEY, JSON.stringify(history));
+
+// новое место — наверх; уже известное остаётся на своём месте: список можно
+// перетаскиванием выстроить как избранное, и повторный поиск его не перемешает
 function rememberSearch(r) {
   const entry = { display_name: r.display_name, lat: r.lat, lon: r.lon, boundingbox: r.boundingbox };
-  const history = loadSearchHistory().filter((h) => h.display_name !== entry.display_name);
-  localStorage.setItem(SEARCH_HISTORY_KEY, JSON.stringify([entry, ...history].slice(0, SEARCH_HISTORY_SIZE)));
+  const history = loadSearchHistory();
+  if (history.some((h) => h.display_name === entry.display_name)) return;
+  saveSearchHistory([entry, ...history].slice(0, SEARCH_HISTORY_SIZE));
 }
 
-function searchItem(r, recent) {
+function searchItem(r) {
   const item = document.createElement("button");
-  item.className = "search-item" + (recent ? " search-item-recent" : "");
+  item.className = "search-item";
   const [title, ...rest] = r.display_name.split(", ");
   item.innerHTML = `<span class="search-item-title"></span><span class="search-item-sub"></span>`;
   item.firstChild.textContent = title;
@@ -1062,9 +1211,65 @@ function showSearchHistory() {
     localStorage.removeItem(SEARCH_HISTORY_KEY);
     clearSearchResults();
   });
-  el("search-results").replaceChildren(...history.map((r) => searchItem(r, true)), clear);
+  el("search-results").replaceChildren(...history.map(historyRow), clear);
   el("search-results").hidden = false;
 }
+
+const DRAG_ICON = `<svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M9 5a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3zm6 0a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3zm-6 5.5a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3zm6 0a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3zM9 16a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3zm6 0a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3z"/></svg>`;
+const DELETE_ICON = `<svg viewBox="0 0 24 24" width="16" height="16"><path d="M6 6l12 12M18 6 6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>`;
+
+// строка истории: слева ручка — перетащить выше или ниже, справа крестик — удалить.
+// Так из истории складывается свой список избранных мест
+function historyRow(r) {
+  const row = document.createElement("div");
+  row.className = "search-history-row";
+  row.entry = r;
+  const handle = document.createElement("span");
+  handle.className = "search-drag";
+  handle.title = "Перетащить выше или ниже";
+  handle.innerHTML = DRAG_ICON;
+  handle.addEventListener("pointerdown", (evt) => dragHistoryRow(evt, row));
+  const del = document.createElement("button");
+  del.className = "search-delete";
+  del.title = "Удалить из истории";
+  del.innerHTML = DELETE_ICON;
+  del.addEventListener("click", (evt) => {
+    // список перерисуется, и щелчок окажется "мимо поиска" — не даём ему закрыть список
+    evt.stopPropagation();
+    saveSearchHistory(loadSearchHistory().filter((h) => h.display_name !== r.display_name));
+    showSearchHistory();
+  });
+  row.append(handle, searchItem(r), del);
+  return row;
+}
+
+// Перетаскивание указателем, а не HTML5 drag-and-drop — тот не работает на телефонах.
+// Сама строка в списке не переставляется (иначе браузер отпустил бы захват указателя),
+// вместо этого соседи перепрыгивают через неё, пока палец выше или ниже строки
+function dragHistoryRow(evt, row) {
+  evt.preventDefault();
+  const handle = evt.currentTarget;
+  const list = row.parentElement;
+  const isRow = (node) => node?.classList?.contains("search-history-row");
+  handle.setPointerCapture(evt.pointerId);
+  row.classList.add("dragging");
+  const move = (e) => {
+    const { top, bottom } = row.getBoundingClientRect();
+    if (e.clientY < top && isRow(row.previousElementSibling)) list.insertBefore(row.previousElementSibling, row.nextElementSibling);
+    else if (e.clientY > bottom && isRow(row.nextElementSibling)) list.insertBefore(row.nextElementSibling, row);
+  };
+  const end = () => {
+    handle.removeEventListener("pointermove", move);
+    handle.removeEventListener("pointerup", end);
+    handle.removeEventListener("pointercancel", end);
+    row.classList.remove("dragging");
+    saveSearchHistory([...list.querySelectorAll(".search-history-row")].map((r) => r.entry));
+  };
+  handle.addEventListener("pointermove", move);
+  handle.addEventListener("pointerup", end);
+  handle.addEventListener("pointercancel", end);
+}
+
 
 function clearSearchResults() {
   el("search-results").replaceChildren();
@@ -1090,7 +1295,7 @@ async function runSearch() {
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     const results = await resp.json();
     if (!results.length) { list.innerHTML = `<div class="search-note">Ничего не найдено</div>`; return; }
-    list.replaceChildren(...results.map((r) => searchItem(r, false)));
+    list.replaceChildren(...results.map((r) => searchItem(r)));
   } catch (err) {
     console.error("Nominatim", err);
     list.innerHTML = `<div class="search-note">Поиск не удался — проверьте интернет и попробуйте ещё раз</div>`;
@@ -1176,6 +1381,105 @@ class RuScaleControl extends maplibregl.ScaleControl {
 map.addControl(new RuScaleControl({ unit: "metric" }), "bottom-right");
 map.addControl(new SettingsControl(), "bottom-right");
 map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), "bottom-right");
+
+// ---------- моё местоположение ----------
+
+// Кнопка как в Google Maps и Mapy.com: первый щелчок включает слежение и ставит карту на
+// меня (центр значка синий). Сдвинул карту рукой — она больше не бегает за мной, центр
+// значка серый; щелчок — снова ко мне. Щелчок по синему выключает слежение. Включённое
+// слежение запоминается: при следующем запуске карта сразу встаёт на меня
+const GEO_STORAGE_KEY = "travel-earth.geolocate";
+const GEO_ZOOM = 16;
+let geoWatch = null;
+let geoMarker = null;
+let geoFollow = false;
+let geoPosition = null;
+
+class GeolocateControl {
+  onAdd() {
+    const container = document.createElement("div");
+    container.className = "maplibregl-ctrl maplibregl-ctrl-group";
+    container.innerHTML = `<button id="geo-btn" class="geo-btn" title="Моё местоположение">
+      <svg viewBox="0 0 24 24" width="22" height="22"><circle cx="12" cy="12" r="7" fill="none" stroke="currentColor" stroke-width="2"/>
+      <path d="M12 1v4M12 19v4M1 12h4M19 12h4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+      <circle class="geo-center" cx="12" cy="12" r="3.5"/></svg></button>`;
+    container.firstElementChild.addEventListener("click", onGeoClick);
+    return container;
+  }
+  onRemove() {}
+}
+
+function updateGeoBtn() {
+  el("geo-btn").classList.toggle("on", geoWatch !== null);
+  el("geo-btn").classList.toggle("follow", geoWatch !== null && geoFollow);
+}
+
+function startGeo() {
+  if (!navigator.geolocation) { flashStatus("Этот браузер не умеет определять местоположение"); return; }
+  geoFollow = true;
+  geoWatch = navigator.geolocation.watchPosition(onGeoPosition, onGeoError, { enableHighAccuracy: true, maximumAge: 10000 });
+  localStorage.setItem(GEO_STORAGE_KEY, "on");
+  updateGeoBtn();
+}
+
+function stopGeo() {
+  if (geoWatch !== null) navigator.geolocation.clearWatch(geoWatch);
+  geoWatch = null;
+  geoFollow = false;
+  geoPosition = null;
+  geoMarker?.remove();
+  geoMarker = null;
+  localStorage.setItem(GEO_STORAGE_KEY, "off");
+  updateGeoBtn();
+}
+
+function onGeoPosition(pos) {
+  const first = !geoPosition;
+  geoPosition = [pos.coords.longitude, pos.coords.latitude];
+  if (!geoMarker) {
+    geoMarker = new maplibregl.Marker({ element: Object.assign(document.createElement("div"), { className: "geo-dot" }) })
+      .setLngLat(geoPosition).addTo(map);
+  }
+  geoMarker.setLngLat(geoPosition);
+  if (geoFollow) centerOnMe(first);
+}
+
+function onGeoError(err) {
+  // запрет доступа — выключаем совсем, иначе при каждом запуске спрашивали бы заново
+  if (err.code === err.PERMISSION_DENIED) {
+    stopGeo();
+    flashStatus("Нет доступа к местоположению — разрешите его браузеру");
+  } else {
+    flashStatus("Не удаётся определить местоположение");
+  }
+}
+
+function centerOnMe(fly) {
+  if (!geoPosition) return;
+  // издалека — перелёт с приближением, вблизи — просто сдвиг, масштаб не трогаем
+  if (fly || map.getZoom() < 12) map.flyTo({ center: geoPosition, zoom: Math.max(map.getZoom(), GEO_ZOOM), duration: 3000 });
+  else map.easeTo({ center: geoPosition, duration: 800 });
+}
+
+function onGeoClick() {
+  if (geoWatch === null) startGeo();
+  else if (!geoFollow) {
+    geoFollow = true;
+    updateGeoBtn();
+    centerOnMe(false);
+  } else stopGeo();
+}
+
+// сдвинул карту рукой — карта больше не бегает за мной
+map.on("dragstart", () => {
+  if (!geoFollow) return;
+  geoFollow = false;
+  updateGeoBtn();
+});
+
+map.addControl(new GeolocateControl(), "bottom-right");
+if (localStorage.getItem(GEO_STORAGE_KEY) === "on") startGeo();
+
 
 // Внизу справа в одну строку: шкала, кнопка ⓘ источников, шестерёнка; кнопки масштаба
 // остаются над ними. ⓘ стоит в ячейке своего размера, а раскрытая строка источников

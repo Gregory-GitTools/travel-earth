@@ -269,21 +269,51 @@ html, body {
   color: var(--light-muted);
 }
 
-/* недавние места — со значком часов, как в Google Maps */
-.search-item-recent {
-  position: relative;
-  padding-left: 36px;
+/* строка истории: ручка перетаскивания, место, крестик "удалить" */
+.search-history-row {
+  display: flex;
+  align-items: center;
+  border-radius: 6px;
 }
 
-.search-item-recent::before {
-  content: "";
-  position: absolute;
-  left: 10px;
-  top: 50%;
-  width: 18px;
-  height: 18px;
-  margin-top: -9px;
-  background: no-repeat center / contain url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%2370757a' d='M13 3a9 9 0 0 0-9 9H1l3.89 3.89.07.14L9 12H6c0-3.87 3.13-7 7-7s7 3.13 7 7-3.13 7-7 7c-1.93 0-3.68-.79-4.94-2.06l-1.42 1.42A8.95 8.95 0 0 0 13 21a9 9 0 0 0 0-18zm-1 5v5l4.28 2.54.72-1.21-3.5-2.08V8H12z'/%3E%3C/svg%3E");
+.search-history-row .search-item {
+  flex: 1;
+  min-width: 0;
+  padding-left: 4px;
+}
+
+.search-drag {
+  flex-shrink: 0;
+  display: flex;
+  padding: 8px 4px 8px 6px;
+  color: var(--light-muted);
+  cursor: grab;
+  touch-action: none; /* палец тащит строку, а не прокручивает список */
+}
+
+.search-history-row.dragging {
+  background: var(--light-hover);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+}
+
+.search-history-row.dragging .search-drag {
+  cursor: grabbing;
+}
+
+.search-delete {
+  flex-shrink: 0;
+  display: flex;
+  padding: 8px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--light-muted);
+  cursor: pointer;
+}
+
+.search-delete:hover {
+  background: var(--light-hover);
+  color: var(--light-text);
 }
 
 .search-history-clear {
@@ -554,7 +584,7 @@ html, body {
   color: #999;
 }
 
-/* "Слои" — над переключателем карт; меню галочек раскрывается вверх */
+/* "Слои" — над переключателем карт, по образцу кнопки "Места": столбик чипов над ней */
 .layers-wrap {
   position: fixed;
   left: 10px;
@@ -566,23 +596,23 @@ html, body {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  height: 36px;
+  height: 44px;
   padding: 0 14px;
   border: none;
-  border-radius: 18px;
+  border-radius: 22px;
   background: var(--light-panel);
   color: var(--light-text);
   font: inherit;
-  font-size: 0.85rem;
+  font-size: 0.9rem;
   cursor: pointer;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
 }
 
 .layers-btn:hover {
   background: var(--light-hover);
 }
 
-/* включён хоть один слой — негативом, как активный фильтр мест */
+/* столбик открыт или включён хоть один слой — негативом, как "Места" */
 .layers-btn.active {
   background: #9aa0a6;
   color: #fff;
@@ -592,47 +622,20 @@ html, body {
   background: #8a9096;
 }
 
-.layers-menu {
+.layers-chips {
   position: absolute;
   left: 0;
-  bottom: 44px;
-  min-width: 190px;
-  padding: 6px 0;
-  background: var(--light-panel);
-  border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
-}
-
-.layers-item {
+  bottom: 52px;
   display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  padding: 8px 14px;
-  border: none;
-  background: transparent;
-  color: var(--light-text);
-  font: inherit;
-  font-size: 0.85rem;
-  text-align: left;
-  cursor: pointer;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  pointer-events: none; /* промежутки между кнопками не мешают тащить карту */
 }
 
-.layers-item:hover {
-  background: var(--light-hover);
-}
-
-.layers-check {
-  flex-shrink: 0;
-  width: 16px;
-  height: 16px;
-  border: 2px solid #9aa0a6;
-  border-radius: 3px;
-}
-
-.layers-item.active .layers-check {
-  border-color: var(--light-accent);
-  background: var(--light-accent) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M5 12l5 5 9-10' fill='none' stroke='white' stroke-width='3'/%3E%3C/svg%3E") center / 14px no-repeat;
+.layers-chips > * {
+  pointer-events: auto;
+  white-space: nowrap;
 }
 
 /* переключатель карт внизу слева — по образцу Google Maps: плитка "другого" вида +
@@ -854,4 +857,63 @@ html, body {
 .about-install-btn img {
   width: 18px;
   height: 18px;
+}
+
+/* кнопка "моё местоположение": выключено — пустой центр, слежу, но карта сдвинута —
+   серый центр, карта идёт за мной — синий */
+.geo-btn {
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+  color: #3c4043;
+}
+
+.geo-btn .geo-center {
+  fill: none;
+}
+
+.geo-btn.on .geo-center {
+  fill: #9aa0a6;
+}
+
+.geo-btn.follow .geo-center {
+  fill: var(--light-accent);
+}
+
+/* я на карте — синяя точка с расходящимся кругом */
+.geo-dot {
+  width: 16px;
+  height: 16px;
+  border: 3px solid #fff;
+  border-radius: 50%;
+  background: var(--light-accent);
+  animation: geo-pulse 2s ease-out infinite;
+}
+
+@keyframes geo-pulse {
+  from { box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4), 0 0 0 0 rgba(26, 115, 232, 0.5); }
+  to { box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4), 0 0 0 18px rgba(26, 115, 232, 0); }
+}
+
+/* описание из Википедии в попапе — не больше нескольких строк */
+.popup-wiki {
+  display: -webkit-box;
+  -webkit-line-clamp: 5;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  margin: 6px 0;
+  font-size: 0.8rem;
+  line-height: 1.35;
+}
+
+/* координаты в попапе — щелчок копирует */
+.popup-coords {
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--light-text);
+  font: inherit;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: copy;
 }
