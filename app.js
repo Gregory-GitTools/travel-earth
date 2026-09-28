@@ -21,8 +21,8 @@ const BASEMAPS = [
   { id: "dark", name: "Тёмная", hint: "CARTO Dark Matter", style: "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json" },
 ];
 const BASEMAP_STORAGE_KEY = "travel-earth.basemap";
-// по умолчанию — Пастельная
-const DEFAULT_BASEMAP = BASEMAPS.find((b) => b.id === "voyager");
+// по умолчанию — Яркая
+const DEFAULT_BASEMAP = BASEMAPS.find((b) => b.id === "liberty");
 let currentBasemap = BASEMAPS.find((b) => b.id === localStorage.getItem(BASEMAP_STORAGE_KEY)) || DEFAULT_BASEMAP;
 
 // Спутник "как в Google": растровые снимки Esri + поверх них границы, крупные дороги и
@@ -377,7 +377,9 @@ function addOverlay(id) {
     dem("ov-terrain3d");
     map.setTerrain({ source: "ov-terrain3d", exaggeration: 1.3 });
   } else if (overlay.trails) {
-    map.addSource(`ov-${id}`, { type: "raster", tileSize: 256, maxzoom: 17, attribution: TRAILS_ATTRIBUTION,
+    // картинки на уровень детальнее, ужатые вдвое (tileSize 128): линии тропы в два раза
+    // тоньше и чётче — растянутые 256-е тайлы давали широкую мутную полосу
+    map.addSource(`ov-${id}`, { type: "raster", tileSize: 128, maxzoom: 18, attribution: TRAILS_ATTRIBUTION,
       tiles: [`https://tile.waymarkedtrails.org/${overlay.trails}/{z}/{x}/{y}.png`] });
     map.addLayer({ id: `ov-${id}`, type: "raster", source: `ov-${id}`, minzoom: TRAILS_MIN_ZOOM }, before);
   } else if (id === "railways") {
