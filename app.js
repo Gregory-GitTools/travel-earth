@@ -353,21 +353,21 @@ const darkBasemap = () => currentBasemap.id === "satellite" || currentBasemap.id
 
 // Вблизи тропы рисуются самим. На картинке линия и номер маршрута нарисованы вместе и
 // растут вместе — получалась широкая мутная полоса. Свои линии тонкие, как у железных
-// дорог, а номер растёт с приближением. Маршруты (relation route=…) берутся у Overpass
-// квадратами по TRAIL_CELL градусов, каждый квадрат — один раз, по очереди, начиная с
-// ближайших к центру
+// дорог, а номер растёт с приближением. Маршруты берутся у того же Waymarked Trails, что
+// и картинки: список маршрутов в квадрате (by_area) и их линии, уже обрезанные по
+// квадрату (segments) — меньше секунды на квадрат. Раньше был Overpass: 1–4 с, частые
+// 429/504, и тропы появлялись кусками. Квадраты по TRAIL_CELL градусов, каждый — один раз,
+// по очереди, начиная с ближайших к центру
 const TRAIL_CELL = 0.1;
 const TRAIL_MAX_CELLS = 16;
 const TRAIL_RETRY_MS = 30000;
 const TRAIL_NAME_MAX = 16;
-const OVERPASS_URLS = ["https://overpass-api.de/api/interpreter", "https://maps.mail.ru/osm/tools/overpass/api/interpreter"];
-const TRAIL_ROUTES = { hiking: "hiking|foot|walking", cycling: "bicycle", mtb: "mtb" };
-// цвет по значимости маршрута (первая буква тега network: iwn, ncn, rmn…) — как у
-// Waymarked Trails: международный, национальный, региональный, местный
-const TRAIL_LEVELS = { i: { color: "#c62828", rank: 4 }, n: { color: "#1e53c7", rank: 3 },
-  r: { color: "#ef8a00", rank: 2 }, l: { color: "#8e24aa", rank: 1 } };
+// цвет по значимости маршрута (group у Waymarked Trails): международный, национальный,
+// региональный, местный
+const TRAIL_LEVELS = { INT: { color: "#c62828", rank: 4 }, NAT: { color: "#1e53c7", rank: 3 },
+  REG: { color: "#ef8a00", rank: 2 }, LOC: { color: "#8e24aa", rank: 1 } };
 const trailCells = new Map(); // "hiking:247:594" → true | "loading" | когда можно повторить
-const trailFeatures = { hiking: new Map(), cycling: new Map(), mtb: new Map() }; // "маршрут:линия" → feature
+const trailFeatures = { hiking: new Map(), cycling: new Map(), mtb: new Map() }; // "маршрут:квадрат:кусок" → feature
 let trailQueue = Promise.resolve();
 // новые данные передаются карте ещё раз на ближайшем idle: если они пришли, пока источник
 // ещё обрабатывал прежние, MapLibre иногда оставлял тайлы пустыми
@@ -380,7 +380,6 @@ const firstPoiLayer = () => map.getStyle().layers.find((l) => POI_LAYERS.include
 function addTrailLines(id, before) {
   map.addSource(`ov-${id}-vec`, { type: "geojson", data: trailData(id) });
   map.addLayer({ id: `ov-${id}-line`, type: "line", source: `ov-${id}-vec`, minzoom: TRAILS_VECTOR_ZOOM,
-    filter: ["!", ["has", "label"]],
     layout: { "line-cap": "round", "line-join": "round", "line-sort-key": ["get", "rank"] },
     paint: { "line-color": ["get", "color"], "line-opacity": 0.85,
       "line-width": ["interpolate", ["linear"], ["zoom"], 12, 1.8, 14, 2.5, 17, 4, 20, 6] } }, before);
@@ -411,68 +410,43 @@ function plateImage(color) {
     { pixelRatio: 2, stretchX: [[8, 16]], stretchY: [[8, 16]], content: [6, 5, 18, 19] });
 }
 
-// Overpass часто отвечает 429 (занят) — тогда квадрат оставался пустым на TRAIL_RETRY_MS.
-// Поэтому прежде чем сдаться, обходим серверы ещё дважды с паузой
-async function overpass(query) {
-  for (let round = 0; round < 3; round++) {
-    if (round) await new Promise((r) => setTimeout(r, 3000 * round));
-    for (const url of OVERPASS_URLS) {
-      try {
-        // без тайм-аута зависший сервер навсегда оставлял квадрат в «loading»
-        const res = await fetch(url, { method: "POST", body: new URLSearchParams({ data: query }), signal: AbortSignal.timeout(30000) });
-        if (res.ok) return await res.json();
-      } catch { /* следующий сервер */ }
-    }
-  }
-  throw new Error("Overpass недоступен");
-}
+// Waymarked Trails считает в метрах проекции Меркатора (EPSG:3857)
+const toMercator = ([lng, lat]) => [lng * 20037508.34 / 180,
+  Math.log(Math.tan(((90 + lat) * Math.PI) / 360)) * 6378137];
+const fromMercator = ([x, y]) => [x * 180 / 20037508.34,
+  (Math.atan(Math.exp(y / 6378137)) * 360) / Math.PI - 90];
 
-// участки маршрута идут в relation по порядку, но могут быть развёрнуты — пристыковываем
-// участок к концу предыдущего куска, если у них общая точка, иначе начинаем новый кусок
-function joinPiece(pieces, coordinates) {
-  const last = pieces.at(-1);
-  const same = (a, b) => a[0] === b[0] && a[1] === b[1];
-  if (last && same(last.at(-1), coordinates[0])) last.push(...coordinates.slice(1));
-  else if (last && same(last.at(-1), coordinates.at(-1))) last.push(...coordinates.slice(0, -1).reverse());
-  else if (last && same(last[0], coordinates.at(-1))) last.unshift(...coordinates.slice(0, -1));
-  else if (last && same(last[0], coordinates[0])) last.unshift(...coordinates.slice(1).reverse());
-  else pieces.push([...coordinates]);
+async function waymarked(id, path) {
+  const res = await fetch(`https://${id}.waymarkedtrails.org/api/v1/list/${path}`, { signal: AbortSignal.timeout(20000) });
+  if (!res.ok) throw new Error(`Waymarked Trails: ${res.status}`);
+  return res.json();
 }
 
 async function loadTrailCell(id, cx, cy) {
   const key = `${id}:${cx}:${cy}`;
-  const bbox = [cy, cx, cy + 1, cx + 1].map((v) => (v * TRAIL_CELL).toFixed(2)).join(",");
-  const query = `[out:json][timeout:25];rel[type=route][route~"^(${TRAIL_ROUTES[id]})$"](${bbox})->.r;` +
-    `.r out body;way(r.r)(${bbox});out geom qt;`;
+  const bbox = [...toMercator([cx * TRAIL_CELL, cy * TRAIL_CELL]), ...toMercator([(cx + 1) * TRAIL_CELL, (cy + 1) * TRAIL_CELL])]
+    .map(Math.round).join(",");
   try {
-    const data = await overpass(query);
-    const ways = new Map(data.elements.filter((e) => e.type === "way" && e.geometry)
-      .map((w) => [w.id, w.geometry.map((p) => [p.lon, p.lat])]));
-    for (const rel of data.elements.filter((e) => e.type === "relation")) {
-      const tags = rel.tags || {};
-      const level = TRAIL_LEVELS[(tags.network || "")[0]] || TRAIL_LEVELS.l;
+    const routes = new Map((await waymarked(id, `by_area?bbox=${bbox}&limit=100`)).results.map((r) => [r.id, r]));
+    const segments = routes.size ? (await waymarked(id, `segments?bbox=${bbox}&relations=${[...routes.keys()].join(",")}`)).features : [];
+    for (const seg of segments) {
+      const route = routes.get(seg.id);
+      if (!route) continue;
+      const level = TRAIL_LEVELS[route.group] || TRAIL_LEVELS.LOC;
       // название — только короткое: длинное («Camí de Sant Jaume (…)») на табличку не влезает
-      const label = tags.ref || (tags.name?.length <= TRAIL_NAME_MAX && tags.name);
-      const properties = { color: level.color, rank: level.rank };
-      // линия — по отдельным участкам (общие у соседних квадратов не рисуются дважды), а
-      // номер — по участкам, сшитым в длинные куски: на коротком участке он не помещается
-      // и MapLibre его пропускает
-      const pieces = [];
-      for (const m of rel.members) {
-        const coordinates = m.type === "way" && ways.get(m.ref);
-        if (!coordinates) continue;
-        trailFeatures[id].set(`${rel.id}:${m.ref}`, { type: "Feature",
-          geometry: { type: "LineString", coordinates }, properties });
-        if (label) joinPiece(pieces, coordinates);
-      }
-      pieces.forEach((coordinates, i) => trailFeatures[id].set(`${rel.id}:${key}:${i}`, { type: "Feature",
-        geometry: { type: "LineString", coordinates }, properties: { ...properties, label } }));
+      const label = route.ref || (route.name?.length <= TRAIL_NAME_MAX && route.name);
+      const lines = seg.geometry.type === "LineString" ? [seg.geometry.coordinates] : seg.geometry.coordinates;
+      lines.forEach((line, i) => trailFeatures[id].set(`${seg.id}:${key}:${i}`, { type: "Feature",
+        geometry: { type: "LineString", coordinates: line.map(fromMercator) },
+        properties: { color: level.color, rank: level.rank, ...(label && { label }) } }));
     }
     trailCells.set(key, true);
     trailDirty.add(id);
     map.getSource(`ov-${id}-vec`)?.setData(trailData(id));
   } catch {
     trailCells.set(key, Date.now() + TRAIL_RETRY_MS);
+    // повтор — сам, не дожидаясь, пока карту сдвинут
+    setTimeout(updateTrails, TRAIL_RETRY_MS + 100);
     flashStatus("Тропы сейчас не загрузились — сервер занят, чуть позже попробую ещё раз");
   }
 }
