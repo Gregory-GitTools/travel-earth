@@ -319,9 +319,10 @@ demSource?.setupMaplibre(maplibregl);
 // Картинки троп на мелком масштабе — сплошные толстые размытые линии по всей стране,
 // поэтому тропы видны только с TRAILS_MIN_ZOOM (шкала около 10 км)
 const TRAILS_MIN_ZOOM = 9;
-// с этого зума (шкала около 1 км) вместо картинок — свои линии троп с номерами: на
-// ужатых вдвое картинках таблички с номерами уже нечитаемы — пустые квадратики
-const TRAILS_VECTOR_ZOOM = 12;
+// с этого зума (шкала около 2 км) вместо картинок — свои линии троп с номерами: на
+// ужатых вдвое картинках таблички с номерами нечитаемы — пустые квадратики или слипшиеся
+// овалы. С 12 было поздно: на юге шкала «1 км» — это ещё зум 11,5
+const TRAILS_VECTOR_ZOOM = 11;
 
 const OVERLAYS = [
   { id: "hillshade", name: "Рельеф", icon: "⛰️", hint: "Тени склонов — горы становятся объёмными", layers: ["ov-hillshade"] },
@@ -357,9 +358,11 @@ const darkBasemap = () => currentBasemap.id === "satellite" || currentBasemap.id
 // и картинки: список маршрутов в квадрате (by_area) и их линии, уже обрезанные по
 // квадрату (segments) — меньше секунды на квадрат. Раньше был Overpass: 1–4 с, частые
 // 429/504, и тропы появлялись кусками. Квадраты по TRAIL_CELL градусов, каждый — один раз,
-// по очереди, начиная с ближайших к центру
+// в TRAIL_STREAMS очереди, начиная с ближайших к центру. На большом экране при зуме 11 в
+// кадре до ~32 квадратов — прежний предел 16 оставлял края пустыми
 const TRAIL_CELL = 0.1;
-const TRAIL_MAX_CELLS = 16;
+const TRAIL_MAX_CELLS = 40;
+const TRAIL_STREAMS = 3;
 const TRAIL_RETRY_MS = 30000;
 const TRAIL_NAME_MAX = 16;
 // цвет по значимости маршрута (group у Waymarked Trails): международный, национальный,
@@ -368,7 +371,8 @@ const TRAIL_LEVELS = { INT: { color: "#c62828", rank: 4 }, NAT: { color: "#1e53c
   REG: { color: "#ef8a00", rank: 2 }, LOC: { color: "#8e24aa", rank: 1 } };
 const trailCells = new Map(); // "hiking:247:594" → true | "loading" | когда можно повторить
 const trailFeatures = { hiking: new Map(), cycling: new Map(), mtb: new Map() }; // "маршрут:квадрат:кусок" → feature
-let trailQueue = Promise.resolve();
+const trailQueues = Array.from({ length: TRAIL_STREAMS }, () => Promise.resolve());
+let trailNextQueue = 0;
 // новые данные передаются карте ещё раз на ближайшем idle: если они пришли, пока источник
 // ещё обрабатывал прежние, MapLibre иногда оставлял тайлы пустыми
 const trailDirty = new Set();
@@ -382,7 +386,7 @@ function addTrailLines(id, before) {
   map.addLayer({ id: `ov-${id}-line`, type: "line", source: `ov-${id}-vec`, minzoom: TRAILS_VECTOR_ZOOM,
     layout: { "line-cap": "round", "line-join": "round", "line-sort-key": ["get", "rank"] },
     paint: { "line-color": ["get", "color"], "line-opacity": 0.85,
-      "line-width": ["interpolate", ["linear"], ["zoom"], 12, 1.8, 14, 2.5, 17, 4, 20, 6] } }, before);
+      "line-width": ["interpolate", ["linear"], ["zoom"], 11, 1.5, 12, 1.8, 14, 2.5, 17, 4, 20, 6] } }, before);
   // номер — табличка цвета маршрута без каймы, всегда горизонтальная: текст вдоль петляющей горной
   // тропы MapLibre почти нигде не ставит (изгиб круче text-max-angle)
   for (const level of Object.values(TRAIL_LEVELS)) plateImage(level.color);
@@ -391,7 +395,7 @@ function addTrailLines(id, before) {
     layout: { "symbol-placement": "line", "symbol-spacing": 200, "text-max-angle": 360,
       "text-rotation-alignment": "viewport", "icon-rotation-alignment": "viewport",
       "text-field": ["get", "label"], "text-font": styleFont(), "text-max-width": 12,
-      "text-size": ["interpolate", ["linear"], ["zoom"], 12, 11, 14, 12, 17, 15, 20, 20],
+      "text-size": ["interpolate", ["linear"], ["zoom"], 11, 10, 12, 11, 14, 12, 17, 15, 20, 20],
       "icon-image": ["concat", "plate-", ["get", "color"]], "icon-text-fit": "both", "icon-text-fit-padding": [1, 3, 0, 3] },
     paint: { "text-color": "#fff" } }, firstPoiLayer());
 }
@@ -475,7 +479,8 @@ function updateTrails() {
       const state = trailCells.get(key);
       if (state === true || state === "loading" || state > Date.now()) continue;
       trailCells.set(key, "loading");
-      trailQueue = trailQueue.then(() => loadTrailCell(o.id, cx, cy));
+      const q = trailNextQueue++ % TRAIL_STREAMS;
+      trailQueues[q] = trailQueues[q].then(() => loadTrailCell(o.id, cx, cy));
     }
   }
 }
