@@ -398,6 +398,36 @@ function addTrailLines(id, before) {
       "text-size": ["interpolate", ["linear"], ["zoom"], 11, 10, 12, 11, 14, 12, 17, 15, 20, 20],
       "icon-image": ["concat", "plate-", ["get", "color"]], "icon-text-fit": "both", "icon-text-fit-padding": [1, 3, 0, 3] },
     paint: { "text-color": "#fff" } }, firstPoiLayer());
+  addTrailPoi();
+}
+
+// Значки у троп — указатели и щиты «i», навесы, места для костра и пикника, кемпинги,
+// вода. В основе карты они появляются только с зума 15–17 (по рангу), а в тайлах есть
+// уже с 14 — раньше их взять неоткуда (в тайлах мельче этих точек нет, отдельный
+// запрос к Overpass идёт 6–15 с). Поэтому свой слой с 14 (шкала ~500 м), общий для
+// пеших, вело и МТБ. Значок — из спрайта карты, у карт без такого значка — кружок
+const TRAIL_POI_ZOOM = 14;
+const TRAIL_POI_CLASSES = ["information", "shelter", "picnic_site", "campsite", "drinking_water", "attraction", "toilets"];
+const trailOverlayActive = () => OVERLAYS.some((o) => o.trails && activeOverlays.has(o.id));
+
+function addTrailPoi() {
+  if (map.getLayer("ov-trail-poi")) return;
+  if (!map.hasImage("trail-poi-dot")) {
+    const size = 20; // pixelRatio 2
+    const ctx = Object.assign(document.createElement("canvas"), { width: size, height: size }).getContext("2d");
+    ctx.beginPath();
+    ctx.arc(size / 2, size / 2, size / 2 - 2, 0, Math.PI * 2);
+    ctx.fillStyle = "#fff";
+    ctx.strokeStyle = "#5f6368";
+    ctx.lineWidth = 2.5;
+    ctx.fill();
+    ctx.stroke();
+    map.addImage("trail-poi-dot", ctx.getImageData(0, 0, size, size), { pixelRatio: 2 });
+  }
+  map.addLayer({ id: "ov-trail-poi", type: "symbol", source: "te-poi", "source-layer": "poi", minzoom: TRAIL_POI_ZOOM,
+    filter: ["in", ["get", "class"], ["literal", TRAIL_POI_CLASSES]],
+    layout: { "icon-image": ["coalesce", ["image", ["get", "class"]], ["image", "trail-poi-dot"]],
+      "icon-size": ["interpolate", ["linear"], ["zoom"], 14, 0.8, 16, 1] } }, firstPoiLayer());
 }
 
 // табличка с закруглёнными углами, растягивается под номер (icon-text-fit)
@@ -549,6 +579,7 @@ function removeOverlay(id) {
   for (const layerId of overlay.layers) if (map.getLayer(layerId)) map.removeLayer(layerId);
   if (id === "terrain3d") map.setTerrain(null);
   for (const sourceId of [`ov-${id}`, `ov-${id}-vec`]) if (map.getSource(sourceId)) map.removeSource(sourceId);
+  if (overlay.trails && !trailOverlayActive() && map.getLayer("ov-trail-poi")) map.removeLayer("ov-trail-poi");
 }
 
 // после каждой смены карты (setStyle стирает всё добавленное) — заново все включённые
