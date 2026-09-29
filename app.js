@@ -384,7 +384,7 @@ function addTrailLines(id, before) {
     layout: { "line-cap": "round", "line-join": "round", "line-sort-key": ["get", "rank"] },
     paint: { "line-color": ["get", "color"], "line-opacity": 0.85,
       "line-width": ["interpolate", ["linear"], ["zoom"], 12, 1.8, 14, 2.5, 17, 4, 20, 6] } }, before);
-  // номер — табличка цвета маршрута, всегда горизонтальная: текст вдоль петляющей горной
+  // номер — табличка цвета маршрута без каймы, всегда горизонтальная: текст вдоль петляющей горной
   // тропы MapLibre почти нигде не ставит (изгиб круче text-max-angle)
   for (const level of Object.values(TRAIL_LEVELS)) plateImage(level.color);
   map.addLayer({ id: `ov-${id}-label`, type: "symbol", source: `ov-${id}-vec`, minzoom: TRAILS_VECTOR_ZOOM,
@@ -397,19 +397,16 @@ function addTrailLines(id, before) {
     paint: { "text-color": "#fff" } }, firstPoiLayer());
 }
 
-// табличка с закруглёнными углами и белой каймой, растягивается под номер (icon-text-fit)
+// табличка с закруглёнными углами, растягивается под номер (icon-text-fit)
 function plateImage(color) {
   const id = `plate-${color}`;
   if (map.hasImage(id)) return;
   const size = 24; // pixelRatio 2
   const ctx = Object.assign(document.createElement("canvas"), { width: size, height: size }).getContext("2d");
   ctx.beginPath();
-  ctx.roundRect(1.5, 1.5, size - 3, size - 3, 6);
+  ctx.roundRect(0, 0, size, size, 6);
   ctx.fillStyle = color;
-  ctx.strokeStyle = "#fff";
-  ctx.lineWidth = 3;
   ctx.fill();
-  ctx.stroke();
   map.addImage(id, ctx.getImageData(0, 0, size, size),
     { pixelRatio: 2, stretchX: [[8, 16]], stretchY: [[8, 16]], content: [6, 5, 18, 19] });
 }
@@ -624,10 +621,10 @@ const POI_MIN_ZOOM = 12;
 const POI_FULL_ZOOM = 14;
 
 // Аэропорты — в отдельном слое тайлов (aerodrome_label), их мало, и они видны раньше
-// остальных мест: как только шкала масштаба показывает 3 км и меньше (шкала берёт
-// круглое число не длиннее 100 px, "3 км" — пока в 100 px меньше 5 км). Пороговый зум
+// остальных мест: как только шкала масштаба показывает 5 км и меньше (шкала берёт
+// круглое число не длиннее 100 px, "5 км" — пока в 100 px меньше 10 км). Пороговый зум
 // зависит от широты, поэтому пересчитывается после каждого движения
-const AIRPORT_MAX_METERS_PER_100PX = 5000;
+const AIRPORT_MAX_METERS_PER_100PX = 10000;
 const AIRPORT_CLASSES = ["international", "public", "regional"];
 
 // остановки автобусов и трамваев — только когда шкала показывает 100 м и меньше,
