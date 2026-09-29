@@ -319,8 +319,9 @@ demSource?.setupMaplibre(maplibregl);
 // Картинки троп на мелком масштабе — сплошные толстые размытые линии по всей стране,
 // поэтому тропы видны только с TRAILS_MIN_ZOOM (шкала около 10 км)
 const TRAILS_MIN_ZOOM = 9;
-// с этого зума (шкала около 500 м) вместо картинок — свои линии троп с номерами
-const TRAILS_VECTOR_ZOOM = 14;
+// с этого зума (шкала около 1 км) вместо картинок — свои линии троп с номерами: на
+// ужатых вдвое картинках таблички с номерами уже нечитаемы — пустые квадратики
+const TRAILS_VECTOR_ZOOM = 12;
 
 const OVERLAYS = [
   { id: "hillshade", name: "Рельеф", icon: "⛰️", hint: "Тени склонов — горы становятся объёмными", layers: ["ov-hillshade"] },
@@ -356,8 +357,9 @@ const darkBasemap = () => currentBasemap.id === "satellite" || currentBasemap.id
 // квадратами по TRAIL_CELL градусов, каждый квадрат — один раз, по очереди, начиная с
 // ближайших к центру
 const TRAIL_CELL = 0.1;
-const TRAIL_MAX_CELLS = 6;
+const TRAIL_MAX_CELLS = 16;
 const TRAIL_RETRY_MS = 30000;
+const TRAIL_NAME_MAX = 16;
 const OVERPASS_URLS = ["https://overpass-api.de/api/interpreter", "https://maps.mail.ru/osm/tools/overpass/api/interpreter"];
 const TRAIL_ROUTES = { hiking: "hiking|foot|walking", cycling: "bicycle", mtb: "mtb" };
 // цвет по значимости маршрута (первая буква тега network: iwn, ncn, rmn…) — как у
@@ -378,24 +380,66 @@ const firstPoiLayer = () => map.getStyle().layers.find((l) => POI_LAYERS.include
 function addTrailLines(id, before) {
   map.addSource(`ov-${id}-vec`, { type: "geojson", data: trailData(id) });
   map.addLayer({ id: `ov-${id}-line`, type: "line", source: `ov-${id}-vec`, minzoom: TRAILS_VECTOR_ZOOM,
+    filter: ["!", ["has", "label"]],
     layout: { "line-cap": "round", "line-join": "round", "line-sort-key": ["get", "rank"] },
     paint: { "line-color": ["get", "color"], "line-opacity": 0.85,
-      "line-width": ["interpolate", ["linear"], ["zoom"], 14, 2.5, 17, 4, 20, 6] } }, before);
+      "line-width": ["interpolate", ["linear"], ["zoom"], 12, 1.8, 14, 2.5, 17, 4, 20, 6] } }, before);
+  // номер — табличка цвета маршрута, всегда горизонтальная: текст вдоль петляющей горной
+  // тропы MapLibre почти нигде не ставит (изгиб круче text-max-angle)
+  for (const level of Object.values(TRAIL_LEVELS)) plateImage(level.color);
   map.addLayer({ id: `ov-${id}-label`, type: "symbol", source: `ov-${id}-vec`, minzoom: TRAILS_VECTOR_ZOOM,
     filter: ["has", "label"],
-    layout: { "symbol-placement": "line", "symbol-spacing": 300, "text-field": ["get", "label"], "text-font": styleFont(),
-      "text-size": ["interpolate", ["linear"], ["zoom"], 14, 12, 17, 15, 20, 22] },
-    paint: { "text-color": "#fff", "text-halo-color": ["get", "color"], "text-halo-width": 2.5 } }, firstPoiLayer());
+    layout: { "symbol-placement": "line", "symbol-spacing": 200, "text-max-angle": 360,
+      "text-rotation-alignment": "viewport", "icon-rotation-alignment": "viewport",
+      "text-field": ["get", "label"], "text-font": styleFont(), "text-max-width": 12,
+      "text-size": ["interpolate", ["linear"], ["zoom"], 12, 11, 14, 12, 17, 15, 20, 20],
+      "icon-image": ["concat", "plate-", ["get", "color"]], "icon-text-fit": "both", "icon-text-fit-padding": [1, 3, 0, 3] },
+    paint: { "text-color": "#fff" } }, firstPoiLayer());
 }
 
+// табличка с закруглёнными углами и белой каймой, растягивается под номер (icon-text-fit)
+function plateImage(color) {
+  const id = `plate-${color}`;
+  if (map.hasImage(id)) return;
+  const size = 24; // pixelRatio 2
+  const ctx = Object.assign(document.createElement("canvas"), { width: size, height: size }).getContext("2d");
+  ctx.beginPath();
+  ctx.roundRect(1.5, 1.5, size - 3, size - 3, 6);
+  ctx.fillStyle = color;
+  ctx.strokeStyle = "#fff";
+  ctx.lineWidth = 3;
+  ctx.fill();
+  ctx.stroke();
+  map.addImage(id, ctx.getImageData(0, 0, size, size),
+    { pixelRatio: 2, stretchX: [[8, 16]], stretchY: [[8, 16]], content: [6, 5, 18, 19] });
+}
+
+// Overpass часто отвечает 429 (занят) — тогда квадрат оставался пустым на TRAIL_RETRY_MS.
+// Поэтому прежде чем сдаться, обходим серверы ещё дважды с паузой
 async function overpass(query) {
-  for (const url of OVERPASS_URLS) {
-    try {
-      const res = await fetch(url, { method: "POST", body: new URLSearchParams({ data: query }) });
-      if (res.ok) return await res.json();
-    } catch { /* следующий сервер */ }
+  for (let round = 0; round < 3; round++) {
+    if (round) await new Promise((r) => setTimeout(r, 3000 * round));
+    for (const url of OVERPASS_URLS) {
+      try {
+        // без тайм-аута зависший сервер навсегда оставлял квадрат в «loading»
+        const res = await fetch(url, { method: "POST", body: new URLSearchParams({ data: query }), signal: AbortSignal.timeout(30000) });
+        if (res.ok) return await res.json();
+      } catch { /* следующий сервер */ }
+    }
   }
   throw new Error("Overpass недоступен");
+}
+
+// участки маршрута идут в relation по порядку, но могут быть развёрнуты — пристыковываем
+// участок к концу предыдущего куска, если у них общая точка, иначе начинаем новый кусок
+function joinPiece(pieces, coordinates) {
+  const last = pieces.at(-1);
+  const same = (a, b) => a[0] === b[0] && a[1] === b[1];
+  if (last && same(last.at(-1), coordinates[0])) last.push(...coordinates.slice(1));
+  else if (last && same(last.at(-1), coordinates.at(-1))) last.push(...coordinates.slice(0, -1).reverse());
+  else if (last && same(last[0], coordinates.at(-1))) last.unshift(...coordinates.slice(0, -1));
+  else if (last && same(last[0], coordinates[0])) last.unshift(...coordinates.slice(1).reverse());
+  else pieces.push([...coordinates]);
 }
 
 async function loadTrailCell(id, cx, cy) {
@@ -410,13 +454,22 @@ async function loadTrailCell(id, cx, cy) {
     for (const rel of data.elements.filter((e) => e.type === "relation")) {
       const tags = rel.tags || {};
       const level = TRAIL_LEVELS[(tags.network || "")[0]] || TRAIL_LEVELS.l;
-      const label = tags.ref || tags.name;
+      // название — только короткое: длинное («Camí de Sant Jaume (…)») на табличку не влезает
+      const label = tags.ref || (tags.name?.length <= TRAIL_NAME_MAX && tags.name);
+      const properties = { color: level.color, rank: level.rank };
+      // линия — по отдельным участкам (общие у соседних квадратов не рисуются дважды), а
+      // номер — по участкам, сшитым в длинные куски: на коротком участке он не помещается
+      // и MapLibre его пропускает
+      const pieces = [];
       for (const m of rel.members) {
         const coordinates = m.type === "way" && ways.get(m.ref);
-        if (coordinates) trailFeatures[id].set(`${rel.id}:${m.ref}`, { type: "Feature",
-          geometry: { type: "LineString", coordinates },
-          properties: { color: level.color, rank: level.rank, ...(label && { label }) } });
+        if (!coordinates) continue;
+        trailFeatures[id].set(`${rel.id}:${m.ref}`, { type: "Feature",
+          geometry: { type: "LineString", coordinates }, properties });
+        if (label) joinPiece(pieces, coordinates);
       }
+      pieces.forEach((coordinates, i) => trailFeatures[id].set(`${rel.id}:${key}:${i}`, { type: "Feature",
+        geometry: { type: "LineString", coordinates }, properties: { ...properties, label } }));
     }
     trailCells.set(key, true);
     trailDirty.add(id);
