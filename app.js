@@ -402,13 +402,25 @@ function addTrailLines(id, before) {
 }
 
 // Значки у троп — указатели и щиты «i», навесы, места для костра и пикника, кемпинги,
-// вода. В основе карты они появляются только с зума 15–17 (по рангу), а в тайлах есть
-// уже с 14 — раньше их взять неоткуда (в тайлах мельче этих точек нет, отдельный
-// запрос к Overpass идёт 6–15 с). Поэтому свой слой с 14 (шкала ~500 м), общий для
-// пеших, вело и МТБ. Значок — из спрайта карты, у карт без такого значка — кружок
+// вода. В основе карты они появляются только с зума 15–17 (по рангу), в тайлах есть с 14 —
+// оттуда свой слой, общий для пеших, вело и МТБ. Мельче 14 в тайлах этих точек нет,
+// поэтому с зума табличек (TRAILS_VECTOR_ZOOM) они подгружаются из Overpass по тем же
+// квадратам, что и тропы, одной очередью после троп. Overpass отвечает 1–15 с и часто
+// ошибкой — тогда значки просто появятся позже или только с 14 (Грегори: «если не
+// успеют, то и не очень надо»), без сообщений. Туалеты и достопримечательности — только
+// из тайлов: в городах их слишком много. Значок — из спрайта карты, иначе кружок
 const TRAIL_POI_ZOOM = 14;
 const TRAIL_POI_CLASSES = ["information", "shelter", "picnic_site", "campsite", "drinking_water", "attraction", "toilets"];
+const TRAIL_POI_RETRY_MS = 60000;
+const OVERPASS_URLS = ["https://overpass-api.de/api/interpreter", "https://maps.mail.ru/osm/tools/overpass/api/interpreter"];
+// тег OSM → class в тайлах (по нему и значок)
+const TRAIL_POI_TAGS = { tourism: { information: "information", picnic_site: "picnic_site", camp_site: "campsite" },
+  amenity: { shelter: "shelter", drinking_water: "drinking_water" } };
+const trailPoiCells = new Map(); // "247:594" → true | "loading" | когда можно повторить
+const trailPoiFeatures = new Map(); // "node/123" → feature
+let trailPoiQueue = Promise.resolve();
 const trailOverlayActive = () => OVERLAYS.some((o) => o.trails && activeOverlays.has(o.id));
+const trailPoiData = () => ({ type: "FeatureCollection", features: [...trailPoiFeatures.values()] });
 
 function addTrailPoi() {
   if (map.getLayer("ov-trail-poi")) return;
@@ -424,10 +436,39 @@ function addTrailPoi() {
     ctx.stroke();
     map.addImage("trail-poi-dot", ctx.getImageData(0, 0, size, size), { pixelRatio: 2 });
   }
+  const icon = ["coalesce", ["image", ["get", "class"]], ["image", "trail-poi-dot"]];
   map.addLayer({ id: "ov-trail-poi", type: "symbol", source: "te-poi", "source-layer": "poi", minzoom: TRAIL_POI_ZOOM,
     filter: ["in", ["get", "class"], ["literal", TRAIL_POI_CLASSES]],
-    layout: { "icon-image": ["coalesce", ["image", ["get", "class"]], ["image", "trail-poi-dot"]],
-      "icon-size": ["interpolate", ["linear"], ["zoom"], 14, 0.8, 16, 1] } }, firstPoiLayer());
+    layout: { "icon-image": icon, "icon-size": ["interpolate", ["linear"], ["zoom"], 14, 0.8, 16, 1] } }, firstPoiLayer());
+  map.addSource("ov-trail-poi-far", { type: "geojson", data: trailPoiData() });
+  map.addLayer({ id: "ov-trail-poi-far", type: "symbol", source: "ov-trail-poi-far",
+    minzoom: TRAILS_VECTOR_ZOOM, maxzoom: TRAIL_POI_ZOOM,
+    layout: { "icon-image": icon, "icon-size": ["interpolate", ["linear"], ["zoom"], 11, 0.6, 14, 0.8] } }, firstPoiLayer());
+}
+
+async function loadTrailPoiCell(cx, cy) {
+  const key = `${cx}:${cy}`;
+  const bbox = [cy, cx, cy + 1, cx + 1].map((v) => (v * TRAIL_CELL).toFixed(2)).join(",");
+  const query = `[out:json][timeout:20];(nwr[tourism~"^(${Object.keys(TRAIL_POI_TAGS.tourism).join("|")})$"](${bbox});` +
+    `nwr[amenity~"^(${Object.keys(TRAIL_POI_TAGS.amenity).join("|")})$"](${bbox}););out center;`;
+  for (const url of OVERPASS_URLS) {
+    try {
+      const res = await fetch(url, { method: "POST", body: new URLSearchParams({ data: query }), signal: AbortSignal.timeout(25000) });
+      if (!res.ok) continue;
+      for (const e of (await res.json()).elements) {
+        const cls = TRAIL_POI_TAGS.tourism[e.tags?.tourism] || TRAIL_POI_TAGS.amenity[e.tags?.amenity];
+        const lon = e.lon ?? e.center?.lon, lat = e.lat ?? e.center?.lat;
+        if (cls && lon != null) trailPoiFeatures.set(`${e.type}/${e.id}`, { type: "Feature",
+          geometry: { type: "Point", coordinates: [lon, lat] }, properties: { class: cls } });
+      }
+      trailPoiCells.set(key, true);
+      map.getSource("ov-trail-poi-far")?.setData(trailPoiData());
+      return;
+    } catch { /* следующий сервер */ }
+  }
+  trailPoiCells.set(key, Date.now() + TRAIL_POI_RETRY_MS);
+  // повтор — сам: если стоять на месте, значки всё-таки появятся
+  setTimeout(updateTrails, TRAIL_POI_RETRY_MS + 100);
 }
 
 // табличка с закруглёнными углами, растягивается под номер (icon-text-fit)
@@ -513,6 +554,16 @@ function updateTrails() {
       trailQueues[q] = trailQueues[q].then(() => loadTrailCell(o.id, cx, cy));
     }
   }
+  // значки у троп — после самих троп; вблизи (с TRAIL_POI_ZOOM) они уже есть в тайлах
+  if (!trailOverlayActive() || map.getZoom() >= TRAIL_POI_ZOOM) return;
+  const after = Promise.all(trailQueues);
+  for (const [cx, cy] of cells.slice(0, TRAIL_MAX_CELLS)) {
+    const key = `${cx}:${cy}`;
+    const state = trailPoiCells.get(key);
+    if (state === true || state === "loading" || state > Date.now()) continue;
+    trailPoiCells.set(key, "loading");
+    trailPoiQueue = Promise.all([trailPoiQueue, after]).then(() => loadTrailPoiCell(cx, cy));
+  }
 }
 map.on("idle", updateTrails);
 
@@ -579,7 +630,10 @@ function removeOverlay(id) {
   for (const layerId of overlay.layers) if (map.getLayer(layerId)) map.removeLayer(layerId);
   if (id === "terrain3d") map.setTerrain(null);
   for (const sourceId of [`ov-${id}`, `ov-${id}-vec`]) if (map.getSource(sourceId)) map.removeSource(sourceId);
-  if (overlay.trails && !trailOverlayActive() && map.getLayer("ov-trail-poi")) map.removeLayer("ov-trail-poi");
+  if (overlay.trails && !trailOverlayActive()) {
+    for (const layerId of ["ov-trail-poi", "ov-trail-poi-far"]) if (map.getLayer(layerId)) map.removeLayer(layerId);
+    if (map.getSource("ov-trail-poi-far")) map.removeSource("ov-trail-poi-far");
+  }
 }
 
 // после каждой смены карты (setStyle стирает всё добавленное) — заново все включённые
