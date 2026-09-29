@@ -410,10 +410,10 @@ function addTrailLines(id, before) {
 // успеют, то и не очень надо»), без сообщений. Туалеты и достопримечательности — только
 // из тайлов: в городах их слишком много. Смотровых вышек и кострищ в тайлах нет — они
 // только из Overpass, зато на любом зуме. Метки краской на деревьях (route_marker) не
-// показываем: их десятки на каждой тропе.
-// Значки свои, в одном стиле: кружок цвета группы с белым символом (viewBox 24×24)
+// показываем: их десятки на каждой тропе. Навесы тоже: почти все — остановки автобуса.
+// Значки свои, в одном стиле: символ цвета группы в белой обводке, без кружка (viewBox 24×24)
 const TRAIL_POI_ZOOM = 14;
-const TRAIL_POI_CLASSES = ["information", "shelter", "picnic_site", "campsite", "drinking_water", "attraction", "toilets"];
+const TRAIL_POI_CLASSES = ["information", "picnic_site", "campsite", "drinking_water", "attraction", "toilets"];
 const TRAIL_POI_RETRY_MS = 60000;
 const OVERPASS_URLS = ["https://overpass-api.de/api/interpreter", "https://maps.mail.ru/osm/tools/overpass/api/interpreter"];
 const TRAIL_POI_ICONS = {
@@ -431,7 +431,6 @@ const TRAIL_POI_ICONS = {
   attraction: { color: "#2e7d32", path: "M12 2l2.9 6.6 7.1.6-5.4 4.7 1.6 7L12 17.3 5.8 20.9l1.6-7L2 9.2l7.1-.6z" },
   // стоянки — коричневые
   campsite: { color: "#8d5a2b", path: "M12 3L1.5 21H9l3-6 3 6h7.5z" },
-  shelter: { color: "#8d5a2b", path: "M12 3L1 11.5h3.5V21h2.2v-9.5h10.6V21h2.2v-9.5H23z" },
   picnic_site: { color: "#8d5a2b", path: "M3 6h18v2.6H3z M6.3 8.6h2.4L6.4 20H4z M15.3 8.6h2.4L20 20h-2.4z M2 13h20v2.2H2z" },
   firepit: { color: "#8d5a2b", path: "M12 2c1 4 6.5 6 6.5 12.5a6.5 6.5 0 0 1-13 0c0-3.2 1.8-5.3 3-6.5 0 2.2 1 3.5 2.3 3.5C10.5 8 10 5 12 2z" },
   // вода и туалет — голубые
@@ -447,6 +446,7 @@ const TRAIL_POI_KIND = ["match", ["get", "class"],
 const TRAIL_POI_OVERPASS_ONLY = ["tower", "firepit"];
 const trailPoiCells = new Map(); // "247:594" → true | "loading" | когда можно повторить
 const trailPoiFeatures = new Map(); // "node/123" → feature
+const trailPoiTags = new Map(); // "node/123" или id тайла → теги OSM, для подсказки
 let trailPoiQueue = Promise.resolve();
 const trailOverlayActive = () => OVERLAYS.some((o) => o.trails && activeOverlays.has(o.id));
 const trailPoiData = () => ({ type: "FeatureCollection", features: [...trailPoiFeatures.values()] });
@@ -455,14 +455,14 @@ function addTrailPoi() {
   if (map.getLayer("ov-trail-poi")) return;
   for (const kind of Object.keys(TRAIL_POI_ICONS)) trailPoiImage(kind);
   const icon = ["concat", "trail-poi-", ["get", "kind"]];
-  const nearSize = ["interpolate", ["linear"], ["zoom"], 14, 0.8, 16, 1];
+  const nearSize = ["interpolate", ["linear"], ["zoom"], 14, 1, 16, 1.2];
   map.addLayer({ id: "ov-trail-poi", type: "symbol", source: "te-poi", "source-layer": "poi", minzoom: TRAIL_POI_ZOOM,
     filter: ["all", ["in", ["get", "class"], ["literal", TRAIL_POI_CLASSES]], ["!=", ["get", "subclass"], "route_marker"]],
     layout: { "icon-image": ["concat", "trail-poi-", TRAIL_POI_KIND], "icon-size": nearSize } }, firstPoiLayer());
   map.addSource("ov-trail-poi-far", { type: "geojson", data: trailPoiData() });
   map.addLayer({ id: "ov-trail-poi-far", type: "symbol", source: "ov-trail-poi-far",
     minzoom: TRAILS_VECTOR_ZOOM, maxzoom: TRAIL_POI_ZOOM,
-    layout: { "icon-image": icon, "icon-size": ["interpolate", ["linear"], ["zoom"], 11, 0.6, 14, 0.8] } }, firstPoiLayer());
+    layout: { "icon-image": icon, "icon-size": ["interpolate", ["linear"], ["zoom"], 11, 0.8, 14, 1] } }, firstPoiLayer());
   map.addLayer({ id: "ov-trail-poi-extra", type: "symbol", source: "ov-trail-poi-far", minzoom: TRAIL_POI_ZOOM,
     filter: ["in", ["get", "kind"], ["literal", TRAIL_POI_OVERPASS_ONLY]],
     layout: { "icon-image": icon, "icon-size": nearSize } }, firstPoiLayer());
@@ -471,25 +471,26 @@ function addTrailPoi() {
 function trailPoiImage(kind) {
   if (map.hasImage(`trail-poi-${kind}`)) return;
   const { color, path, text, evenodd } = TRAIL_POI_ICONS[kind];
-  const size = 44; // pixelRatio 2
+  const size = 56; // pixelRatio 2: символ 24 px и обводка
   const ctx = Object.assign(document.createElement("canvas"), { width: size, height: size }).getContext("2d");
-  ctx.beginPath();
-  ctx.arc(22, 22, 19.5, 0, Math.PI * 2);
   ctx.fillStyle = color;
   ctx.strokeStyle = "#fff";
-  ctx.lineWidth = 3;
-  ctx.fill();
-  ctx.stroke();
-  ctx.fillStyle = "#fff";
+  ctx.lineJoin = "round";
   if (text) {
-    ctx.font = "bold 15px Arial, sans-serif";
+    ctx.font = "bold 26px Arial, sans-serif";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillText(text, 22, 23);
+    ctx.lineWidth = 5;
+    ctx.strokeText(text, 28, 29);
+    ctx.fillText(text, 28, 29);
   } else {
-    // символ 24×24 → 24 px в центре кружка
-    ctx.translate(10, 10);
-    ctx.fill(new Path2D(path), evenodd ? "evenodd" : "nonzero");
+    // символ 24×24 → 48 px в двойном размере
+    ctx.translate(4, 4);
+    ctx.scale(2, 2);
+    ctx.lineWidth = 2.5;
+    const shape = new Path2D(path);
+    ctx.stroke(shape);
+    ctx.fill(shape, evenodd ? "evenodd" : "nonzero");
   }
   map.addImage(`trail-poi-${kind}`, ctx.getImageData(0, 0, size, size), { pixelRatio: 2 });
 }
@@ -502,7 +503,7 @@ function trailPoiKind(t) {
   }
   if (t.man_made === "tower") return "tower";
   return { viewpoint: "viewpoint", picnic_site: "picnic_site", camp_site: "campsite" }[t.tourism] ||
-    { shelter: "shelter", drinking_water: "drinking_water" }[t.amenity] ||
+    (t.amenity === "drinking_water" ? "drinking_water" : null) ||
     (t.leisure === "firepit" ? "firepit" : null);
 }
 
@@ -510,7 +511,7 @@ async function loadTrailPoiCell(cx, cy) {
   const key = `${cx}:${cy}`;
   const bbox = [cy, cx, cy + 1, cx + 1].map((v) => (v * TRAIL_CELL).toFixed(2)).join(",");
   const query = `[out:json][timeout:20];(nwr[tourism~"^(information|viewpoint|picnic_site|camp_site)$"](${bbox});` +
-    `nwr[amenity~"^(shelter|drinking_water)$"](${bbox});nwr[man_made=tower]["tower:type"=observation](${bbox});` +
+    `nwr[amenity=drinking_water](${bbox});nwr[man_made=tower]["tower:type"=observation](${bbox});` +
     `nwr[leisure=firepit](${bbox}););out center;`;
   for (const url of OVERPASS_URLS) {
     try {
@@ -520,7 +521,8 @@ async function loadTrailPoiCell(cx, cy) {
         const kind = trailPoiKind(e.tags || {});
         const lon = e.lon ?? e.center?.lon, lat = e.lat ?? e.center?.lat;
         if (kind && lon != null) trailPoiFeatures.set(`${e.type}/${e.id}`, { type: "Feature",
-          geometry: { type: "Point", coordinates: [lon, lat] }, properties: { kind } });
+          geometry: { type: "Point", coordinates: [lon, lat] }, properties: { kind, osm: `${e.type}/${e.id}` } });
+        if (kind) trailPoiTags.set(`${e.type}/${e.id}`, e.tags);
       }
       trailPoiCells.set(key, true);
       map.getSource("ov-trail-poi-far")?.setData(trailPoiData());
@@ -1278,6 +1280,67 @@ map.on("idle", () => {
   if (!pins.some((pin) => pin.id === id)) poiPopup.remove();
 });
 
+// ---------- подсказка у значков троп ----------
+
+// При наведении (на телефоне — по касанию): вид точки, название, высота, описание,
+// направления указателя. Теги точек из Overpass уже есть, у точек из тайлов — из OSM API
+// (как у флажков мест), не дольше 1 с, чтобы подсказка не запаздывала
+const TRAIL_POI_LAYERS = ["ov-trail-poi", "ov-trail-poi-far", "ov-trail-poi-extra"];
+const TRAIL_POI_KIND_NAMES = {
+  info: "Информация", guidepost: "Указатель", board: "Информационный щит", map: "Карта местности",
+  viewpoint: "Смотровая площадка", tower: "Смотровая вышка", attraction: "Достопримечательность",
+  campsite: "Кемпинг", picnic_site: "Место для пикника", firepit: "Кострище",
+  drinking_water: "Питьевая вода", toilets: "Туалет",
+};
+let trailPoiPopup = null;
+let trailPoiHover = null;
+
+async function showTrailPoiInfo(f) {
+  const layer = f.layer.id;
+  const key = layer === "ov-trail-poi" ? f.id : f.properties.osm;
+  if (trailPoiHover === key && trailPoiPopup?.isOpen()) return;
+  trailPoiHover = key;
+  let tags = trailPoiTags.get(key);
+  if (!tags && layer === "ov-trail-poi") {
+    tags = await withTimeout(loadPoiTags(f.id).catch(() => null), 1000, null);
+    if (tags) trailPoiTags.set(key, tags);
+  }
+  // пока ждали ответа, курсор ушёл
+  if (trailPoiHover !== key) return;
+  tags ||= {};
+  const p = f.properties;
+  const kind = [TRAIL_POI_KIND_NAMES[p.kind || trailPoiKindOf(p)],
+    tags.ele && `${Math.round(tags.ele).toLocaleString("ru")} м`].filter(Boolean).join(" · ");
+  const name = tags[`name:${uiLanguageCode()}`] || tags.name || p[`name:${uiLanguageCode()}`] || p.name;
+  const rows = [tags.description, tags.inscription, tags.destination && `→ ${tags.destination.replace(/;/g, ", ")}`]
+    .filter(Boolean).map((t) => `<div class="popup-row">${escapeHtml(t)}</div>`).join("");
+  trailPoiPopup?.remove();
+  trailPoiPopup = new maplibregl.Popup({ offset: 14, maxWidth: "260px", closeButton: false })
+    .setLngLat(f.geometry.coordinates)
+    .setHTML(`<div class="popup-title">${escapeHtml(name || kind)}</div>`
+      + (name && kind ? `<div class="popup-kind">${escapeHtml(kind)}</div>` : "")
+      + (rows || tags.opening_hours || tags.website ? `<div class="popup-details">${rows}${poiDetailsHtml(tags)}</div>` : ""))
+    .addTo(map);
+}
+
+// вид точки из тайла — то же, что TRAIL_POI_KIND, для подсказки
+function trailPoiKindOf(p) {
+  if (p.class === "information") return ["guidepost", "board", "map"].includes(p.subclass) ? p.subclass : "info";
+  if (p.class === "attraction") return p.subclass === "viewpoint" ? "viewpoint" : "attraction";
+  return p.class;
+}
+
+map.on("mousemove", TRAIL_POI_LAYERS, (evt) => {
+  map.getCanvas().style.cursor = "pointer";
+  showTrailPoiInfo(evt.features[0]);
+});
+map.on("mouseleave", TRAIL_POI_LAYERS, () => {
+  map.getCanvas().style.cursor = "";
+  trailPoiHover = null;
+  trailPoiPopup?.remove();
+});
+map.on("click", TRAIL_POI_LAYERS, (evt) => showTrailPoiInfo(evt.features[0]));
+
 // ---------- подсказка по щелчку на карте ----------
 
 // Щелчок по значку самой карты (достопримечательность, парк, вершина, город, озеро…) —
@@ -1379,7 +1442,7 @@ map.on("click", async (evt) => {
   if (evt.originalEvent.target !== map.getCanvas()) return;
   // щелчок мимо глобуса, по звёздам, — не на Земле, координат у него нет
   if (map.transform.isPointOnMapSurface?.(evt.point) === false) return;
-  if (map.queryRenderedFeatures(evt.point, { layers: POI_LAYERS.filter((id) => map.getLayer(id)) }).length) return;
+  if (map.queryRenderedFeatures(evt.point, { layers: [...POI_LAYERS, ...TRAIL_POI_LAYERS].filter((id) => map.getLayer(id)) }).length) return;
   // первый щелчок только закрывает открытое: попап, список поиска, меню
   if (poiPopup?.isOpen() || mapPopup?.isOpen() || searchMarker?.getPopup()?.isOpen()
     || !el("search-results").hidden || !el("lang-menu").hidden || !el("shop-menu").hidden) return;
