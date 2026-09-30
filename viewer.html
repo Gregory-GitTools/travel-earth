@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Снимки улиц — Travel Earth</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/mapillary-js@4.1.2/dist/mapillary.css">
+<link rel="icon" href="icons/icon-32.png" sizes="32x32">
+<meta name="theme-color" content="#111">
+<style>
+  html, body { height: 100%; margin: 0; }
+  body {
+    display: grid;
+    grid-template-rows: auto 1fr;
+    background: #111;
+    color: #eee;
+    font-family: "Poppins", system-ui, "Segoe UI", sans-serif;
+  }
+  /* как в галерее: что за снимок, автор · дата · лицензия (CC BY-SA требует указывать) */
+  .bar { display: flex; align-items: baseline; gap: 16px; padding: 10px 16px; }
+  .title { font-weight: 600; font-size: 0.95rem; }
+  .meta { font-size: 0.78rem; color: #aaa; }
+  .meta a { color: #8ab4f8; }
+  #viewer { position: relative; min-height: 0; }
+</style>
+</head>
+<body>
+<div class="bar"><div class="title">Снимок улицы</div><div class="meta"></div></div>
+<div id="viewer"></div>
+<script src="https://unpkg.com/mapillary-js@4.1.2/dist/mapillary.js"></script>
+<script>
+// Просмотр Mapillary: открывается двойным щелчком по снимку на карте (app.js,
+// openMapillaryViewer). Стрелки и щелчки по снимку — переход к соседним снимкам, в панорамах
+// можно крутить взгляд. Главному окну шлётся, где камера и куда смотрит (там — точка со
+// взглядом, карта подвигается за камерой). Ключ — тот же открытый Client Token, что в app.js
+const MAPILLARY_TOKEN = "MLY|27764742799866922|5ce2165cbf2f1597e411962b204bf708";
+const id = new URLSearchParams(location.search).get("id");
+const viewer = new mapillary.Viewer({ accessToken: MAPILLARY_TOKEN, container: "viewer", imageId: id,
+  component: { cover: false } });
+addEventListener("resize", () => viewer.resize());
+
+const tellMap = (msg) => { try { window.opener?.postMessage({ mapillary: msg }, location.origin); } catch { /* окно карты закрыто */ } };
+let pos = null;
+
+viewer.on("image", async ({ image }) => {
+  pos = image.lngLat;
+  document.querySelector(".title").textContent = image.cameraType === "spherical" ? "Панорама 360°" : "Снимок улицы";
+  const meta = document.querySelector(".meta");
+  meta.textContent = [image.creatorUsername, image.capturedAt && new Date(image.capturedAt).toLocaleDateString("ru"), "CC BY-SA 4.0"]
+    .filter(Boolean).join(" · ") + " · ";
+  meta.append(Object.assign(document.createElement("a"), { target: "_blank", rel: "noopener", textContent: "Mapillary",
+    href: `https://www.mapillary.com/app/?pKey=${image.id}&focus=photo` }));
+  tellMap({ lng: pos.lng, lat: pos.lat, bearing: await viewer.getBearing(), moved: true });
+});
+viewer.on("bearing", ({ bearing }) => { if (pos) tellMap({ lng: pos.lng, lat: pos.lat, bearing }); });
+addEventListener("pagehide", () => tellMap({ closed: true }));
+</script>
+</body>
+</html>

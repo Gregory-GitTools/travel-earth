@@ -335,6 +335,7 @@ const CHIP_ICONS = {
   hiking: chipSvg('<g transform="rotate(-12 7 15)"><ellipse cx="7" cy="16.5" rx="2.4" ry="4"/><circle cx="5.2" cy="10.9" r="1.05"/><circle cx="7.1" cy="10.4" r=".8"/><circle cx="8.6" cy="10.9" r=".7"/><circle cx="9.6" cy="11.9" r=".6"/></g><g transform="rotate(12 17 8)"><ellipse cx="17" cy="9.5" rx="2.4" ry="4"/><circle cx="18.8" cy="3.9" r="1.05"/><circle cx="16.9" cy="3.4" r=".8"/><circle cx="15.4" cy="3.9" r=".7"/><circle cx="14.4" cy="4.9" r=".6"/></g>'), // босые следы
   cycling: chipSvg(`<path d="${BIKE_PATH}"/>`),
   mtb: chipSvg(`<path d="M9 1.5l3.5 5h-7z"/><path d="M13.5 3.5l2.8 3h-4.2z" opacity=".75"/><path transform="translate(0 4) scale(1 .85)" d="${BIKE_PATH}"/>`), // велосипед под вершинами
+  streets: chipSvg('<path d="M12.56 14.33c-.34.27-.56.7-.56 1.17V21h7c1.1 0 2-.9 2-2v-5.98c-.94-.33-1.95-.52-3-.52-2.03 0-3.93.7-5.44 1.83z"/><circle cx="18" cy="6" r="5"/><path d="M11.5 6c0-1.08.27-2.1.74-3H5c-1.1 0-2 .9-2 2v14c0 .55.23 1.05.59 1.41l9.82-9.82C12.23 9.42 11.5 7.8 11.5 6z"/>'), // человечек у дороги, как у панорам улиц
   photos: chipSvg('<path d="M12 15.2a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4z"/><path d="M9 2 7.17 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2h-3.17L15 2H9zm3 15c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5z"/>'), // фотоаппарат
   railways: chipSvg('<path d="M12 2c-4 0-8 .5-8 4v9.5C4 17.43 5.57 19 7.5 19L6 20.5v.5h2.23l2-2H14l2 2h2v-.5L16.5 19c1.93 0 3.5-1.57 3.5-3.5V6c0-3.5-3.58-4-8-4zM7.5 17c-.83 0-1.5-.67-1.5-1.5S6.67 14 7.5 14s1.5.67 1.5 1.5S8.33 17 7.5 17zm3.5-7H6V6h5v4zm2 0V6h5v4h-5zm3.5 7c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5z"/>'), // поезд, как у флажков станций
 };
@@ -356,6 +357,9 @@ const OVERLAYS = [
   { id: "photos", name: "Фото", icon: CHIP_ICONS.photos,
     hint: "Общедоступные фотографии мест из Wikimedia Commons — точками с масштаба 3 км, снимками с 1 км и лентой внизу",
     layers: ["ov-photo-selected", "ov-photos", "ov-photo-dots"] },
+  { id: "mapillary", name: "Снимки улиц", icon: CHIP_ICONS.streets,
+    hint: "Снимки и панорамы улиц и дорог из Mapillary — линии со шкалы 1 км, точки снимков со 100 м; двойной щелчок — просмотр",
+    layers: ["ov-mly-pos", "ov-mly-images", "ov-mly-lines"] },
   { id: "railways", name: "Железные дороги", icon: CHIP_ICONS.railways, hint: "Поезда, метро, трамваи и фуникулёры — каждый своим цветом",
     layers: ["ov-rail-tunnel", "ov-rail"] },
 ];
@@ -428,7 +432,7 @@ function addTrailLines(id, before) {
 // позже и встать выше) и над подписями карты, а вышки, площадки, маяки и пикник — над
 // остальными значками. Верхний слой и расставляется первым: при тесноте уступают нижние
 // (Грегори: «наши приоритеты должны быть сверху»)
-const TRAIL_POI_ORDER = ["ov-photo-dots", "ov-photos", "ov-photo-selected", "ov-trail-poi-near", "ov-trail-poi-near-far", "ov-trail-poi-extra-near", "ov-beaches",
+const TRAIL_POI_ORDER = ["ov-mly-lines", "ov-mly-images", "ov-mly-pos", "ov-photo-dots", "ov-photos", "ov-photo-selected", "ov-trail-poi-near", "ov-trail-poi-near-far", "ov-trail-poi-extra-near", "ov-beaches",
   "ov-trail-poi", "ov-trail-poi-extra", "ov-trail-poi-far", "ov-surf"];
 function raiseTrailPoi() {
   for (const id of TRAIL_POI_ORDER) if (map.getLayer(id)) map.moveLayer(id, firstPoiLayer());
@@ -1137,6 +1141,126 @@ function updatePhotos() {
 }
 map.on("idle", updatePhotos);
 
+// ---------- снимки улиц (Mapillary) ----------
+
+// Снимки и панорамы улиц из Mapillary (векторные тайлы, ключ приложения — Client Token,
+// он открытый: даёт только чтение общедоступного). Тайлы у Mapillary тяжёлые (в центре
+// Таллина 1 МБ на тайл 13-го уровня, 2,6 МБ — 14-го, мельче — до 10 МБ), поэтому два
+// источника, и MapLibre грузит каждый, только когда виден его слой: линии съёмки — тайлы
+// ровно 13-го уровня (со шкалы ~1 км), точки снимков — ровно 14-го (слой со 100 м).
+// Наведение на линию или точку — окно со снимком (тем же showPhotoInfo, что у Commons: на
+// линии — её снимок-представитель image_id), данные снимка — Graph API, по запросу на снимок.
+// Двойной щелчок — отдельное окно viewer.html с просмотром Mapillary (на компьютере); оно
+// шлёт сюда, где сейчас стоит камера и куда смотрит, — на карте розовая точка со «взглядом»
+const MAPILLARY_TOKEN = "MLY|27764742799866922|5ce2165cbf2f1597e411962b204bf708";
+const MLY_TILES = `https://tiles.mapillary.com/maps/vtp/mly1_public/2/{z}/{x}/{y}?access_token=${MAPILLARY_TOKEN}`;
+const MLY_COLOR = "#05cb63"; // зелёный Mapillary
+const MLY_ATTRIBUTION = '<a href="https://www.mapillary.com/" target="_blank">Mapillary</a> (CC BY-SA)';
+const MLY_LAYERS = ["ov-mly-lines", "ov-mly-images"];
+const mlyInfo = new Map(); // id снимка → свойства для окна
+const mlyAt = (point) => map.queryRenderedFeatures(point, { layers: MLY_LAYERS.filter((id) => map.getLayer(id)) })[0];
+
+function addMapillary(before) {
+  map.addSource("ov-mapillary", { type: "vector", tiles: [MLY_TILES], minzoom: 13, maxzoom: 13, attribution: MLY_ATTRIBUTION });
+  map.addSource("ov-mapillary-vec", { type: "vector", tiles: [MLY_TILES], minzoom: 14, maxzoom: 14 });
+  map.addLayer({ id: "ov-mly-lines", type: "line", source: "ov-mapillary", "source-layer": "sequence", minzoom: 13,
+    layout: { "line-cap": "round", "line-join": "round" },
+    paint: { "line-color": MLY_COLOR, "line-opacity": 0.55, "line-width": ["interpolate", ["linear"], ["zoom"], 13, 0.8, 16, 1.5, 18, 2.5] } }, before);
+  map.addLayer({ id: "ov-mly-images", type: "circle", source: "ov-mapillary-vec", "source-layer": "image", minzoom: 16,
+    paint: { "circle-color": MLY_COLOR, "circle-radius": ["interpolate", ["linear"], ["zoom"], 16, 2.5, 19, 5],
+      "circle-stroke-color": "#fff", "circle-stroke-width": 1 } }, before);
+  if (!map.hasImage("mly-pos")) map.addImage("mly-pos", mlyPosImage(), { pixelRatio: 2 });
+  map.addSource("ov-mly-pos", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
+  map.addLayer({ id: "ov-mly-pos", type: "symbol", source: "ov-mly-pos",
+    layout: { "icon-image": "mly-pos", "icon-size": 1.6, "icon-rotate": ["get", "bearing"], "icon-rotation-alignment": "map",
+      "icon-allow-overlap": true, "icon-ignore-placement": true } }, before);
+  raiseTrailPoi();
+}
+
+// точка камеры со «взглядом» — розовый веер вверх (поворачивается по направлению)
+function mlyPosImage() {
+  const size = 96, c = size / 2;
+  const ctx = new OffscreenCanvas(size, size).getContext("2d");
+  ctx.fillStyle = "rgba(233, 30, 99, 0.35)";
+  ctx.beginPath();
+  ctx.moveTo(c, c);
+  ctx.arc(c, c, 44, -Math.PI / 2 - 0.55, -Math.PI / 2 + 0.55);
+  ctx.closePath();
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(c, c, 11, 0, 2 * Math.PI);
+  ctx.fillStyle = "#fff";
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(c, c, 8, 0, 2 * Math.PI);
+  ctx.fillStyle = PHOTO_COLOR;
+  ctx.fill();
+  return ctx.getImageData(0, 0, size, size);
+}
+
+async function loadMlyInfo(id) {
+  if (mlyInfo.has(id)) return mlyInfo.get(id);
+  const res = await fetch(`https://graph.mapillary.com/${id}?fields=thumb_1024_url,captured_at,creator,is_pano,width,height&access_token=${encodeURIComponent(MAPILLARY_TOKEN)}`,
+    { signal: AbortSignal.timeout(8000) });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const d = await res.json();
+  const info = { photo: `mly/${id}`, thumb: d.thumb_1024_url, page: `https://www.mapillary.com/app/?pKey=${id}&focus=photo`,
+    title: d.is_pano ? "Панорама 360°" : "Снимок улицы", author: d.creator?.username || "",
+    date: d.captured_at ? new Date(d.captured_at).toLocaleDateString("ru") : "", license: "CC BY-SA 4.0",
+    aspect: d.is_pano ? 0.5 : d.height && d.width ? d.height / d.width : 0.75 };
+  mlyInfo.set(id, info);
+  return info;
+}
+
+async function showMapillaryInfo(f, lngLat) {
+  const id = String(f.properties.image_id ?? f.properties.id);
+  const key = `mly/${id}`;
+  if (trailPoiHover === key && trailPoiPopup?.isOpen()) return;
+  trailPoiHover = key;
+  const info = await loadMlyInfo(id).catch(() => null);
+  if (trailPoiHover !== key || !info) return;
+  trailPoiHover = null;
+  const coordinates = f.geometry.type === "Point" ? f.geometry.coordinates : [lngLat.lng, lngLat.lat];
+  showPhotoInfo({ geometry: { type: "Point", coordinates }, properties: info });
+  trailPoiPopup?.setOffset(f.geometry.type === "Point" ? 10 : 6);
+}
+
+map.on("mousemove", MLY_LAYERS, (evt) => {
+  if (touchPointer) return;
+  clearTimeout(trailPoiHideTimer);
+  showMapillaryInfo(evt.features[0], evt.lngLat);
+});
+map.on("mouseleave", MLY_LAYERS, () => { if (!touchPointer) hideTrailPoiInfoSoon(); });
+map.on("click", MLY_LAYERS, (evt) => showMapillaryInfo(evt.features[0], evt.lngLat));
+map.on("dblclick", (evt) => {
+  const f = mlyAt(evt.point);
+  if (!f || !canOpenGallery()) return;
+  evt.preventDefault();
+  openMapillaryViewer(String(f.properties.image_id ?? f.properties.id));
+});
+
+// просмотр в отдельном окне (одно и то же, как у галереи)
+function openMapillaryViewer(id) {
+  const w = Math.round(screen.availWidth * 0.8), h = Math.round(screen.availHeight * 0.85);
+  window.open(`viewer.html?id=${encodeURIComponent(id)}`, "travel-earth-mapillary",
+    `popup,width=${w},height=${h},left=${Math.round((screen.availWidth - w) / 2)},top=${Math.round((screen.availHeight - h) / 2)}`)?.focus();
+}
+
+// где сейчас камера просмотра: точка со взглядом, карта подвигается, если точка у края
+window.addEventListener("message", (e) => {
+  if (e.origin !== location.origin || !e.data?.mapillary) return;
+  const src = map.getSource("ov-mly-pos");
+  if (!src) return;
+  const m = e.data.mapillary;
+  if (m.closed) { src.setData({ type: "FeatureCollection", features: [] }); return; }
+  src.setData({ type: "FeatureCollection", features: [{ type: "Feature", geometry: { type: "Point", coordinates: [m.lng, m.lat] },
+    properties: { bearing: m.bearing || 0 } }] });
+  if (!m.moved) return;
+  const { x, y } = map.project([m.lng, m.lat]);
+  const { clientWidth: w, clientHeight: h } = map.getContainer();
+  if (x < w * 0.2 || x > w * 0.8 || y < h * 0.2 || y > h * 0.75) map.easeTo({ center: [m.lng, m.lat], duration: 700 });
+});
+
 function addOverlay(id) {
   const overlay = OVERLAYS.find((o) => o.id === id);
   const before = firstLabelLayer();
@@ -1181,6 +1305,8 @@ function addOverlay(id) {
     addSurf(firstPoiLayer());
   } else if (id === "photos") {
     addPhotos(firstPoiLayer());
+  } else if (id === "mapillary") {
+    addMapillary(firstPoiLayer());
   } else if (id === "railways") {
     // цвет пути по виду транспорта — те же цвета, что у флажков станций
     const color = ["match", ["get", "subclass"],
@@ -1205,6 +1331,7 @@ function removeOverlay(id) {
   for (const layerId of overlay.layers) if (map.getLayer(layerId)) map.removeLayer(layerId);
   if (id === "terrain3d") map.setTerrain(null);
   if (id === "photos") { selectPhoto(null); updatePhotoStrip(); }
+  if (id === "mapillary" && map.getSource("ov-mly-pos")) map.removeSource("ov-mly-pos");
   for (const sourceId of [`ov-${id}`, `ov-${id}-vec`]) if (map.getSource(sourceId)) map.removeSource(sourceId);
   if (overlay.trails && !trailOverlayActive()) {
     for (const layerId of TRAIL_POI_LAYERS) if (map.getLayer(layerId)) map.removeLayer(layerId);
@@ -1887,7 +2014,7 @@ function showPhotoInfo(f) {
     .setHTML(link(`<img class="popup-photo" width="${width}" height="${height}" alt="" src="${escapeHtml(p.thumb.replace(/\/\d+px-/, "/330px-"))}">`)
       + `<div class="popup-title">${escapeHtml(p.title)}</div>`
       + (meta ? `<div class="popup-kind">${escapeHtml(meta)}</div>` : "")
-      + `<div class="popup-row">${link("Wikimedia Commons")}</div>`)
+      + `<div class="popup-row">${link(p.photo.startsWith("mly/") ? "Mapillary" : "Wikimedia Commons")}</div>`)
     .addTo(map);
   // у маленьких снимков нет миниатюры 330 px — тогда та, что на карте
   trailPoiPopup.getElement().querySelector("img").addEventListener("error", (e) => { e.target.src = p.thumb; }, { once: true });
@@ -1898,8 +2025,12 @@ function showPhotoInfo(f) {
     if (selectedPhoto === p.photo) selectPhoto(null);
   });
   if (canOpenGallery()) {
-    trailPoiPopup.getElement().querySelector(".popup-photo").title = "Двойной щелчок — галерея";
-    trailPoiPopup.getElement().querySelector("a").addEventListener("dblclick", (e) => { e.preventDefault(); openPhotoGallery(f); });
+    const mly = p.photo.startsWith("mly/");
+    trailPoiPopup.getElement().querySelector(".popup-photo").title = mly ? "Двойной щелчок — просмотр" : "Двойной щелчок — галерея";
+    trailPoiPopup.getElement().querySelector("a").addEventListener("dblclick", (e) => {
+      e.preventDefault();
+      if (mly) openMapillaryViewer(p.photo.slice(4)); else openPhotoGallery(f);
+    });
   }
   keepTrailPoiInfoOnHover();
 }
@@ -1910,7 +2041,7 @@ const photoAt = (point) => map.queryRenderedFeatures(point, { layers: PHOTO_LAYE
 map.on("click", (evt) => {
   const f = photoAt(evt.point);
   if (f) selectPhoto(photoFeatures.get(Number(f.properties.photo.slice(6))) || f);
-  else if (String(trailPoiHover).startsWith("photo/")) trailPoiPopup?.remove();
+  else if (/^(photo|mly)\//.test(String(trailPoiHover)) && !mlyAt(evt.point)) trailPoiPopup?.remove();
 });
 // двойной щелчок по снимку — галерея вместо приближения карты
 map.on("dblclick", (evt) => {
@@ -2056,7 +2187,7 @@ async function pointInfoHtml(lngLat) {
     + (address ? `<div class="popup-kind">${escapeHtml(address)}</div>` : "");
 }
 
-const ownInfoLayers = () => [...POI_LAYERS, ...HOVER_POI_LAYERS].filter((id) => map.getLayer(id));
+const ownInfoLayers = () => [...POI_LAYERS, ...HOVER_POI_LAYERS, ...MLY_LAYERS].filter((id) => map.getLayer(id));
 
 // значок карты в нескольких пикселях от точки, о котором щелчок покажет подсказку
 // Значки мест без названия (пикник, навес, туалет) — тоже, если вид известен
