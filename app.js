@@ -335,6 +335,8 @@ const OVERLAYS = [
     layers: ["ov-cycling", "ov-cycling-line", "ov-cycling-label"] },
   { id: "mtb", name: "Маунтинбайк", icon: "🚵", hint: "Маршруты для горного велосипеда — видны с масштаба около 10 км, вблизи — с номерами", trails: "mtb",
     layers: ["ov-mtb", "ov-mtb-line", "ov-mtb-label"] },
+  { id: "beaches", name: "Пляжи и сёрфинг", icon: "🏖️", hint: "Пляжи и места для сёрфинга, кайта и виндсёрфинга — видны с масштаба 3 км",
+    layers: ["ov-beaches", "ov-beaches-surf"] },
   { id: "railways", name: "Железные дороги", icon: "🚆", hint: "Поезда, метро, трамваи и фуникулёры — каждый своим цветом",
     layers: ["ov-rail-tunnel", "ov-rail"] },
 ];
@@ -406,8 +408,8 @@ function addTrailLines(id, before) {
 // позже и встать выше) и над подписями карты, а вышки, площадки, маяки и пикник — над
 // остальными значками. Верхний слой и расставляется первым: при тесноте уступают нижние
 // (Грегори: «наши приоритеты должны быть сверху»)
-const TRAIL_POI_ORDER = ["ov-trail-poi-near", "ov-trail-poi-near-far", "ov-trail-poi-extra-near",
-  "ov-trail-poi", "ov-trail-poi-extra", "ov-trail-poi-far"];
+const TRAIL_POI_ORDER = ["ov-trail-poi-near", "ov-trail-poi-near-far", "ov-trail-poi-extra-near", "ov-beaches",
+  "ov-trail-poi", "ov-trail-poi-extra", "ov-trail-poi-far", "ov-beaches-surf"];
 function raiseTrailPoi() {
   for (const id of TRAIL_POI_ORDER) if (map.getLayer(id)) map.moveLayer(id, firstPoiLayer());
 }
@@ -460,6 +462,11 @@ const TRAIL_POI_ICONS = {
   // вода и туалет — голубые
   drinking_water: { color: "#0288d1", path: "M12 2.5S5 10.5 5 15a7 7 0 0 0 14 0c0-4.5-7-12.5-7-12.5z" },
   toilets: { color: "#0288d1", text: "WC" },
+  // пляж — зонтик на песке, сёрфинг — доска над волной
+  beach: { color: "#f59f00", path: "M12 3.5c-5 0-9 3.6-9 8h18c0-4.4-4-8-9-8z M11.2 11.5h1.6V20h-1.6z M3 19.5h18V22H3z" },
+  surfing: { color: "#0097a7", path: "M4.63 14.16A9 2.6 -35 1 1 19.37 3.84A9 2.6 -35 1 1 4.63 14.16z " +
+    "M2 18.5c1.8 0 2.2-1.5 4-1.5s2.2 1.5 4 1.5 2.2-1.5 4-1.5 2.2 1.5 4 1.5 2.2-1.5 4-1.5v2.4" +
+    "c-1.8 0-2.2 1.5-4 1.5s-2.2-1.5-4-1.5-2.2 1.5-4 1.5-2.2-1.5-4-1.5-2.2 1.5-4 1.5z" },
   // маяк — чёрно-белый: купол, фонарь с лучами, башня; окошко и полосы — white
   lighthouse: { color: "#222", path: "M9 5a3 3 0 0 1 6 0z M9.5 5h5v3h-5z M8 8h8v1.5H8z M9.2 9.5h5.6l1.5 10.5H7.7z " +
     "M6 20h12v2H6z M9 6.5L3 3.5v6z M15 6.5l6-3v6z",
@@ -540,41 +547,65 @@ function trailPoiImage(kind) {
 }
 
 // QLever (SPARQL по всему OSM) отвечает за 8–17 с почти независимо от размера квадрата —
-// поэтому квадраты по полградуса. Тегов он не отдаёт — они для подсказки берутся из OSM API
-const TRAIL_POI_QUERY = (s, w, n, e) => `PREFIX osmkey: <https://www.openstreetmap.org/wiki/Key:>
+// поэтому квадраты по полградуса. Тегов он не отдаёт — они для подсказки берутся из OSM API.
+// body — условия на ?osm и ?kind; в ответе — центр объекта (у площадных — центроид)
+const qleverQuery = (select, body, w, s, e, n) => `PREFIX osmkey: <https://www.openstreetmap.org/wiki/Key:>
 PREFIX geo: <http://www.opengis.net/ont/geosparql#>
 PREFIX geof: <http://www.opengis.net/def/function/geosparql/>
-SELECT ?osm ?c ?kind ?info WHERE {
-  { ?osm osmkey:tourism "viewpoint" . BIND("viewpoint" AS ?kind) }
+SELECT ?osm ?c ?kind ${select} WHERE {
+  ${body}
+  ?osm geo:hasGeometry/geo:asWKT ?wkt .
+  BIND (geof:centroid(?wkt) AS ?c)
+  FILTER (geof:latitude(?c) > ${s} && geof:latitude(?c) < ${n} && geof:longitude(?c) > ${w} && geof:longitude(?c) < ${e})
+}`;
+
+// точки квадрата TRAIL_POI_CELL: [{ osm: "node/123", coordinates, b — вся строка ответа }]
+async function loadQleverCell(cx, cy, select, body) {
+  const [w, s, e, n] = [cx, cy, cx + 1, cy + 1].map((v) => (v * TRAIL_POI_CELL).toFixed(2));
+  const res = await fetch(QLEVER_URL, { method: "POST", headers: { Accept: "application/sparql-results+json" },
+    body: new URLSearchParams({ query: qleverQuery(select, body, w, s, e, n) }), signal: AbortSignal.timeout(40000) });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return (await res.json()).results.bindings.map((b) => ({ b,
+    osm: b.osm.value.replace(/^.*\/(node|way|relation)\/(\d+)$/, "$1/$2"),
+    coordinates: b.c.value.match(/-?[\d.]+/g).map(Number) }));
+}
+
+// квадраты TRAIL_POI_CELL в кадре (не дальше полуградуса от центра), ближние первыми
+function qleverCells() {
+  const center = map.getCenter();
+  const bounds = map.getBounds();
+  const range = (min, max, c) => [Math.floor(Math.max(min, c - 0.5) / TRAIL_POI_CELL), Math.floor(Math.min(max, c + 0.5) / TRAIL_POI_CELL)];
+  const [x0, x1] = range(bounds.getWest(), bounds.getEast(), center.lng);
+  const [y0, y1] = range(bounds.getSouth(), bounds.getNorth(), center.lat);
+  const cells = [];
+  for (let cx = x0; cx <= x1; cx++) {
+    for (let cy = y0; cy <= y1; cy++) {
+      cells.push([cx, cy, Math.hypot((cx + 0.5) * TRAIL_POI_CELL - center.lng, (cy + 0.5) * TRAIL_POI_CELL - center.lat)]);
+    }
+  }
+  return cells.sort((a, b) => a[2] - b[2]);
+}
+
+const TRAIL_POI_SPARQL = `{ ?osm osmkey:tourism "viewpoint" . BIND("viewpoint" AS ?kind) }
   UNION { ?osm osmkey:tourism "picnic_site" . BIND("picnic_site" AS ?kind) }
   UNION { ?osm osmkey:tourism "camp_site" . BIND("campsite" AS ?kind) }
   UNION { ?osm osmkey:man_made "lighthouse" . BIND("lighthouse" AS ?kind) }
   UNION { ?osm osmkey:man_made "tower" . ?osm <https://www.openstreetmap.org/wiki/Key:tower:type> "observation" . BIND("tower" AS ?kind) }
   UNION { ?osm osmkey:amenity "drinking_water" . BIND("drinking_water" AS ?kind) }
   UNION { ?osm osmkey:leisure "firepit" . BIND("firepit" AS ?kind) }
-  UNION { ?osm osmkey:tourism "information" . BIND("info" AS ?kind) OPTIONAL { ?osm osmkey:information ?info } }
-  ?osm geo:hasGeometry/geo:asWKT ?wkt .
-  BIND (geof:centroid(?wkt) AS ?c)
-  FILTER (geof:latitude(?c) > ${s} && geof:latitude(?c) < ${n} && geof:longitude(?c) > ${w} && geof:longitude(?c) < ${e})
-}`;
+  UNION { ?osm osmkey:tourism "information" . BIND("info" AS ?kind) OPTIONAL { ?osm osmkey:information ?info } }`;
 
 async function loadTrailPoiCell(cx, cy) {
   const key = `${cx}:${cy}`;
-  const [w, s, e, n] = [cx, cy, cx + 1, cy + 1].map((v) => (v * TRAIL_POI_CELL).toFixed(2));
   try {
-    const res = await fetch(QLEVER_URL, { method: "POST", headers: { Accept: "application/sparql-results+json" },
-      body: new URLSearchParams({ query: TRAIL_POI_QUERY(s, w, n, e) }), signal: AbortSignal.timeout(40000) });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    for (const b of (await res.json()).results.bindings) {
+    for (const { osm, coordinates, b } of await loadQleverCell(cx, cy, "?info", TRAIL_POI_SPARQL)) {
       let kind = b.kind.value;
       if (kind === "info") {
         const info = b.info?.value;
         if (info === "route_marker") continue;
         if (["guidepost", "board", "map"].includes(info)) kind = info;
       }
-      const osm = b.osm.value.replace(/^.*\/(node|way|relation)\/(\d+)$/, "$1/$2");
-      const [lon, lat] = b.c.value.match(/-?[\d.]+/g).map(Number);
-      trailPoiFeatures.set(osm, { type: "Feature", geometry: { type: "Point", coordinates: [lon, lat] }, properties: { kind, osm } });
+      trailPoiFeatures.set(osm, { type: "Feature", geometry: { type: "Point", coordinates }, properties: { kind, osm } });
     }
     trailPoiCells.set(key, true);
     map.getSource("ov-trail-poi-far")?.setData(trailPoiData());
@@ -672,17 +703,7 @@ function updateTrails() {
   // значки у троп — после самих троп; на любом зуме: вышек и кострищ в тайлах нет
   if (!trailOverlayActive()) return;
   const after = Promise.all(trailQueues);
-  const poiRange = (min, max, c) => [Math.floor(Math.max(min, c - 0.5) / TRAIL_POI_CELL), Math.floor(Math.min(max, c + 0.5) / TRAIL_POI_CELL)];
-  const [px0, px1] = poiRange(bounds.getWest(), bounds.getEast(), center.lng);
-  const [py0, py1] = poiRange(bounds.getSouth(), bounds.getNorth(), center.lat);
-  const poiCells = [];
-  for (let cx = px0; cx <= px1; cx++) {
-    for (let cy = py0; cy <= py1; cy++) {
-      poiCells.push([cx, cy, Math.hypot((cx + 0.5) * TRAIL_POI_CELL - center.lng, (cy + 0.5) * TRAIL_POI_CELL - center.lat)]);
-    }
-  }
-  poiCells.sort((a, b) => a[2] - b[2]);
-  for (const [cx, cy] of poiCells) {
+  for (const [cx, cy] of qleverCells()) {
     const key = `${cx}:${cy}`;
     const state = trailPoiCells.get(key);
     if (state === true || state === "loading" || state > Date.now()) continue;
@@ -691,6 +712,63 @@ function updateTrails() {
   }
 }
 map.on("idle", updateTrails);
+
+// ---------- пляжи и сёрфинг ----------
+
+// Пляжи (natural=beach, leisure=beach_resort) и места для сёрфинга, кайта и виндсёрфинга
+// (sport=…) — значками в центре объекта, со шкалы 3 км, как вышки у троп. В тайлах
+// OpenFreeMap их нет (пляж там — только песок без названия), поэтому всё из QLever, своей
+// очередью. Сёрф-споты — поверх пляжей и не прячутся при тесноте: их мало; пляж с
+// sport=surfing показывается как сёрф-спот
+const SURF_KINDS = ["surfing", "kitesurfing", "windsurfing"];
+const BEACH_SPARQL = `{ ?osm osmkey:natural "beach" . BIND("beach" AS ?kind) }
+  UNION { ?osm osmkey:leisure "beach_resort" . BIND("beach_resort" AS ?kind) }
+  UNION { ?osm osmkey:sport ?kind . FILTER (?kind IN (${SURF_KINDS.map((k) => `"${k}"`).join(", ")})) }`;
+const BEACH_LAYERS = ["ov-beaches", "ov-beaches-surf"];
+const beachCells = new Map(); // "3:83" → true | "loading" | когда можно повторить
+const beachFeatures = new Map(); // "way/123" → feature
+let beachQueue = Promise.resolve();
+const beachData = () => ({ type: "FeatureCollection", features: [...beachFeatures.values()] });
+
+function addBeaches(before) {
+  for (const kind of ["beach", "surfing"]) trailPoiImage(kind);
+  map.addSource("ov-beaches", { type: "geojson", data: beachData() });
+  const surf = ["in", ["get", "kind"], ["literal", SURF_KINDS]];
+  const size = ["interpolate", ["linear"], ["zoom"], 11, 0.8, 14, 1, 16, 1.2];
+  map.addLayer({ id: "ov-beaches", type: "symbol", source: "ov-beaches", minzoom: trailPoiMinZoom(), filter: ["!", surf],
+    layout: { "icon-image": "trail-poi-beach", "icon-size": size } }, before);
+  map.addLayer({ id: "ov-beaches-surf", type: "symbol", source: "ov-beaches", minzoom: trailPoiMinZoom(), filter: surf,
+    layout: { "icon-image": "trail-poi-surfing", "icon-size": size, "icon-allow-overlap": true } }, before);
+  raiseTrailPoi();
+}
+
+async function loadBeachCell(cx, cy) {
+  const key = `${cx}:${cy}`;
+  try {
+    for (const { osm, coordinates, b } of await loadQleverCell(cx, cy, "", BEACH_SPARQL)) {
+      const kind = b.kind.value;
+      if (!SURF_KINDS.includes(kind) && SURF_KINDS.includes(beachFeatures.get(osm)?.properties.kind)) continue;
+      beachFeatures.set(osm, { type: "Feature", geometry: { type: "Point", coordinates }, properties: { kind, osm } });
+    }
+    beachCells.set(key, true);
+    map.getSource("ov-beaches")?.setData(beachData());
+  } catch {
+    beachCells.set(key, Date.now() + TRAIL_POI_RETRY_MS);
+    setTimeout(updateBeaches, TRAIL_POI_RETRY_MS + 100);
+  }
+}
+
+function updateBeaches() {
+  if (!activeOverlays.has("beaches") || map.getZoom() < trailPoiMinZoom()) return;
+  for (const [cx, cy] of qleverCells()) {
+    const key = `${cx}:${cy}`;
+    const state = beachCells.get(key);
+    if (state === true || state === "loading" || state > Date.now()) continue;
+    beachCells.set(key, "loading");
+    beachQueue = beachQueue.then(() => loadBeachCell(cx, cy));
+  }
+}
+map.on("idle", updateBeaches);
 
 
 function addOverlay(id) {
@@ -731,6 +809,8 @@ function addOverlay(id) {
       tiles: [`https://tile.waymarkedtrails.org/${overlay.trails}/{z}/{x}/{y}.png`] });
     map.addLayer({ id: `ov-${id}`, type: "raster", source: `ov-${id}`, minzoom: TRAILS_MIN_ZOOM, maxzoom: TRAILS_VECTOR_ZOOM }, before);
     addTrailLines(id, before);
+  } else if (id === "beaches") {
+    addBeaches(firstPoiLayer());
   } else if (id === "railways") {
     // цвет пути по виду транспорта — те же цвета, что у флажков станций
     const color = ["match", ["get", "subclass"],
@@ -1079,6 +1159,7 @@ function updateScaleZooms() {
     map.setLayerZoomRange("ov-trail-poi-near-far", trailPoiNearZoom(), TRAIL_POI_ZOOM);
     map.setLayerZoomRange("ov-trail-poi-extra-near", trailPoiNearZoom(), 24);
   }
+  for (const id of BEACH_LAYERS) if (map.getLayer(id)) map.setLayerZoomRange(id, trailPoiMinZoom(), 24);
   if (!map.getLayer("poi-air")) return;
   map.setLayerZoomRange("poi-air", airportMinZoom(), 24);
   map.setLayerZoomRange("poi-stops", zoomForScale(STOP_MAX_METERS_PER_100PX), 24);
@@ -1361,7 +1442,15 @@ const TRAIL_POI_KIND_NAMES = {
   viewpoint: "Смотровая площадка", tower: "Смотровая вышка", lighthouse: "Маяк", attraction: "Достопримечательность",
   campsite: "Кемпинг", picnic_site: "Место для пикника", firepit: "Кострище",
   drinking_water: "Питьевая вода", toilets: "Туалет",
+  beach: "Пляж", beach_resort: "Пляжный курорт", surfing: "Сёрфинг", kitesurfing: "Кайтсёрфинг", windsurfing: "Виндсёрфинг",
 };
+// у пляжей — чем покрыт и есть ли спасатели
+const BEACH_SURFACE_NAMES = { sand: "песок", fine_gravel: "мелкая галька", gravel: "галька", pebblestone: "галька",
+  shingle: "галька", rock: "камни", stone: "камни", grass: "трава", concrete: "бетон" };
+const beachFacts = (tags) => [BEACH_SURFACE_NAMES[tags.surface],
+  (tags.supervised === "yes" || tags.lifeguard === "yes") && "спасатели"].filter(Boolean).join(", ");
+// значки со своей подсказкой при наведении
+const HOVER_POI_LAYERS = [...TRAIL_POI_LAYERS, ...BEACH_LAYERS];
 let trailPoiPopup = null;
 let trailPoiHover = null;
 
@@ -1381,7 +1470,8 @@ async function showTrailPoiInfo(f) {
   const kind = [TRAIL_POI_KIND_NAMES[p.kind || trailPoiKindOf(p)],
     tags.ele && `${Math.round(tags.ele).toLocaleString("ru")} м`].filter(Boolean).join(" · ");
   const name = tags[`name:${uiLanguageCode()}`] || tags.name || p[`name:${uiLanguageCode()}`] || p.name;
-  const rows = [tags.description, tags.inscription, tags.destination && `→ ${tags.destination.replace(/;/g, ", ")}`]
+  const facts = beachFacts(tags);
+  const rows = [facts && facts[0].toUpperCase() + facts.slice(1), tags.description, tags.inscription, tags.destination && `→ ${tags.destination.replace(/;/g, ", ")}`]
     .filter(Boolean).map((t) => `<div class="popup-row">${escapeHtml(t)}</div>`).join("");
   trailPoiPopup?.remove();
   trailPoiPopup = new maplibregl.Popup({ offset: 14, maxWidth: "260px", closeButton: false })
@@ -1414,12 +1504,12 @@ function trailPoiKindOf(p) {
   return p.class;
 }
 
-map.on("mousemove", TRAIL_POI_LAYERS, (evt) => {
+map.on("mousemove", HOVER_POI_LAYERS, (evt) => {
   clearTimeout(trailPoiHideTimer);
   showTrailPoiInfo(evt.features[0]);
 });
-map.on("mouseleave", TRAIL_POI_LAYERS, hideTrailPoiInfoSoon);
-map.on("click", TRAIL_POI_LAYERS, (evt) => showTrailPoiInfo(evt.features[0]));
+map.on("mouseleave", HOVER_POI_LAYERS, hideTrailPoiInfoSoon);
+map.on("click", HOVER_POI_LAYERS, (evt) => showTrailPoiInfo(evt.features[0]));
 
 // ---------- подсказка по щелчку на карте ----------
 
@@ -1517,7 +1607,7 @@ async function pointInfoHtml(lngLat) {
     + (address ? `<div class="popup-kind">${escapeHtml(address)}</div>` : "");
 }
 
-const ownInfoLayers = () => [...POI_LAYERS, ...TRAIL_POI_LAYERS].filter((id) => map.getLayer(id));
+const ownInfoLayers = () => [...POI_LAYERS, ...HOVER_POI_LAYERS].filter((id) => map.getLayer(id));
 
 // значок карты в нескольких пикселях от точки, о котором щелчок покажет подсказку
 function mapInfoHit({ x, y }) {
