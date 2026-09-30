@@ -337,6 +337,7 @@ const CHIP_ICONS = {
   mtb: chipSvg(`<path d="M9 1.5l3.5 5h-7z"/><path d="M13.5 3.5l2.8 3h-4.2z" opacity=".75"/><path transform="translate(0 4) scale(1 .85)" d="${BIKE_PATH}"/>`), // велосипед под вершинами
   streets: chipSvg('<path fill-rule="evenodd" d="M1.2 6.4 17.6 2.2c.9-.2 1.5.1 1.7.9l.2.7-17.9 4.6zM2.2 8.9 19.6 4.4l.9 3.6c.3 1.1-.2 1.8-1.2 2.1L6.4 13.4c-2.3.6-3.6-.2-4-1.7zM7.9 10.6a2.6 2.6 0 1 0-5.2 0 2.6 2.6 0 0 0 5.2 0z"/><circle cx="5.3" cy="10.6" r="1.1"/><path d="M11 12.3h2.6v4.2h5.4v2.6h-6.7c-.7 0-1.3-.6-1.3-1.3z"/><path fill-rule="evenodd" d="M19.6 12.6h2.2c.6 0 1 .4 1 1v8c0 .6-.4 1-1 1h-2.2zM21.2 14.4a.6.6 0 1 0 0 1.2.6.6 0 0 0 0-1.2zm0 5.2a.6.6 0 1 0 0 1.2.6.6 0 0 0 0-1.2z"/>'), // уличная камера на кронштейне (Грегори выбрал по картинке)
   myphotos: chipSvg('<path d="M22 16V4c0-1.1-.9-2-2-2H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2zm-11-4 2.03 2.71L16 11l4 5H8l3-4zM2 6v14c0 1.1.9 2 2 2h14v-2H4V6H2z"/>'), // стопка снимков — альбом
+  tours: chipSvg('<path d="M20.5 3l-.16.03L15 5.1 9 3 3.36 4.9c-.21.07-.36.25-.36.48V20.5c0 .28.22.5.5.5l.16-.03L9 18.9l6 2.1 5.64-1.9c.21-.07.36-.25.36-.48V3.5c0-.28-.22-.5-.5-.5zM15 19l-6-2.11V5l6 2.11V19z"/>'), // сложенная карта — план поездки
   photos: chipSvg('<path d="M12 15.2a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4z"/><path d="M9 2 7.17 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2h-3.17L15 2H9zm3 15c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5z"/>'), // фотоаппарат
   railways: chipSvg('<path d="M12 2c-4 0-8 .5-8 4v9.5C4 17.43 5.57 19 7.5 19L6 20.5v.5h2.23l2-2H14l2 2h2v-.5L16.5 19c1.93 0 3.5-1.57 3.5-3.5V6c0-3.5-3.58-4-8-4zM7.5 17c-.83 0-1.5-.67-1.5-1.5S6.67 14 7.5 14s1.5.67 1.5 1.5S8.33 17 7.5 17zm3.5-7H6V6h5v4zm2 0V6h5v4h-5zm3.5 7c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5z"/>'), // поезд, как у флажков станций
 };
@@ -361,6 +362,9 @@ const OVERLAYS = [
   { id: "myphotos", name: "Мои фото", icon: CHIP_ICONS.myphotos,
     hint: "Фотографии из папки на этом компьютере (выбирается в ⚙ настройках) — альбомы видны на всём глобусе",
     layers: ["ov-my-selected", "ov-my-photos", "ov-my-dots", "ov-my-albums"], available: () => "showDirectoryPicker" in window },
+  { id: "tours", name: "Экскурсии", icon: CHIP_ICONS.tours,
+    hint: "Наброски будущих путешествий из текстовых файлов в своей папке (выбирается в ⚙ настройках) — маршрут, точки, справки",
+    layers: ["ov-tour-labels", "ov-tour-marks", "ov-tour-stops", "ov-tour-route"], available: () => "showDirectoryPicker" in window },
   { id: "mapillary", name: "Снимки улиц", icon: CHIP_ICONS.streets,
     hint: "Снимки и панорамы улиц и дорог из Mapillary — линии со шкалы 1 км, точки снимков со 100 м; двойной щелчок — просмотр",
     layers: ["ov-mly-pos", "ov-mly-images", "ov-mly-lines"] },
@@ -436,7 +440,7 @@ function addTrailLines(id, before) {
 // позже и встать выше) и над подписями карты, а вышки, площадки, маяки и пикник — над
 // остальными значками. Верхний слой и расставляется первым: при тесноте уступают нижние
 // (Грегори: «наши приоритеты должны быть сверху»)
-const TRAIL_POI_ORDER = ["ov-mly-lines", "ov-mly-images", "ov-mly-pos", "ov-photo-dots", "ov-photos", "ov-photo-selected",
+const TRAIL_POI_ORDER = ["ov-tour-route", "ov-tour-stops", "ov-tour-marks", "ov-tour-labels", "ov-mly-lines", "ov-mly-images", "ov-mly-pos", "ov-photo-dots", "ov-photos", "ov-photo-selected",
   "ov-my-dots", "ov-my-photos", "ov-my-selected", "ov-my-albums", "ov-trail-poi-near", "ov-trail-poi-near-far", "ov-trail-poi-extra-near", "ov-beaches",
   "ov-trail-poi", "ov-trail-poi-extra", "ov-trail-poi-far", "ov-surf"];
 function raiseTrailPoi() {
@@ -1310,8 +1314,11 @@ function refreshMyData() {
 // IndexedDB: settings — выбранная папка, exif — кэш координат по пути файла
 let myDbOpen = null;
 const myDb = () => (myDbOpen ||= new Promise((resolve, reject) => {
-  const req = indexedDB.open("travel-earth-my-photos", 1);
-  req.onupgradeneeded = () => { req.result.createObjectStore("settings"); req.result.createObjectStore("exif"); };
+  const req = indexedDB.open("travel-earth-my-photos", 2);
+  // 2: geo — где находится место из экскурсии (Nominatim), чтобы не спрашивать второй раз
+  req.onupgradeneeded = () => {
+    for (const name of ["settings", "exif", "geo"]) if (!req.result.objectStoreNames.contains(name)) req.result.createObjectStore(name);
+  };
   req.onsuccess = () => resolve(req.result);
   req.onerror = () => reject(req.error);
 }));
@@ -1368,18 +1375,22 @@ async function initMyPhotos() {
 }
 
 function showMyAccessButton(handle) {
-  let btn = document.getElementById("my-photos-access");
-  if (!btn) {
-    btn = Object.assign(document.createElement("button"), { id: "my-photos-access", className: "my-photos-access" });
-    document.body.append(btn);
-  }
-  btn.innerHTML = `${CHIP_ICONS.myphotos}<span></span>`;
-  btn.lastChild.textContent = `Открыть мои фото (${handle.name})`;
+  showFolderAccessButton("my-photos-access", CHIP_ICONS.myphotos, `Открыть мои фото (${handle.name})`, handle, startMyScan);
+}
+
+// после перезапуска Chrome разрешение на папку даётся только щелчком — кнопки вверху по центру
+function showFolderAccessButton(id, icon, label, handle, start) {
+  let bar = document.getElementById("access-bar");
+  if (!bar) document.body.append(bar = Object.assign(document.createElement("div"), { id: "access-bar", className: "access-bar" }));
+  let btn = document.getElementById(id);
+  if (!btn) bar.append(btn = Object.assign(document.createElement("button"), { id, className: "folder-access" }));
+  btn.innerHTML = `${icon}<span></span>`;
+  btn.lastChild.textContent = label;
   btn.hidden = false;
   btn.onclick = async () => {
     if (await handle.requestPermission({ mode: "read" }) !== "granted") return;
     btn.hidden = true;
-    startMyScan(handle);
+    start(handle);
   };
 }
 
@@ -1715,6 +1726,377 @@ map.on("dblclick", (evt) => {
   openAlbumGallery(a.properties.album, null);
 });
 
+// ---------- экскурсии (наброски будущих путешествий) ----------
+
+// Грегори: «наброски для будущих путешествий с опорой на туристические тропы и готовые
+// статьи или видео в YouTube … дайджест из нескольких источников, подробности будут мешать;
+// точная локация не нужна». Экскурсия — текстовый файл (.md или .txt, Блокнот) в своей папке,
+// выбранной в ⚙ настройках (handle в IndexedDB, только в этом браузере; файлы с «_» в начале
+// имени — черновики и шаблоны, не читаются). Формат дайджеста — TOUR_TEMPLATE ниже и
+// _Шаблон экскурсии.md. Место («Место:», «Регион:») — название, его находит Nominatim (кэш
+// geo в IndexedDB, запросы раз в секунду) или «широта, долгота». На карте: точка
+// экскурсии с названием (на любом масштабе, до ~50 км), остановки — номера по порядку,
+// пунктир между ними — набросок маршрута. Щелчок — панель дайджеста справа (маршрут,
+// точки, особенности, справка и выдержки — их можно послушать голосом браузера, источники);
+// щелчок по остановке в панели — карта перелетает к ней. Файлы перечитываются, когда окно
+// снова в фокусе — правка в Блокноте видна сразу после переключения
+const TOUR_COLOR = "#ef6c00";
+const TOUR_TEXT_RE = /\.(md|txt)$/i;
+const TOUR_LAYERS = ["ov-tour-marks", "ov-tour-labels", "ov-tour-stops"];
+const TOUR_KEYS = { "место": "place", "регион": "region", "тропа": "trail", "длина": "length", "время": "time",
+  "сложность": "difficulty", "сезон": "season", "точки": "points", "особенности": "features", "справка": "history",
+  "выдержка": "quote", "выдержки": "quote", "источник": "sources", "источники": "sources", "теги": "tags", "идея": "idea", "маршрут": "route" };
+const TOUR_LIST_KEYS = new Set(["features", "sources", "quote", "history", "points"]);
+let tourDir = null;
+const tours = new Map(); // путь файла → { id, file, mtime, title, region, tags, sources, sections, point }
+let tourStatus = "";
+let tourGeoQueue = Promise.resolve();
+
+// разбор файла: «# Название», поля «Ключ: значение», «## Раздел» (остановка, если есть «Место:»),
+// списки «- …» к последнему полю-списку (по умолчанию — особенности), остальное — абзацы
+function parseTour(text, file) {
+  const tour = { title: "", region: "", tags: "", sources: [], idea: [], sections: [] };
+  let target = tour, key = null;
+  const add = (k, v) => {
+    if (!v) return;
+    if (TOUR_LIST_KEYS.has(k) || k === "idea") (target[k] ||= []).push(v);
+    else target[k] = v;
+  };
+  for (const raw of text.replace(/^\uFEFF/, "").split(/\r?\n/)) {
+    const line = raw.trim();
+    // пустая строка заканчивает справку, выдержку и простое поле; списки продолжаются
+    if (!line) { if (key && !["features", "points", "sources"].includes(key)) key = null; continue; }
+    if (line.startsWith(">")) { add("quote", line.replace(/^>\s*/, "")); key = "quote"; continue; }
+    let m;
+    if ((m = line.match(/^#\s+(.+)/)) && !tour.title) { tour.title = m[1]; continue; }
+    if ((m = line.match(/^##+\s+(.+)/))) {
+      target = { title: m[1], paras: [] };
+      tour.sections.push(target);
+      key = null;
+      continue;
+    }
+    if ((m = line.match(/^([А-Яа-яЁё]+)\s*:\s*(.*)$/)) && TOUR_KEYS[m[1].toLowerCase()]) {
+      key = TOUR_KEYS[m[1].toLowerCase()];
+      if (target === tour && ["place", "trail", "length", "time", "difficulty", "points", "features", "history", "quote"].includes(key) && !tour.sections.length) {
+        tour.sections.push(target = { title: "", paras: [] }); // поля остановки до первого «##» — безымянный раздел
+      }
+      add(key, m[2]);
+      continue;
+    }
+    if ((m = line.match(/^[-*•]\s+(.+)/))) { add(key && TOUR_LIST_KEYS.has(key) ? key : target === tour ? "idea" : "features", m[1]); continue; }
+    if (key && TOUR_LIST_KEYS.has(key) && key !== "features" && key !== "points" && key !== "sources") { add(key, line); continue; }
+    if (target === tour) tour.idea.push(line);
+    else target.paras.push(line);
+  }
+  tour.title ||= file.replace(TOUR_TEXT_RE, "");
+  return tour;
+}
+
+// «Название — https://…» или просто ссылка → { text, url }
+function tourSource(line) {
+  const m = line.match(/https?:\/\/\S+/);
+  if (!m) return { text: line, url: "" };
+  const text = line.replace(m[0], "").replace(/[\s—–:-]+$/, "").trim();
+  const host = new URL(m[0]).hostname.replace(/^www\./, "");
+  return { text: text || host, url: m[0], video: /youtube\.com|youtu\.be|vimeo\.com/.test(host) };
+}
+
+// место по названию: «32.76, -16.91» — как есть, иначе Nominatim (кэш в IndexedDB)
+async function tourGeocode(query) {
+  const m = query.match(/^(-?\d+(?:\.\d+)?)\s*[,;]\s*(-?\d+(?:\.\d+)?)$/);
+  if (m) return [Number(m[2]), Number(m[1])];
+  const key = query.toLowerCase();
+  const hit = await idb("geo", "readonly", (st) => st.get(key)).catch(() => undefined);
+  if (hit !== undefined) return hit;
+  const run = tourGeoQueue.then(async () => {
+    const params = new URLSearchParams({ q: query, format: "jsonv2", limit: "1", "accept-language": uiLanguageCode() });
+    const res = await fetch(`${NOMINATIM_URL}?${params}`).catch(() => null);
+    const [found] = res?.ok ? await res.json() : [];
+    const point = found ? [Number(found.lon), Number(found.lat)] : null;
+    if (res?.ok) await idb("geo", "readwrite", (st) => st.put(point, key)).catch(() => {});
+    await new Promise((r) => setTimeout(r, 1100)); // правило Nominatim — не чаще раза в секунду
+    return point;
+  });
+  tourGeoQueue = run.catch(() => null);
+  return run;
+}
+
+const tourData = () => {
+  const features = [];
+  for (const t of tours.values()) {
+    const stops = t.sections.filter((sec) => sec.point);
+    // пунктир — только у поездки-маршрута (поле «Маршрут:»); у подборки вариантов остановки не по порядку
+    if (t.route && stops.length > 1) {
+      features.push({ type: "Feature", geometry: { type: "LineString", coordinates: stops.map((sec) => sec.point) },
+        properties: { kind: "route", tour: t.id } });
+    }
+    // остановки в одном месте (одна деревня — две тропы) разводятся на экране по кругу на 22 px,
+    // чтобы номера не слипались на любом масштабе
+    const same = new Map();
+    stops.forEach((sec) => {
+      const key = sec.point.join(","), k = same.get(key) || 0;
+      same.set(key, k + 1);
+      const off = k ? [22 * Math.cos(k * 2.1), 22 * Math.sin(k * 2.1)] : [0, 0];
+      features.push({ type: "Feature", geometry: { type: "Point", coordinates: sec.point },
+        properties: { kind: "stop", tour: t.id, n: sec.n, title: sec.title, hover: `tour/${t.id}/${sec.n}`, off, textOff: off.map((v) => v / 11) } });
+    });
+    const at = t.point || stops[0]?.point;
+    if (at) features.push({ type: "Feature", geometry: { type: "Point", coordinates: at },
+      properties: { kind: "tour", tour: t.id, title: t.title, hover: `tour/${t.id}` } });
+  }
+  return { type: "FeatureCollection", features };
+};
+const refreshTours = () => map.getSource("ov-tours")?.setData(tourData());
+
+// кружок остановки: оранжевый в белой обводке, 22 px (номер пишется текстом поверх)
+function tourStopImage() {
+  const ctx = new OffscreenCanvas(44, 44).getContext("2d");
+  ctx.beginPath();
+  ctx.arc(22, 22, 21, 0, 2 * Math.PI);
+  ctx.fillStyle = "#fff";
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(22, 22, 17, 0, 2 * Math.PI);
+  ctx.fillStyle = TOUR_COLOR;
+  ctx.fill();
+  return ctx.getImageData(0, 0, 44, 44);
+}
+
+function addTours(before) {
+  map.addSource("ov-tours", { type: "geojson", data: tourData() });
+  const kind = (k) => ["==", ["get", "kind"], k];
+  map.addLayer({ id: "ov-tour-route", type: "line", source: "ov-tours", minzoom: 6, filter: kind("route"),
+    paint: { "line-color": TOUR_COLOR, "line-width": 2, "line-opacity": 0.8, "line-dasharray": [2, 2] } }, before);
+  if (!map.hasImage("tour-stop")) map.addImage("tour-stop", tourStopImage(), { pixelRatio: 2 });
+  map.addLayer({ id: "ov-tour-stops", type: "symbol", source: "ov-tours", minzoom: 6, filter: kind("stop"),
+    layout: { "icon-image": "tour-stop", "icon-offset": ["array", "number", 2, ["get", "off"]],
+      "text-field": ["to-string", ["get", "n"]], "text-font": styleFont(), "text-size": 11,
+      "text-offset": ["array", "number", 2, ["get", "textOff"]],
+      "icon-allow-overlap": true, "text-allow-overlap": true, "icon-ignore-placement": true, "text-ignore-placement": true },
+    paint: { "text-color": "#fff" } }, before);
+  map.addLayer({ id: "ov-tour-marks", type: "circle", source: "ov-tours", maxzoom: 9, filter: kind("tour"),
+    paint: { "circle-color": TOUR_COLOR, "circle-radius": 7, "circle-stroke-color": "#fff", "circle-stroke-width": 2 } }, before);
+  map.addLayer({ id: "ov-tour-labels", type: "symbol", source: "ov-tours", maxzoom: 9, filter: kind("tour"),
+    layout: { "text-field": ["get", "title"], "text-font": styleFont(), "text-size": 12, "text-anchor": "left",
+      "text-offset": [0.9, 0], "text-optional": true },
+    paint: { "text-color": "#8a3c00", "text-halo-color": "rgba(255,255,255,0.9)", "text-halo-width": 1.5 } }, before);
+  raiseTrailPoi();
+  initTours();
+}
+
+async function initTours() {
+  if (tourDir || !("showDirectoryPicker" in window)) return;
+  const handle = await idb("settings", "readonly", (st) => st.get("tours")).catch(() => null);
+  renderTourSettings(handle);
+  if (!handle) return;
+  if (await handle.queryPermission({ mode: "read" }) === "granted") readTours(handle);
+  else showFolderAccessButton("tours-access", CHIP_ICONS.tours, `Открыть экскурсии (${handle.name})`, handle, readTours);
+}
+
+function setTourStatus(text) {
+  tourStatus = text;
+  const node = document.getElementById("tours-status");
+  if (node) node.textContent = text;
+}
+
+// все .md/.txt папки и подпапок; изменённые (по дате файла) — разобрать заново, места — найти
+async function readTours(handle) {
+  tourDir = handle;
+  const seen = new Set();
+  const walk = async (dir, path) => {
+    for await (const [name, h] of dir.entries()) {
+      if (name.startsWith("_") || name.startsWith(".")) continue;
+      if (h.kind === "directory") await walk(h, `${path}/${name}`);
+      else if (TOUR_TEXT_RE.test(name)) {
+        const id = `${path}/${name}`;
+        seen.add(id);
+        const file = await h.getFile();
+        if (tours.get(id)?.mtime === file.lastModified) continue;
+        const bytes = await file.arrayBuffer();
+        let text;
+        try { text = new TextDecoder("utf-8", { fatal: true }).decode(bytes); } catch { text = new TextDecoder("windows-1251").decode(bytes); }
+        tours.set(id, { id, file: name, mtime: file.lastModified, ...parseTour(text, name) });
+      }
+    }
+  };
+  try { await walk(handle, handle.name); } catch { setTourStatus("Папка недоступна"); return; }
+  for (const id of tours.keys()) if (!seen.has(id)) tours.delete(id);
+  const list = [...tours.values()];
+  // номера — только у остановок с местом, по порядку
+  for (const t of list) { let n = 0; for (const sec of t.sections) sec.n = sec.place ? ++n : 0; }
+  refreshTours();
+  setTourStatus(`Экскурсий: ${list.length}`);
+  for (const t of list) {
+    if (t.region && !t.point) t.point = await tourGeocode(t.region).catch(() => null);
+    for (const sec of t.sections) if (sec.place && !sec.point) sec.point = await tourGeocode(sec.place).catch(() => null);
+    refreshTours();
+    if (tourPanelId === t.id) renderTourPanel(t.id);
+  }
+  const lost = list.flatMap((t) => t.sections.filter((sec) => sec.place && !sec.point).map((sec) => sec.place));
+  setTourStatus(`Экскурсий: ${list.length}${lost.length ? `; не нашлись места: ${lost.join(", ")}` : ""}`);
+}
+addEventListener("focus", () => { if (tourDir && activeOverlays.has("tours")) readTours(tourDir); });
+
+async function pickTourFolder() {
+  let handle;
+  try { handle = await window.showDirectoryPicker({ id: "travel-earth-tours", mode: "read" }); } catch { return; }
+  await idb("settings", "readwrite", (st) => st.put(handle, "tours"));
+  tours.clear();
+  renderTourSettings(handle);
+  if (!activeOverlays.has("tours")) toggleOverlay("tours");
+  readTours(handle);
+}
+
+async function forgetTourFolder() {
+  await idb("settings", "readwrite", (st) => st.delete("tours"));
+  tourDir = null;
+  tours.clear();
+  refreshTours();
+  closeTourPanel();
+  renderTourSettings(null);
+  setTourStatus("");
+}
+
+function renderTourSettings(handle) {
+  const name = document.getElementById("tours-folder");
+  if (!name) return;
+  const supported = "showDirectoryPicker" in window;
+  name.textContent = !supported ? "нужен Chrome или Edge на компьютере" : handle ? handle.name : "не выбрана";
+  document.getElementById("tours-pick").disabled = !supported;
+  document.getElementById("tours-pick").textContent = handle ? "Выбрать другую…" : "Выбрать папку…";
+  document.getElementById("tours-forget").hidden = !handle;
+  document.getElementById("tours-status").textContent = tourStatus;
+}
+
+// панель дайджеста справа
+const SPEAK_ICON = `<svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>`;
+const PLAY_ICON = `<svg viewBox="0 0 24 24" width="14" height="14"><path fill="currentColor" d="M8 5v14l11-7z"/></svg>`;
+let tourPanelId = null;
+const tourPanel = Object.assign(document.createElement("aside"), { className: "tour-panel", hidden: true });
+document.body.append(tourPanel);
+
+function closeTourPanel() {
+  tourPanel.hidden = true;
+  tourPanelId = null;
+  speechSynthesis?.cancel();
+}
+
+function speak(text, btn) {
+  if (!("speechSynthesis" in window)) return;
+  const was = btn.classList.contains("speaking");
+  speechSynthesis.cancel();
+  for (const b of tourPanel.querySelectorAll(".speaking")) b.classList.remove("speaking");
+  if (was) return;
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang = "ru-RU";
+  u.onend = u.onerror = () => btn.classList.remove("speaking");
+  btn.classList.add("speaking");
+  speechSynthesis.speak(u);
+}
+
+function renderTourPanel(id) {
+  const t = tours.get(id);
+  if (!t) { closeTourPanel(); return; }
+  tourPanelId = id;
+  const h = (tag, cls, text) => Object.assign(document.createElement(tag), { className: cls || "", textContent: text || "" });
+  const speakBtn = (text) => {
+    const b = Object.assign(document.createElement("button"), { className: "tour-speak", title: "Послушать", innerHTML: SPEAK_ICON });
+    b.addEventListener("click", () => speak(text, b));
+    return b;
+  };
+  const close = Object.assign(document.createElement("button"), { className: "tour-close", title: "Закрыть", textContent: "×" });
+  close.addEventListener("click", closeTourPanel);
+  const head = h("div", "tour-head");
+  head.append(h("h2", "", t.title), close);
+  const nodes = [head];
+  const meta = [t.region, t.tags].filter(Boolean).join(" · ");
+  if (meta) nodes.push(h("div", "tour-meta", meta));
+  if (t.route) nodes.push(h("div", "tour-points", `Маршрут: ${t.route}`));
+  if (t.idea.length) nodes.push(...t.idea.map((line) => h("p", "tour-idea", line)));
+  for (const sec of t.sections) {
+    const box = h("section", "tour-section");
+    const title = h(sec.point ? "button" : "div", "tour-sec-title");
+    if (sec.n) title.append(h("span", "tour-num", String(sec.n)));
+    title.append(sec.title || sec.place || "");
+    if (sec.point) {
+      title.title = "Показать на карте";
+      title.addEventListener("click", () => map.flyTo({ center: sec.point, zoom: Math.max(map.getZoom(), 12), duration: 2000 }));
+    }
+    box.append(title);
+    const facts = [sec.trail, sec.length, sec.time, sec.difficulty, sec.season].filter(Boolean).join(" · ");
+    if (facts) box.append(h("div", "tour-facts", facts));
+    if (sec.points?.length) box.append(h("div", "tour-points", `Точки: ${sec.points.join(" → ")}`));
+    if (sec.features?.length) {
+      const ul = h("ul", "tour-features");
+      for (const f of sec.features) ul.append(h("li", "", f));
+      box.append(ul);
+    }
+    for (const para of sec.paras || []) box.append(h("p", "", para));
+    for (const [k, cls, label] of [["history", "tour-history", "Справка"], ["quote", "tour-quote", "Из источника"]]) {
+      if (!sec[k]?.length) continue;
+      const text = sec[k].join(" ");
+      const block = h("div", cls);
+      const top = h("div", "tour-block-head");
+      top.append(h("span", "", label), speakBtn(text));
+      block.append(top, h("p", "", text));
+      box.append(block);
+    }
+    nodes.push(box);
+  }
+  if (t.sources.length) {
+    const box = h("section", "tour-section tour-sources");
+    box.append(h("div", "tour-sec-title", "Источники"));
+    for (const line of t.sources) {
+      const src = tourSource(line);
+      const row = h("div", "tour-source");
+      if (src.url) {
+        const a = Object.assign(document.createElement("a"), { href: src.url, target: "_blank", rel: "noopener" });
+        if (src.video) a.innerHTML = PLAY_ICON;
+        a.append(src.text);
+        row.append(a);
+      } else row.textContent = src.text;
+      box.append(row);
+    }
+    nodes.push(box);
+  }
+  nodes.push(h("div", "tour-file", `Файл: ${t.id}`));
+  tourPanel.replaceChildren(...nodes);
+  tourPanel.hidden = false;
+}
+
+function openTour(id) {
+  renderTourPanel(id);
+  const pts = (tours.get(id)?.sections || []).map((sec) => sec.point).filter(Boolean);
+  if (pts.length > 1) {
+    const lons = pts.map((c) => c[0]), lats = pts.map((c) => c[1]);
+    map.fitBounds([[Math.min(...lons), Math.min(...lats)], [Math.max(...lons), Math.max(...lats)]],
+      { padding: { top: 90, bottom: 130, left: 90, right: 420 }, maxZoom: 13, duration: 2500 });
+  } else if (pts.length || tours.get(id)?.point) map.flyTo({ center: pts[0] || tours.get(id).point, zoom: 10, duration: 2500 });
+}
+
+const tourAt = (point) => {
+  const layers = TOUR_LAYERS.filter((l) => map.getLayer(l));
+  return layers.length ? map.queryRenderedFeatures(point, { layers })[0] : null;
+};
+onHover(TOUR_LAYERS, (evt) => {
+  const p = evt.features[0].properties;
+  if (trailPoiHover === p.hover && trailPoiPopup?.isOpen()) return;
+  trailPoiHover = p.hover;
+  const t = tours.get(p.tour);
+  openMediaPopup(evt.features[0].geometry.coordinates, 12, "260px",
+    `<div class="popup-title">${escapeHtml(p.kind === "stop" ? `${p.n}. ${p.title}` : p.title)}</div>`
+    + `<div class="popup-kind">${escapeHtml(p.kind === "stop" ? `Экскурсия «${t?.title || ""}»` : [t?.region, "экскурсия"].filter(Boolean).join(" · "))}</div>`
+    + `<div class="popup-row popup-muted">Щелчок — открыть</div>`);
+  trailPoiPopup.on("close", () => { if (trailPoiHover === p.hover) trailPoiHover = null; });
+  keepTrailPoiInfoOnHover();
+});
+map.on("click", TOUR_LAYERS, (evt) => {
+  const p = evt.features[0].properties;
+  trailPoiPopup?.remove();
+  if (p.kind === "stop") renderTourPanel(p.tour);
+  else openTour(p.tour);
+});
+
 function addOverlay(id) {
   const overlay = OVERLAYS.find((o) => o.id === id);
   const before = firstLabelLayer();
@@ -1763,6 +2145,8 @@ function addOverlay(id) {
     addMapillary(firstPoiLayer());
   } else if (id === "myphotos") {
     addMyPhotos(firstPoiLayer());
+  } else if (id === "tours") {
+    addTours(firstPoiLayer());
   } else if (id === "railways") {
     // цвет пути по виду транспорта — те же цвета, что у флажков станций
     const color = ["match", ["get", "subclass"],
@@ -1789,6 +2173,7 @@ function removeOverlay(id) {
   if (id === "photos") { selectPhoto(null); updatePhotoStrip(); }
   if (id === "mapillary" && map.getSource("ov-mly-pos")) map.removeSource("ov-mly-pos");
   if (id === "myphotos") { if (selectedPhoto?.startsWith("my/")) selectPhoto(null); updatePhotoStrip(); }
+  if (id === "tours") closeTourPanel();
   for (const sourceId of [`ov-${id}`, `ov-${id}-vec`]) if (map.getSource(sourceId)) map.removeSource(sourceId);
   if (overlay.trails && !trailOverlayActive()) {
     for (const layerId of TRAIL_POI_LAYERS) if (map.getLayer(layerId)) map.removeLayer(layerId);
@@ -2496,7 +2881,7 @@ const photoAt = (point) => map.queryRenderedFeatures(point, { layers: PHOTO_LAYE
 map.on("click", (evt) => {
   const f = photoAt(evt.point);
   if (f) selectPhoto(photoById(f.properties.photo) || f);
-  else if (/^(photo|mly|my|album)\//.test(String(trailPoiHover)) && !mlyAt(evt.point) && !albumAt(evt.point)) trailPoiPopup?.remove();
+  else if (/^(photo|mly|my|album|tour)\//.test(String(trailPoiHover)) && !mlyAt(evt.point) && !albumAt(evt.point) && !tourAt(evt.point)) trailPoiPopup?.remove();
 });
 // двойной щелчок по снимку — галерея вместо приближения карты
 map.on("dblclick", (evt) => {
@@ -2662,7 +3047,7 @@ async function pointInfoHtml(lngLat) {
     + (address ? `<div class="popup-kind">${escapeHtml(address)}</div>` : "");
 }
 
-const ownInfoLayers = () => [...POI_LAYERS, ...HOVER_POI_LAYERS, ...MLY_LAYERS, "ov-my-albums"].filter((id) => map.getLayer(id));
+const ownInfoLayers = () => [...POI_LAYERS, ...HOVER_POI_LAYERS, ...MLY_LAYERS, "ov-my-albums", ...TOUR_LAYERS].filter((id) => map.getLayer(id));
 
 // значок карты в нескольких пикселях от точки, о котором щелчок покажет подсказку
 // Значки мест без названия (пикник, навес, туалет) — тоже, если вид известен
@@ -2969,6 +3354,7 @@ el("search-clear-btn").addEventListener("click", () => {
 function openAboutModal() {
   el("about-modal").hidden = false;
   idb("settings", "readonly", (st) => st.get("dir")).catch(() => null).then((handle) => renderMySettings(handle || myDir));
+  idb("settings", "readonly", (st) => st.get("tours")).catch(() => null).then((handle) => renderTourSettings(handle || tourDir));
 }
 function closeAboutModal() { el("about-modal").hidden = true; }
 
@@ -3210,6 +3596,8 @@ map.once("load", () => {
 
 el("about-close-btn").addEventListener("click", closeAboutModal);
 el("my-photos-pick").addEventListener("click", pickMyFolder);
+el("tours-pick").addEventListener("click", pickTourFolder);
+el("tours-forget").addEventListener("click", forgetTourFolder);
 el("my-photos-forget").addEventListener("click", forgetMyFolder);
 el("about-modal").addEventListener("click", (evt) => {
   if (evt.target.id === "about-modal") closeAboutModal();
