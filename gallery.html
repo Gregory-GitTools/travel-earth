@@ -97,17 +97,67 @@
   }
   .thumb.active::after { border-color: #e91e63; }
   .empty { display: grid; place-items: center; color: #aaa; }
+
+  /* экскурсия (текст из папки альбома): панель справа; подпись снимка — под названием */
+  .main { display: flex; min-height: 0; }
+  .main .stage { flex: 1; }
+  .tour {
+    width: 360px;
+    padding: 12px 18px 24px;
+    overflow-y: auto;
+    border-left: 1px solid #2a2a2a;
+    font-size: 0.88rem;
+    line-height: 1.5;
+    scrollbar-width: thin;
+    scrollbar-color: #444 transparent;
+  }
+  .tour h2 { margin: 0 0 10px; font-size: 1.05rem; font-weight: 600; }
+  .tour h3 { margin: 18px 0 6px; font-size: 0.92rem; font-weight: 600; color: #fff; }
+  .tour p { margin: 0 0 10px; color: #ccc; }
+  .tour .stop {
+    display: flex;
+    gap: 10px;
+    width: 100%;
+    margin: 0 0 10px;
+    padding: 6px;
+    border: none;
+    border-radius: 8px;
+    background: #1c1c1c;
+    color: #ddd;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+  .tour .stop:hover { background: #262626; }
+  .tour .stop.current { outline: 2px solid #e91e63; }
+  .tour .stop img { flex: none; width: 56px; height: 56px; border-radius: 6px; object-fit: cover; background: #222; }
+  .tour-toggle {
+    border: 1px solid #444;
+    border-radius: 14px;
+    padding: 3px 12px;
+    background: transparent;
+    color: #ddd;
+    font: inherit;
+    font-size: 0.8rem;
+    cursor: pointer;
+  }
+  .tour-toggle.on { background: #333; }
+  .caption-text { font-size: 0.85rem; color: #ddd; font-style: italic; margin-top: 4px; }
 </style>
 </head>
 <body>
 <div class="bar">
-  <div class="caption"><div class="title"></div><div class="meta"></div></div>
+  <div class="caption"><div class="title"></div><div class="meta"></div><div class="caption-text" hidden></div></div>
+  <button class="tour-toggle" hidden>Экскурсия</button>
   <div class="count"></div>
 </div>
-<div class="stage">
-  <img class="photo" alt="">
-  <button class="nav prev" title="Назад (←)">‹</button>
-  <button class="nav next" title="Вперёд (→)">›</button>
+<div class="main">
+  <div class="stage">
+    <img class="photo" alt="">
+    <button class="nav prev" title="Назад (←)">‹</button>
+    <button class="nav next" title="Вперёд (→)">›</button>
+  </div>
+  <div class="tour" hidden></div>
 </div>
 <div class="thumbs"></div>
 <script>
@@ -192,6 +242,13 @@ function show(i) {
 
 let firstShow = true;
 function afterShow(p) {
+  $(".caption-text").hidden = !p.caption;
+  $(".caption-text").textContent = p.caption || "";
+  for (const stop of document.querySelectorAll(".tour .stop")) {
+    const on = stop.dataset.photo === p.photo;
+    stop.classList.toggle("current", on);
+    if (on) stop.scrollIntoView({ block: "nearest", behavior: firstShow ? "instant" : "smooth" });
+  }
   thumbs.forEach((t, k) => t.classList.toggle("active", k === index));
   // первый раз — сразу, без анимации: плавная прокрутка к 500-му снимку «показала» бы все
   // миниатюры по пути, и они встали бы в очередь
@@ -232,6 +289,35 @@ $(".thumbs").addEventListener("wheel", (e) => {
   if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) $(".thumbs").scrollLeft += e.deltaY;
   e.preventDefault();
 }, { passive: false });
+
+// экскурсия альбома: заголовки, абзацы и «остановки» — снимок с подписью, щелчок открывает его
+const tour = data.excursion;
+if (tour) {
+  const panel = $(".tour");
+  const byName = new Map(photos.map((p, i) => [p.title.toLowerCase(), i]));
+  panel.append(Object.assign(document.createElement("h2"), { textContent: tour.title }));
+  for (const b of tour.blocks) {
+    if (b.type === "h") panel.append(Object.assign(document.createElement("h3"), { textContent: b.text }));
+    else if (b.type === "p") panel.append(Object.assign(document.createElement("p"), { textContent: b.text }));
+    else {
+      const i = byName.get(b.file.toLowerCase());
+      if (i === undefined) continue;
+      const stop = Object.assign(document.createElement("button"), { className: "stop" });
+      stop.dataset.photo = photos[i].photo;
+      const img = Object.assign(document.createElement("img"), { alt: "" });
+      if (photos[i].thumb) img.src = photos[i].thumb;
+      else host()?.myGalleryThumb(photos[i].photo).then((url) => { img.src = url; }).catch(() => {});
+      stop.append(img, Object.assign(document.createElement("span"), { textContent: b.text || b.file }));
+      stop.addEventListener("click", () => show(i));
+      panel.append(stop);
+    }
+  }
+  const toggle = $(".tour-toggle");
+  toggle.hidden = false;
+  const setTour = (on) => { panel.hidden = !on; toggle.classList.toggle("on", on); localStorage.setItem("travel-earth.tour", on ? "1" : "0"); };
+  toggle.addEventListener("click", () => setTour(panel.hidden));
+  setTour(localStorage.getItem("travel-earth.tour") !== "0");
+}
 
 if (photos.length) show(index);
 else $(".stage").replaceChildren(Object.assign(document.createElement("div"), { className: "empty", textContent: "Нет снимков" }));

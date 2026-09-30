@@ -996,15 +996,18 @@ window.addEventListener("message", (e) => {
   galleryFocus = f.properties.photo;
   trailPoiPopup?.remove();
   selectPhoto(f, { popup: false });
-  const { x, y } = map.project(f.geometry.coordinates);
-  const { clientWidth: w, clientHeight: h } = map.getContainer();
-  const stripTop = photoStrip.hidden ? h : h - 110;
   // снимок альбома может быть на другом конце глобуса — туда перелёт с приближением
   if (map.getZoom() < photoMinZoom()) map.flyTo({ center: f.geometry.coordinates, zoom: photoMinZoom() + 1, duration: 2500 });
-  else if (x < w * 0.2 || x > w * 0.8 || y < h * 0.2 || y > stripTop - h * 0.1) {
-    map.easeTo({ center: f.geometry.coordinates, duration: 700 });
-  }
+  else keepInView(f.geometry.coordinates);
 });
+
+// точка у края кадра (или под лентой фото) — карта плавно подвигается, чтобы она была в середине
+function keepInView(lngLat) {
+  const { x, y } = map.project(lngLat);
+  const { clientWidth: w, clientHeight: h } = map.getContainer();
+  const bottom = (photoStrip.hidden ? h : h - 110) - h * 0.1;
+  if (x < w * 0.2 || x > w * 0.8 || y < h * 0.2 || y > bottom) map.easeTo({ center: lngLat, duration: 700 });
+}
 
 const photoById = (id) => (String(id).startsWith("my/") ? myPhotoFeatures.get(id) : photoFeatures.get(Number(String(id).slice(6))));
 
@@ -1024,10 +1027,13 @@ function openPhotoGallery(f) {
     return { photo, title, author, date, license, page, thumb, full, fullWidth };
   });
   localStorage.setItem(PHOTO_GALLERY_KEY, JSON.stringify({ photos, start: list.indexOf(f) < 0 ? 0 : list.indexOf(f) }));
+  openSideWindow(`gallery.html?t=${Date.now()}`, "travel-earth-gallery");
+}
+
+// отдельное окно по центру экрана, 80 % × 85 %; с тем же именем — то же окно, перезагружается
+function openSideWindow(url, name) {
   const w = Math.round(screen.availWidth * 0.8), h = Math.round(screen.availHeight * 0.85);
-  const win = window.open(`gallery.html?t=${Date.now()}`, "travel-earth-gallery",
-    `popup,width=${w},height=${h},left=${Math.round((screen.availWidth - w) / 2)},top=${Math.round((screen.availHeight - h) / 2)}`);
-  win?.focus();
+  window.open(url, name, `popup,width=${w},height=${h},left=${Math.round((screen.availWidth - w) / 2)},top=${Math.round((screen.availHeight - h) / 2)}`)?.focus();
 }
 
 // миниатюра — квадрат из середины снимка в тонкой (1,5 px) белой скруглённой рамке, вдвое
@@ -1238,12 +1244,7 @@ async function showMapillaryInfo(f, lngLat) {
   trailPoiPopup?.setOffset(f.geometry.type === "Point" ? 10 : 6);
 }
 
-map.on("mousemove", MLY_LAYERS, (evt) => {
-  if (touchPointer) return;
-  clearTimeout(trailPoiHideTimer);
-  showMapillaryInfo(evt.features[0], evt.lngLat);
-});
-map.on("mouseleave", MLY_LAYERS, () => { if (!touchPointer) hideTrailPoiInfoSoon(); });
+onHover(MLY_LAYERS, (evt) => showMapillaryInfo(evt.features[0], evt.lngLat));
 map.on("click", MLY_LAYERS, (evt) => showMapillaryInfo(evt.features[0], evt.lngLat));
 map.on("dblclick", (evt) => {
   const f = mlyAt(evt.point);
@@ -1254,9 +1255,7 @@ map.on("dblclick", (evt) => {
 
 // просмотр в отдельном окне (одно и то же, как у галереи)
 function openMapillaryViewer(id) {
-  const w = Math.round(screen.availWidth * 0.8), h = Math.round(screen.availHeight * 0.85);
-  window.open(`viewer.html?id=${encodeURIComponent(id)}`, "travel-earth-mapillary",
-    `popup,width=${w},height=${h},left=${Math.round((screen.availWidth - w) / 2)},top=${Math.round((screen.availHeight - h) / 2)}`)?.focus();
+  openSideWindow(`viewer.html?id=${encodeURIComponent(id)}`, "travel-earth-mapillary");
 }
 
 // где сейчас камера просмотра: точка со взглядом, карта подвигается, если точка у края
@@ -1268,10 +1267,7 @@ window.addEventListener("message", (e) => {
   if (m.closed) { src.setData({ type: "FeatureCollection", features: [] }); return; }
   src.setData({ type: "FeatureCollection", features: [{ type: "Feature", geometry: { type: "Point", coordinates: [m.lng, m.lat] },
     properties: { bearing: m.bearing || 0 } }] });
-  if (!m.moved) return;
-  const { x, y } = map.project([m.lng, m.lat]);
-  const { clientWidth: w, clientHeight: h } = map.getContainer();
-  if (x < w * 0.2 || x > w * 0.8 || y < h * 0.2 || y > h * 0.75) map.easeTo({ center: [m.lng, m.lat], duration: 700 });
+  if (m.moved) keepInView([m.lng, m.lat]);
 });
 
 // ---------- мои фото (папка на этом компьютере) ----------
@@ -1292,6 +1288,7 @@ window.addEventListener("message", (e) => {
 // двойной по снимку — тот же альбом с этого снимка; галерея ведёт карту (перелёт к снимку)
 const MY_COLOR = "#7c4dff";
 const MY_IMAGE_RE = /\.(jpe?g|webp|png)$/i;
+const MY_TEXT_RE = /\.(txt|md)$/i;
 const MY_ALBUM_PROBE = 25; // сколько снимков альбома пробовать в поисках координат на первом проходе
 const myPhotoFeatures = new Map(); // "my/12" → feature снимка с координатами
 const myFiles = new Map(); // "my/12" → { handle, name, path, album, rec }
@@ -1302,7 +1299,7 @@ let myFileSeq = 0, myAlbumSeq = 0;
 let myStatus = "";
 const myData = () => ({ type: "FeatureCollection", features: [
   ...[...myAlbums.values()].filter((a) => a.point).map((a) => ({ type: "Feature", geometry: { type: "Point", coordinates: a.point },
-    properties: { album: a.id, kind: "album", title: a.name, path: a.path, count: a.files.length } })),
+    properties: { album: a.id, kind: "album", title: a.name, path: a.path, count: a.files.length, excursion: a.excursion?.title || "" } })),
   ...myPhotoFeatures.values()] });
 let myDataTimer = 0;
 function refreshMyData() {
@@ -1466,16 +1463,18 @@ async function startMyScan(handle) {
     const album = myAlbums.get(file.album);
     myPhotoFeatures.set(id, { type: "Feature", geometry: { type: "Point", coordinates: [file.rec.lon, file.rec.lat] },
       properties: { photo: id, kind: "photo", album: album.id, albumName: album.name, title: file.name,
+        caption: album.excursion?.captions[file.name.toLowerCase()] || "",
         date: file.rec.date ? new Date(file.rec.date).toLocaleDateString("ru") : "", z: 0 } });
   };
 
   // проход 1: папки и первая точка каждого альбома
   const walk = async (dir, path) => {
-    const files = [], dirs = [];
+    const files = [], dirs = [], texts = [];
     try {
       for await (const [name, h] of dir.entries()) {
         if (h.kind === "directory") { if (!name.startsWith(".")) dirs.push([name, h]); }
         else if (MY_IMAGE_RE.test(name)) files.push([name, h]);
+        else if (MY_TEXT_RE.test(name)) texts.push([name, h]);
       }
     } catch { return; }
     if (scan !== myScan) return;
@@ -1487,6 +1486,7 @@ async function startMyScan(handle) {
         myFiles.set(id, { handle: h, name, path: `${path}/${name}`, album: album.id, rec: null });
         album.files.push(id);
       }
+      if (texts.length) album.excursion = await readExcursion(texts, files.map(([name]) => name)).catch(() => null);
       for (const id of album.files.slice(0, MY_ALBUM_PROBE)) {
         const rec = await exifOf(id);
         if (rec.lat) { album.point = [rec.lon, rec.lat]; addPhotoFeature(id); break; }
@@ -1519,6 +1519,56 @@ async function startMyScan(handle) {
   }
   flush();
   report(true);
+}
+
+// Экскурсия: текстовые файлы (.txt, .md) в папке альбома. Формат простой, для Блокнота:
+//   # Название экскурсии        — первая строка с «#» (иначе — имя файла)
+//   ## Раздел                   — подзаголовок (остановка)
+//   20260802_042559.jpg         — строка, где только имя снимка из этой папки:
+//   Текст под ней — подпись      к этому снимку относится абзац сразу под ней
+//   Остальное — абзацы рассказа (пустая строка — новый абзац)
+// Кодировка — UTF-8, а если не читается — Windows-1251 (старый Блокнот). Несколько файлов —
+// по порядку имён, один за другим
+async function readExcursion(texts, photoNames) {
+  const names = new Map(photoNames.map((n) => [n.toLowerCase(), n]));
+  const blocks = [], captions = {};
+  let title = "", para = [], photo = null;
+  const endPara = () => {
+    if (!para.length) return;
+    const text = para.join(" ");
+    if (photo) { captions[photo.toLowerCase()] = text; blocks.push({ type: "photo", file: photo, text }); photo = null; }
+    else blocks.push({ type: "p", text });
+    para = [];
+  };
+  for (const [name, h] of texts.sort((a, b) => a[0].localeCompare(b[0], undefined, { numeric: true }))) {
+    const bytes = await (await h.getFile()).arrayBuffer();
+    let text;
+    try { text = new TextDecoder("utf-8", { fatal: true }).decode(bytes); } catch { text = new TextDecoder("windows-1251").decode(bytes); }
+    for (const raw of text.replace(/^\uFEFF/, "").split(/\r?\n/)) {
+      const line = raw.trim();
+      if (!line) { endPara(); continue; }
+      const heading = line.match(/^(#{1,3})\s+(.+)/);
+      if (heading) {
+        endPara();
+        if (photo) { blocks.push({ type: "photo", file: photo, text: "" }); photo = null; }
+        if (heading[1] === "#" && !title) title = heading[2];
+        else blocks.push({ type: "h", text: heading[2] });
+        continue;
+      }
+      const file = names.get(line.toLowerCase());
+      if (file) {
+        endPara();
+        if (photo) blocks.push({ type: "photo", file: photo, text: "" });
+        photo = file;
+        continue;
+      }
+      para.push(line);
+    }
+    endPara();
+    if (photo) { blocks.push({ type: "photo", file: photo, text: "" }); photo = null; }
+    if (!title) title = name.replace(MY_TEXT_RE, "");
+  }
+  return blocks.length || title ? { title, blocks, captions } : null;
 }
 
 // миниатюры снимков в кадре (со «3 км» — для ленты, с «1 км» — и на карте)
@@ -1625,12 +1675,12 @@ function openAlbumGallery(albumId, startId) {
   const photos = album.files.map((id) => {
     const file = myFiles.get(id);
     return { photo: id, my: true, title: file.name, thumb: file.thumb || myPhotoFeatures.get(id)?.properties.thumb || "",
+      caption: album.excursion?.captions[file.name.toLowerCase()] || "",
       date: file.rec?.date ? new Date(file.rec.date).toLocaleDateString("ru") : "", license: `Альбом «${album.name}»` };
   });
-  localStorage.setItem(PHOTO_GALLERY_KEY, JSON.stringify({ photos, start: Math.max(0, album.files.indexOf(startId)) }));
-  const w = Math.round(screen.availWidth * 0.8), h = Math.round(screen.availHeight * 0.85);
-  window.open(`gallery.html?t=${Date.now()}`, "travel-earth-gallery",
-    `popup,width=${w},height=${h},left=${Math.round((screen.availWidth - w) / 2)},top=${Math.round((screen.availHeight - h) / 2)}`)?.focus();
+  localStorage.setItem(PHOTO_GALLERY_KEY, JSON.stringify({ photos, start: Math.max(0, album.files.indexOf(startId)),
+    excursion: album.excursion ? { title: album.excursion.title, blocks: album.excursion.blocks } : null }));
+  openSideWindow(`gallery.html?t=${Date.now()}`, "travel-earth-gallery");
 }
 
 // альбом: наведение — название и число снимков, щелчок — перелёт, двойной — галерея
@@ -1639,15 +1689,10 @@ function showAlbumInfo(f) {
   const p = f.properties;
   if (trailPoiHover === p.album && trailPoiPopup?.isOpen()) return;
   trailPoiHover = p.album;
-  trailPoiPopup?.remove();
-  trailPoiPopup = new maplibregl.Popup({ offset: 10, maxWidth: "260px", closeButton: false, closeOnClick: false,
-    className: matchMedia("(max-width: 600px)").matches ? "photo-sheet" : "" })
-    .setLngLat(f.geometry.coordinates)
-    .setHTML(`<div class="popup-title">${escapeHtml(p.title)}</div>`
-      + `<div class="popup-kind">${escapeHtml(`Альбом · ${p.count} фото`)}</div>`
-      + `<div class="popup-row popup-muted">${escapeHtml(canOpenGallery() ? "Щелчок — к альбому, двойной — открыть" : "Нажмите — к альбому")}</div>`)
-    .addTo(map);
-  if (trailPoiPopup.getElement().classList.contains("photo-sheet")) document.body.append(trailPoiPopup.getElement());
+  openMediaPopup(f.geometry.coordinates, 10, "260px", `<div class="popup-title">${escapeHtml(p.title)}</div>`
+    + `<div class="popup-kind">${escapeHtml(`Альбом · ${p.count} фото`)}</div>`
+    + (p.excursion ? `<div class="popup-row">${escapeHtml(`Экскурсия: ${p.excursion}`)}</div>` : "")
+    + `<div class="popup-row popup-muted">${escapeHtml(canOpenGallery() ? "Щелчок — к альбому, двойной — открыть" : "Нажмите — к альбому")}</div>`);
   trailPoiPopup.on("close", () => { if (trailPoiHover === p.album) trailPoiHover = null; });
   keepTrailPoiInfoOnHover();
 }
@@ -1661,12 +1706,7 @@ function flyToAlbum(albumId) {
       { padding: { top: 90, bottom: 130, left: 110, right: 90 }, maxZoom: 17, duration: 2500 });
   } else map.flyTo({ center: album.point, zoom: 16, duration: 2500 });
 }
-map.on("mousemove", "ov-my-albums", (evt) => {
-  if (touchPointer) return;
-  clearTimeout(trailPoiHideTimer);
-  showAlbumInfo(evt.features[0]);
-});
-map.on("mouseleave", "ov-my-albums", () => { if (!touchPointer) hideTrailPoiInfoSoon(); });
+onHover("ov-my-albums", (evt) => showAlbumInfo(evt.features[0]));
 map.on("click", "ov-my-albums", (evt) => flyToAlbum(evt.features[0].properties.album));
 map.on("dblclick", (evt) => {
   const a = albumAt(evt.point);
@@ -2426,24 +2466,14 @@ function showPhotoInfo(f) {
   const mine = p.photo.startsWith("my/");
   const link = (html) => (p.page ? `<a href="${escapeHtml(p.page)}" target="_blank" rel="noopener">${html}</a>` : `<span>${html}</span>`);
   const meta = [p.author, p.date, p.license].filter(Boolean).join(" · ");
-  trailPoiPopup?.remove();
-  // closeOnClick: false — на телефоне касание сначала даёт mousemove (окно открылось), а
-  // потом click того же касания закрыл бы его; мимо снимка окно закрывает свой обработчик ниже
-  // на узком экране окно у снимка то и дело уходило за край (Грегори) — там оно карточкой
-  // над лентой во всю ширину (.photo-sheet, положение задаёт CSS поверх того, что ставит MapLibre)
-  trailPoiPopup = new maplibregl.Popup({ offset: PHOTO_SIZE / 2 + 4, maxWidth: `${width + 20}px`, closeButton: false, closeOnClick: false,
-    className: matchMedia("(max-width: 600px)").matches ? "photo-sheet" : "" })
-    .setLngLat(f.geometry.coordinates)
-    .setOffset((p.photo === selectedPhoto ? 1.4 : 1) * PHOTO_SIZE / 2 + 4)
-    .setHTML(link(`<img class="popup-photo" width="${width}" height="${height}" alt="" src="${escapeHtml(p.thumb.replace(/\/\d+px-/, "/330px-"))}">`)
+  openMediaPopup(f.geometry.coordinates, (p.photo === selectedPhoto ? 1.4 : 1) * PHOTO_SIZE / 2 + 4, `${width + 20}px`,
+    link(`<img class="popup-photo" width="${width}" height="${height}" alt="" src="${escapeHtml(p.thumb.replace(/\/\d+px-/, "/330px-"))}">`)
       + `<div class="popup-title">${escapeHtml(p.title)}</div>`
       + (meta ? `<div class="popup-kind">${escapeHtml(meta)}</div>` : "")
-      + `<div class="popup-row">${mine ? escapeHtml(`Альбом «${p.albumName}»`) : link(p.photo.startsWith("mly/") ? "Mapillary" : "Wikimedia Commons")}</div>`)
-    .addTo(map);
+      + (p.caption ? `<div class="popup-row popup-caption">${escapeHtml(p.caption.length > 220 ? `${p.caption.slice(0, 217)}…` : p.caption)}</div>` : "")
+      + `<div class="popup-row">${mine ? escapeHtml(`Альбом «${p.albumName}»`) : link(p.photo.startsWith("mly/") ? "Mapillary" : "Wikimedia Commons")}</div>`);
   // у маленьких снимков нет миниатюры 330 px — тогда та, что на карте
   trailPoiPopup.getElement().querySelector("img").addEventListener("error", (e) => { e.target.src = p.thumb; }, { once: true });
-  // #map — position: fixed, свой слой наложения: внутри него карточку накрыли бы «Слои» и кнопки
-  if (trailPoiPopup.getElement().classList.contains("photo-sheet")) document.body.append(trailPoiPopup.getElement());
   trailPoiPopup.on("close", () => {
     if (trailPoiHover === p.photo) trailPoiHover = null;
     if (selectedPhoto === p.photo) selectPhoto(null);
@@ -2475,6 +2505,21 @@ map.on("dblclick", (evt) => {
   evt.preventDefault();
   openPhotoGallery(photoById(f.properties.photo) || f);
 });
+
+// Окно снимка или альбома (trailPoiPopup). closeOnClick: false — на телефоне касание
+// сначала даёт mousemove, и click того же касания закрыл бы окно; мимо снимка окно закрывает
+// свой обработчик map.on("click"). На узком экране окно у точки уходило за край (Грегори) —
+// там оно карточкой над лентой во всю ширину (.photo-sheet: положение задаёт CSS поверх
+// того, что MapLibre пишет каждый кадр) и переносится в body: #map — position: fixed, свой
+// слой наложения, внутри него карточку накрыли бы «Слои» и кнопки
+function openMediaPopup(lngLat, offset, maxWidth, html) {
+  trailPoiPopup?.remove();
+  trailPoiPopup = new maplibregl.Popup({ offset, maxWidth, closeButton: false, closeOnClick: false,
+    className: matchMedia("(max-width: 600px)").matches ? "photo-sheet" : "" })
+    .setLngLat(lngLat).setHTML(html).addTo(map);
+  if (trailPoiPopup.getElement().classList.contains("photo-sheet")) document.body.append(trailPoiPopup.getElement());
+  return trailPoiPopup;
+}
 
 function keepTrailPoiInfoOnHover() {
   const el = trailPoiPopup.getElement();
@@ -2508,12 +2553,17 @@ function trailPoiKindOf(p) {
 let touchPointer = false;
 map.getContainer().addEventListener("pointerdown", (e) => { touchPointer = e.pointerType === "touch"; }, true);
 map.getContainer().addEventListener("pointermove", (e) => { if (e.pointerType === "mouse") touchPointer = false; }, true);
-map.on("mousemove", HOVER_POI_LAYERS, (evt) => {
-  if (touchPointer) return;
-  clearTimeout(trailPoiHideTimer);
-  showTrailPoiInfo(evt.features[0]);
-});
-map.on("mouseleave", HOVER_POI_LAYERS, () => { if (!touchPointer) hideTrailPoiInfoSoon(); });
+onHover(HOVER_POI_LAYERS, (evt) => showTrailPoiInfo(evt.features[0]));
+
+// подсказка при наведении мыши на слой; уход — прячет с задержкой (hideTrailPoiInfoSoon)
+function onHover(layers, show) {
+  map.on("mousemove", layers, (evt) => {
+    if (touchPointer) return;
+    clearTimeout(trailPoiHideTimer);
+    show(evt);
+  });
+  map.on("mouseleave", layers, () => { if (!touchPointer) hideTrailPoiInfoSoon(); });
+}
 map.on("click", HOVER_POI_LAYERS, (evt) => { if (!evt.features[0].properties.photo) showTrailPoiInfo(evt.features[0]); });
 
 // ---------- подсказка по щелчку на карте ----------

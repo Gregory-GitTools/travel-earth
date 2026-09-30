@@ -863,6 +863,12 @@ body.has-photo-strip .map-status {
   max-height: 30vh;
 }
 
+/* подпись к своему снимку из экскурсии */
+.popup-caption {
+  font-style: italic;
+  color: #444;
+}
+
 .popup-muted {
   color: #999;
 }
