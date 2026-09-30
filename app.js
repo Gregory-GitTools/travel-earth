@@ -324,21 +324,35 @@ const TRAILS_MIN_ZOOM = 9;
 // овалы. С 12 было поздно: на юге шкала «1 км» — это ещё зум 11,5
 const TRAILS_VECTOR_ZOOM = 11;
 
+// значки на кнопках слоёв — монохромные условные обозначения, как на картах, а не цветные
+// эмодзи (Грегори: «ближе к общепринятым, а не как конфетки»); пляжи и сёрфинг — значки с карты
+const chipSvg = (inner) => `<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">${inner}</svg>`;
+const BIKE_PATH = "M18.18 10l-1.7-4.68C16.19 4.53 15.44 4 14.6 4H12v2h2.6l1.46 4h-4.81l-.36-1H12V7H7v2h1.75l1.82 5H9.9c-.44-2.23-2.31-3.88-4.65-3.99C2.45 9.87 0 12.2 0 15c0 2.8 2.2 5 5 5 2.46 0 4.45-1.69 4.9-4h4.2c.44 2.23 2.31 3.88 4.65 3.99 2.8.13 5.25-2.19 5.25-5 0-2.8-2.2-5-5-5h-.82zM7.82 16c-.4 1.17-1.49 2-2.82 2-1.68 0-3-1.32-3-3s1.32-3 3-3c1.33 0 2.42.83 2.82 2H5v2h2.82zm6.28-2h-1.4l-.73-2H15c-.44.58-.76 1.25-.9 2zm4.9 4c-1.68 0-3-1.32-3-3 0-.93.41-1.73 1.05-2.28l.96 2.64 1.88-.68-.97-2.67c.03 0 .06-.01.09-.01 1.68 0 3 1.32 3 3s-1.33 3-3.01 3z";
+const CHIP_ICONS = {
+  hillshade: chipSvg('<path d="M14 6l-3.75 5 2.85 3.8-1.6 1.2C9.81 13.75 7 10 7 10l-6 8h22L14 6z"/>'), // горы
+  contours: chipSvg('<g fill="none" stroke="currentColor" stroke-width="1.6"><path d="M2.5 15c0-5 4.5-9.5 10-9.5s9 3.5 9 7.5-4 6.5-9.5 6.5S2.5 19 2.5 15z"/><path d="M6.5 14.5c0-3 2.8-5.5 6-5.5s5.3 2 5.3 4.2-2.5 3.8-5.5 3.8-5.8-.3-5.8-2.5z"/></g><circle cx="12.3" cy="13.4" r="1.5"/>'), // вершина в горизонталях
+  terrain3d: chipSvg('<path d="M2 17.5l5 3.5h15l-5-3.5z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M4.5 16.5l5-8 3 4.5 2.5-3 4.5 6.5z"/>'), // горы на плите блок-диаграммы
+  hiking: chipSvg('<g transform="rotate(-12 7 15)"><ellipse cx="7" cy="16.5" rx="2.4" ry="4"/><circle cx="5.2" cy="10.9" r="1.05"/><circle cx="7.1" cy="10.4" r=".8"/><circle cx="8.6" cy="10.9" r=".7"/><circle cx="9.6" cy="11.9" r=".6"/></g><g transform="rotate(12 17 8)"><ellipse cx="17" cy="9.5" rx="2.4" ry="4"/><circle cx="18.8" cy="3.9" r="1.05"/><circle cx="16.9" cy="3.4" r=".8"/><circle cx="15.4" cy="3.9" r=".7"/><circle cx="14.4" cy="4.9" r=".6"/></g>'), // босые следы
+  cycling: chipSvg(`<path d="${BIKE_PATH}"/>`),
+  mtb: chipSvg(`<path d="M9 1.5l3.5 5h-7z"/><path d="M13.5 3.5l2.8 3h-4.2z" opacity=".75"/><path transform="translate(0 4) scale(1 .85)" d="${BIKE_PATH}"/>`), // велосипед под вершинами
+  railways: chipSvg('<path d="M12 2c-4 0-8 .5-8 4v9.5C4 17.43 5.57 19 7.5 19L6 20.5v.5h2.23l2-2H14l2 2h2v-.5L16.5 19c1.93 0 3.5-1.57 3.5-3.5V6c0-3.5-3.58-4-8-4zM7.5 17c-.83 0-1.5-.67-1.5-1.5S6.67 14 7.5 14s1.5.67 1.5 1.5S8.33 17 7.5 17zm3.5-7H6V6h5v4zm2 0V6h5v4h-5zm3.5 7c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5z"/>'), // поезд, как у флажков станций
+};
+
 const OVERLAYS = [
-  { id: "hillshade", name: "Рельеф", icon: "⛰️", hint: "Тени склонов — горы становятся объёмными", layers: ["ov-hillshade"] },
-  { id: "contours", name: "Горизонтали", icon: "〰️", hint: "Линии равной высоты с подписями в метрах",
+  { id: "hillshade", name: "Рельеф", icon: CHIP_ICONS.hillshade, hint: "Тени склонов — горы становятся объёмными", layers: ["ov-hillshade"] },
+  { id: "contours", name: "Горизонтали", icon: CHIP_ICONS.contours, hint: "Линии равной высоты с подписями в метрах",
     layers: ["ov-contours", "ov-contour-labels"], available: () => !!demSource },
-  { id: "terrain3d", name: "3D-рельеф", icon: "🏔️", hint: "Настоящий объёмный рельеф — наклоните карту (правая кнопка мыши или два пальца)", layers: [] },
-  { id: "hiking", name: "Пешие тропы", icon: "🥾", hint: "Маркированные пешие маршруты — видны с масштаба около 10 км, вблизи — с номерами", trails: "hiking",
+  { id: "terrain3d", name: "3D-рельеф", icon: CHIP_ICONS.terrain3d, hint: "Настоящий объёмный рельеф — наклоните карту (правая кнопка мыши или два пальца)", layers: [] },
+  { id: "hiking", name: "Пешие тропы", icon: CHIP_ICONS.hiking, hint: "Маркированные пешие маршруты — видны с масштаба около 10 км, вблизи — с номерами", trails: "hiking",
     layers: ["ov-hiking", "ov-hiking-line", "ov-hiking-label"] },
-  { id: "cycling", name: "Велодорожки", icon: "🚲", hint: "Веломаршруты — видны с масштаба около 10 км, вблизи — с номерами", trails: "cycling",
+  { id: "cycling", name: "Велодорожки", icon: CHIP_ICONS.cycling, hint: "Веломаршруты — видны с масштаба около 10 км, вблизи — с номерами", trails: "cycling",
     layers: ["ov-cycling", "ov-cycling-line", "ov-cycling-label"] },
-  { id: "mtb", name: "Маунтинбайк", icon: "🚵", hint: "Маршруты для горного велосипеда — видны с масштаба около 10 км, вблизи — с номерами", trails: "mtb",
+  { id: "mtb", name: "Маунтинбайк", icon: CHIP_ICONS.mtb, hint: "Маршруты для горного велосипеда — видны с масштаба около 10 км, вблизи — с номерами", trails: "mtb",
     layers: ["ov-mtb", "ov-mtb-line", "ov-mtb-label"] },
-  { id: "beaches", name: "Пляжи", icon: "🏖️", hint: "Пляжи — видны с масштаба 3 км", layers: ["ov-beaches"] },
+  { id: "beaches", name: "Пляжи", icon: "", hint: "Пляжи — видны с масштаба 10 км", layers: ["ov-beaches"] },
   { id: "surf", name: "Сёрфинг", icon: "", hint: "Места для сёрфинга, кайта и виндсёрфинга по всему миру — видны на любом масштабе",
     layers: ["ov-surf"] },
-  { id: "railways", name: "Железные дороги", icon: "🚆", hint: "Поезда, метро, трамваи и фуникулёры — каждый своим цветом",
+  { id: "railways", name: "Железные дороги", icon: CHIP_ICONS.railways, hint: "Поезда, метро, трамваи и фуникулёры — каждый своим цветом",
     layers: ["ov-rail-tunnel", "ov-rail"] },
 ];
 const OVERLAYS_STORAGE_KEY = "travel-earth.overlays";
