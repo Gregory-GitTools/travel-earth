@@ -122,9 +122,43 @@ const photoEl = $(".photo");
 // крупный снимок: у Commons миниатюры стандартных размеров; оригинал — если он не больше 1920
 const bigUrl = (p) => (p.fullWidth > 1920 && p.thumb ? p.thumb.replace(/\/\d+px-/, "/1920px-") : p.full || p.thumb);
 
+// свои фото (альбом с компьютера): файлы читает главное окно — миниатюру делает, когда её
+// клетка ленты видна (по одной, чтобы не вешать браузер), оригинал отдаёт только открытому
+const host = () => {
+  try { return [window.opener, window.parent].find((w) => w && w !== window && w.myGalleryThumb) || null; } catch { return null; }
+};
+const thumbQueue = [];
+let thumbBusy = false;
+// клетка ещё рядом с видимой частью ленты? (пока ждала очереди, ленту могли прокрутить)
+function nearView(el) {
+  const r = el.getBoundingClientRect(), root = document.querySelector(".thumbs").getBoundingClientRect();
+  return r.right > root.left - 400 && r.left < root.right + 400;
+}
+function pumpThumbs() {
+  if (thumbBusy || !host()) return;
+  while (thumbQueue.length && !nearView(thumbQueue[0][1].parentElement)) seen.observe(thumbQueue.shift()[1].parentElement);
+  if (!thumbQueue.length) return;
+  thumbBusy = true;
+  const [p, img] = thumbQueue.shift();
+  host().myGalleryThumb(p.photo).then((url) => { p.thumb = url; img.src = url; }).catch(() => {})
+    .finally(() => { thumbBusy = false; pumpThumbs(); });
+}
+const seen = new IntersectionObserver((entries) => {
+  for (const e of entries) {
+    if (!e.isIntersecting) continue;
+    seen.unobserve(e.target);
+    const i = Number(e.target.dataset.i);
+    thumbQueue.push([photos[i], e.target.firstChild]);
+  }
+  pumpThumbs();
+}, { root: document.querySelector(".thumbs"), rootMargin: "0px 400px" });
+
 const thumbs = photos.map((p, i) => {
   const b = Object.assign(document.createElement("button"), { className: "thumb", title: p.title || "" });
-  b.append(Object.assign(document.createElement("img"), { src: p.thumb, alt: "", loading: "lazy" }));
+  b.dataset.i = i;
+  b.append(Object.assign(document.createElement("img"), { alt: "", loading: "lazy" }));
+  if (p.thumb) b.firstChild.src = p.thumb;
+  else if (p.my) seen.observe(b);
   b.addEventListener("click", () => show(i));
   $(".thumbs").append(b);
   return b;
@@ -144,6 +178,7 @@ function show(i) {
       textContent: p.photo?.startsWith("mly/") ? "Mapillary" : "Wikimedia Commons" }));
   }
   $(".count").textContent = `${index + 1} / ${photos.length}`;
+  if (p.my) return showMine(p);
   photoEl.src = p.thumb;
   photoEl.classList.add("preview");
   const big = new Image();
@@ -152,10 +187,30 @@ function show(i) {
   big.src = bigUrl(p);
   // соседние — заранее, чтобы листалось без ожидания
   for (const d of [1, -1]) new Image().src = bigUrl(photos[(index + d + photos.length) % photos.length]);
+  afterShow(p);
+}
+
+let firstShow = true;
+function afterShow(p) {
   thumbs.forEach((t, k) => t.classList.toggle("active", k === index));
-  thumbs[index].scrollIntoView({ block: "nearest", inline: "center", behavior: "smooth" });
+  // первый раз — сразу, без анимации: плавная прокрутка к 500-му снимку «показала» бы все
+  // миниатюры по пути, и они встали бы в очередь
+  thumbs[index].scrollIntoView({ block: "nearest", inline: "center", behavior: firstShow ? "instant" : "smooth" });
+  firstShow = false;
   $(".prev").disabled = $(".next").disabled = photos.length < 2;
   tellMap({ gallery: "photo", photo: p.photo });
+}
+
+// свой снимок: пока читается файл — миниатюра (если уже есть), потом оригинал
+function showMine(p) {
+  photoEl.removeAttribute("src");
+  if (p.thumb) { photoEl.src = p.thumb; photoEl.classList.add("preview"); }
+  host()?.myGalleryFull(p.photo).then((url) => {
+    if (photos[index] !== p) return;
+    photoEl.src = url;
+    photoEl.classList.remove("preview");
+  }).catch(() => {});
+  afterShow(p);
 }
 
 // карта в главном окне следит за текущим снимком (выделяет и подвигается к нему)

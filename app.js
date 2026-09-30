@@ -1553,7 +1553,9 @@ async function makeMyThumb(id) {
   const blobFile = await file.handle.getFile();
   let blob = null;
   // встроенная миниатюра EXIF — быстро, но без поворота: только у неповёрнутых снимков
-  if (!(file.rec?.orient > 1)) {
+  // (снимок, до которого обход ещё не дошёл, — поворот читается здесь же)
+  const orient = file.rec ? file.rec.orient : await (await loadExifr()).orientation(blobFile).catch(() => undefined);
+  if (!(orient > 1)) {
     try {
       const t = await (await loadExifr()).thumbnail(blobFile);
       if (t) blob = new Blob([t], { type: "image/jpeg" });
@@ -1565,14 +1567,46 @@ async function makeMyThumb(id) {
     canvas.getContext("2d").drawImage(bmp, 0, 0);
     blob = await canvas.convertToBlob({ type: "image/jpeg", quality: 0.85 });
   }
+  const aspect = bmp.height / bmp.width;
+  bmp.close();
   const url = URL.createObjectURL(blob);
+  file.thumb = url;
+  // снимку без координат (он есть только в галерее альбома) картинка на карте не нужна
+  if (!f) return url;
   const img = `my-${id.slice(3)}`;
   photoImages.set(img, await photoThumb(blob));
   if (!map.hasImage(img)) try { map.addImage(img, photoImages.get(img), { pixelRatio: 2 }); } catch { /* стиль меняется */ }
-  if (f) Object.assign(f.properties, { img, thumb: url, aspect: bmp.height / bmp.width });
+  Object.assign(f.properties, { img, thumb: url, aspect });
   refreshMyData();
   return url;
 }
+
+// Для галереи альбома (она зовёт их через window.opener). Раньше галерея получала сразу
+// все снимки папки как оригиналы и ставила их же в ленту миниатюр — на альбоме в 1000
+// снимков по 12 Мп браузер вис (Грегори). Теперь список — только имена, миниатюра делается
+// по запросу, когда её клетка ленты видна (по одной), оригинал — только у открытого снимка
+function myFileThumb(id) {
+  const f = myPhotoFeatures.get(id), file = myFiles.get(id);
+  if (f) return ensureMyThumb(f);
+  if (!file) return Promise.reject(new Error("нет файла"));
+  if (file.thumb) return Promise.resolve(file.thumb);
+  if (!myThumbBusy.has(id)) myThumbBusy.set(id, makeMyThumb(id));
+  return myThumbBusy.get(id);
+}
+const myFullUrls = new Map(); // последние открытые оригиналы, id → blob URL
+async function myFileFull(id) {
+  if (myFullUrls.has(id)) return myFullUrls.get(id);
+  const url = URL.createObjectURL(await myFiles.get(id).handle.getFile());
+  myFullUrls.set(id, url);
+  for (const [old, oldUrl] of myFullUrls) {
+    if (myFullUrls.size <= 8) break;
+    URL.revokeObjectURL(oldUrl);
+    myFullUrls.delete(old);
+  }
+  return url;
+}
+window.myGalleryThumb = myFileThumb;
+window.myGalleryFull = myFileFull;
 
 // в окне снимка — сам файл вместо миниатюры (ссылка освобождается, когда окно закроется)
 async function showMyPhotoFull(id, imgEl) {
@@ -1583,29 +1617,20 @@ async function showMyPhotoFull(id, imgEl) {
   trailPoiPopup?.once("close", () => URL.revokeObjectURL(url));
 }
 
-// альбом в окне галереи: все снимки папки (и без координат), крупно — сами файлы
-let myGalleryUrls = [];
-async function openAlbumGallery(albumId, startId) {
+// альбом в окне галереи: все снимки папки (и без координат); миниатюры и оригиналы галерея
+// просит у этого окна сама (myGalleryThumb / myGalleryFull), по мере надобности
+function openAlbumGallery(albumId, startId) {
   const album = myAlbums.get(albumId);
   if (!album || !canOpenGallery()) return;
-  // окно — сразу, пока действует щелчок пользователя (дальше чтение файлов, ожидание)
-  const w = Math.round(screen.availWidth * 0.8), h = Math.round(screen.availHeight * 0.85);
-  const win = window.open("", "travel-earth-gallery",
-    `popup,width=${w},height=${h},left=${Math.round((screen.availWidth - w) / 2)},top=${Math.round((screen.availHeight - h) / 2)}`);
-  for (const url of myGalleryUrls) URL.revokeObjectURL(url);
-  myGalleryUrls = [];
-  const photos = [];
-  for (const id of album.files) {
-    const file = myFiles.get(id), f = myPhotoFeatures.get(id);
-    const full = URL.createObjectURL(await file.handle.getFile());
-    myGalleryUrls.push(full);
-    photos.push({ photo: id, title: file.name, date: file.rec?.date ? new Date(file.rec.date).toLocaleDateString("ru") : "",
-      license: `Альбом «${album.name}»`, thumb: f?.properties.thumb || full, full });
-  }
+  const photos = album.files.map((id) => {
+    const file = myFiles.get(id);
+    return { photo: id, my: true, title: file.name, thumb: file.thumb || myPhotoFeatures.get(id)?.properties.thumb || "",
+      date: file.rec?.date ? new Date(file.rec.date).toLocaleDateString("ru") : "", license: `Альбом «${album.name}»` };
+  });
   localStorage.setItem(PHOTO_GALLERY_KEY, JSON.stringify({ photos, start: Math.max(0, album.files.indexOf(startId)) }));
-  if (!win) return;
-  win.location.href = `gallery.html?t=${Date.now()}`;
-  win.focus();
+  const w = Math.round(screen.availWidth * 0.8), h = Math.round(screen.availHeight * 0.85);
+  window.open(`gallery.html?t=${Date.now()}`, "travel-earth-gallery",
+    `popup,width=${w},height=${h},left=${Math.round((screen.availWidth - w) / 2)},top=${Math.round((screen.availHeight - h) / 2)}`)?.focus();
 }
 
 // альбом: наведение — название и число снимков, щелчок — перелёт, двойной — галерея
