@@ -1755,7 +1755,12 @@ function selectTourStop(tour, n) {
   for (const sec of tourPanel.querySelectorAll(".tour-section[data-n]")) {
     const on = tourSel?.tour === tourPanelId && Number(sec.dataset.n) === tourSel?.n;
     sec.classList.toggle("current", on);
-    if (on) sec.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    if (on) {
+      sec.classList.add("open");
+      sec.classList.remove("shut");
+      tourPanel.classList.remove("min");
+      sec.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    }
   }
 }
 const TOUR_KEYS = { "место": "place", "регион": "region", "тропа": "trail", "длина": "length", "время": "time",
@@ -2053,6 +2058,24 @@ function renderVoiceSettings() {
 }
 if ("speechSynthesis" in window) speechSynthesis.addEventListener("voiceschanged", renderVoiceSettings);
 
+// Свёртка (Грегори: «пункты подсобрать, свернуть отдельно экскурсию и текст»): кнопка в шапке
+// сворачивает текст всех пунктов (остаются номер, заголовок и строка фактов), стрелка у пункта —
+// раскрывает/сворачивает только его; вторая кнопка сворачивает всю панель до шапки. Выбор
+// запоминается (localStorage). Выделенная остановка всегда раскрыта
+const TOUR_TEXT_KEY = "travel-earth.tour-text", TOUR_MIN_KEY = "travel-earth.tour-min";
+const FOLD_ICON = `<svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M7.41 18.59 8.83 20 12 16.83 15.17 20l1.41-1.41L12 14l-4.59 4.59zm9.18-13.18L15.17 4 12 7.17 8.83 4 7.41 5.41 12 10l4.59-4.59z"/></svg>`;
+const UNFOLD_ICON = `<svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M12 5.83 15.17 9l1.41-1.41L12 3 7.41 7.59 8.83 9 12 5.83zm0 12.34L8.83 15l-1.41 1.41L12 21l4.59-4.59L15.17 15 12 18.17z"/></svg>`;
+const COLLAPSE_ICON = `<svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M19 13H5v-2h14v2z"/></svg>`;
+const EXPAND_ICON = `<svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M19 19H5V5h14v14zM5 3a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2H5z"/></svg>`;
+const CHEVRON_ICON = `<svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M16.59 8.59 12 13.17 7.41 8.59 6 10l6 6 6-6z"/></svg>`;
+
+// стрелка пункта: в развёрнутом режиме — сворачивает его (.shut), в режиме «только пункты» — раскрывает (.open)
+function foldButton(box) {
+  const b = Object.assign(document.createElement("button"), { className: "tour-fold", title: "Свернуть / развернуть", innerHTML: CHEVRON_ICON });
+  b.addEventListener("click", () => box.classList.toggle(tourPanel.classList.contains("titles") ? "open" : "shut"));
+  return b;
+}
+
 function renderTourPanel(id) {
   const t = tours.get(id);
   if (!t) { closeTourPanel(); return; }
@@ -2071,16 +2094,52 @@ function renderTourPanel(id) {
   const head = h("div", "tour-head");
   const title = h("h2", "", t.title);
   title.title = t.title;
-  head.append(title, tourHelpButton(), edit, close);
+  // свернуть: текст пунктов (остаются заголовки) и всю панель (остаётся шапка) — отдельно
+  const textBtn = Object.assign(document.createElement("button"), { className: "tour-edit" });
+  const setTextBtn = () => {
+    const folded = tourPanel.classList.contains("titles");
+    textBtn.innerHTML = folded ? UNFOLD_ICON : FOLD_ICON;
+    textBtn.title = folded ? "Показать текст пунктов" : "Только пункты — свернуть текст";
+  };
+  textBtn.addEventListener("click", () => {
+    const folded = !tourPanel.classList.contains("titles");
+    tourPanel.classList.toggle("titles", folded);
+    for (const box of tourPanel.querySelectorAll(".tour-section.open")) box.classList.remove("open");
+    localStorage.setItem(TOUR_TEXT_KEY, folded ? "titles" : "full");
+    setTextBtn();
+  });
+  const minBtn = Object.assign(document.createElement("button"), { className: "tour-edit" });
+  const setMinBtn = () => {
+    const min = tourPanel.classList.contains("min");
+    minBtn.innerHTML = min ? EXPAND_ICON : COLLAPSE_ICON;
+    minBtn.title = min ? "Развернуть экскурсию" : "Свернуть экскурсию";
+  };
+  minBtn.addEventListener("click", () => {
+    const min = !tourPanel.classList.contains("min");
+    tourPanel.classList.toggle("min", min);
+    localStorage.setItem(TOUR_MIN_KEY, min ? "1" : "0");
+    setMinBtn();
+  });
+  tourPanel.classList.toggle("titles", localStorage.getItem(TOUR_TEXT_KEY) === "titles");
+  tourPanel.classList.toggle("min", localStorage.getItem(TOUR_MIN_KEY) === "1");
+  setTextBtn();
+  setMinBtn();
+  head.append(title, textBtn, tourHelpButton(), edit, minBtn, close);
   const nodes = [head];
+  // шапка экскурсии (регион, маршрут, идея) — тоже пункт, сворачивается как остальные
+  const about = h("section", "tour-section tour-about");
+  const aboutHead = h("div", "tour-sec-row");
+  aboutHead.append(h("div", "tour-sec-title", "Об экскурсии"), foldButton(about));
+  const aboutBody = h("div", "tour-sec-body");
   const meta = [t.region, t.tags].filter(Boolean).join(" · ");
-  if (meta) nodes.push(h("div", "tour-meta", meta));
-  if (t.route) nodes.push(h("div", "tour-points", `Маршрут: ${t.route}`));
-  if (t.idea.length) nodes.push(...t.idea.map((line) => h("p", "tour-idea", line)));
+  if (meta) aboutBody.append(h("div", "tour-meta", meta));
+  if (t.route) aboutBody.append(h("div", "tour-points", `Маршрут: ${t.route}`));
+  for (const line of t.idea) aboutBody.append(h("p", "tour-idea", line));
+  if (aboutBody.childNodes.length) { about.append(aboutHead, aboutBody); nodes.push(about); }
   for (const sec of t.sections) {
     const box = h("section", "tour-section");
     if (sec.n) box.dataset.n = sec.n;
-    if (sec.n && tourSel?.tour === id && tourSel.n === sec.n) box.classList.add("current");
+    if (sec.n && tourSel?.tour === id && tourSel.n === sec.n) box.classList.add("current", "open");
     const title = h(sec.point ? "button" : "div", "tour-sec-title");
     if (sec.n) title.append(h("span", "tour-num", String(sec.n)));
     title.append(sec.title || sec.place || "");
@@ -2091,16 +2150,21 @@ function renderTourPanel(id) {
         map.flyTo({ center: sec.point, zoom: Math.max(map.getZoom(), 12), duration: 2000 });
       });
     }
-    box.append(title);
+    const row = h("div", "tour-sec-row");
+    const body = h("div", "tour-sec-body");
     const facts = [sec.trail, sec.length, sec.time, sec.difficulty, sec.season].filter(Boolean).join(" · ");
+    // факты — в строке заголовка, чтобы и в свёрнутом виде было видно главное
+    row.append(title, foldButton(box));
+    box.append(row);
     if (facts) box.append(h("div", "tour-facts", facts));
-    if (sec.points?.length) box.append(h("div", "tour-points", `Точки: ${sec.points.join(" → ")}`));
+    box.append(body);
+    if (sec.points?.length) body.append(h("div", "tour-points", `Точки: ${sec.points.join(" → ")}`));
     if (sec.features?.length) {
       const ul = h("ul", "tour-features");
       for (const f of sec.features) ul.append(h("li", "", f));
-      box.append(ul);
+      body.append(ul);
     }
-    for (const para of sec.paras || []) box.append(h("p", "", para));
+    for (const para of sec.paras || []) body.append(h("p", "", para));
     for (const [k, cls, label] of [["history", "tour-history", "Справка"], ["quote", "tour-quote", "Из источника"]]) {
       if (!sec[k]?.length) continue;
       const text = sec[k].join(" ");
@@ -2108,23 +2172,27 @@ function renderTourPanel(id) {
       const top = h("div", "tour-block-head");
       top.append(h("span", "", label), speakBtn(text));
       block.append(top, h("p", "", text));
-      box.append(block);
+      body.append(block);
     }
+    if (!body.childNodes.length) box.querySelector(".tour-fold").remove();
     nodes.push(box);
   }
   if (t.sources.length) {
     const box = h("section", "tour-section tour-sources");
-    box.append(h("div", "tour-sec-title", "Источники"));
+    const row = h("div", "tour-sec-row");
+    row.append(h("div", "tour-sec-title", "Источники"), foldButton(box));
+    const body = h("div", "tour-sec-body");
+    box.append(row, body);
     for (const line of t.sources) {
       const src = tourSource(line);
-      const row = h("div", "tour-source");
+      const line_ = h("div", "tour-source");
       if (src.url) {
         const a = Object.assign(document.createElement("a"), { href: src.url, target: "_blank", rel: "noopener" });
         if (src.video) a.innerHTML = PLAY_ICON;
         a.append(src.text);
-        row.append(a);
-      } else row.textContent = src.text;
-      box.append(row);
+        line_.append(a);
+      } else line_.textContent = src.text;
+      body.append(line_);
     }
     nodes.push(box);
   }

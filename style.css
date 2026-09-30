@@ -949,14 +949,83 @@ html, body {
   margin: 8px 0 0;
 }
 
+/* пункты — плотнее (Грегори: «подсобрать») */
 .tour-section {
-  margin-top: 14px;
-  padding-top: 10px;
+  margin-top: 6px;
+  padding-top: 6px;
   border-top: 1px solid #eee;
 }
 
 .tour-section p {
-  margin: 6px 0 0;
+  margin: 4px 0 0;
+}
+
+.tour-sec-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.tour-sec-row .tour-sec-title {
+  flex: 1;
+  min-width: 0;
+}
+
+.tour-fold {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: #5f6368;
+  cursor: pointer;
+  transform: rotate(180deg);
+  transition: transform 0.15s;
+}
+
+.tour-fold:hover {
+  background: #f1f3f4;
+}
+
+/* свёрнутый пункт: стрелка вниз, текст скрыт (заголовок и факты остаются) */
+.tour-section.shut .tour-sec-body,
+.tour-panel.titles .tour-section:not(.open) .tour-sec-body {
+  display: none;
+}
+
+.tour-section.shut .tour-fold,
+.tour-panel.titles .tour-section:not(.open) .tour-fold {
+  transform: none;
+}
+
+.tour-section[data-n] .tour-facts,
+.tour-section[data-n] .tour-sec-body {
+  margin-left: 28px;
+}
+
+.tour-about .tour-sec-title,
+.tour-sources .tour-sec-title {
+  color: #5f6368;
+  font-size: 0.8rem;
+}
+
+/* вся экскурсия свёрнута — остаётся шапка */
+.tour-panel.min {
+  bottom: auto;
+  overflow: hidden;
+  padding-bottom: 0;
+}
+
+.tour-panel.min > :not(.tour-head) {
+  display: none;
+}
+
+.tour-panel.min .tour-head {
+  border-bottom: none;
 }
 
 .tour-sec-title {
@@ -997,13 +1066,13 @@ button.tour-sec-title:hover {
 }
 
 .tour-features {
-  margin: 6px 0 0;
+  margin: 4px 0 0;
   padding-left: 18px;
 }
 
 .tour-history,
 .tour-quote {
-  margin-top: 8px;
+  margin-top: 6px;
   padding: 6px 10px 8px;
   border-radius: 8px;
   background: #fff3e0;
