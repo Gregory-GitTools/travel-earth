@@ -903,8 +903,9 @@ function addPhotos(before) {
 // выделить снимок на карте и в ленте (null — снять выделение). Одинаково по щелчку в ленте
 // и на карте; выделение живёт, пока открыто окно снимка: закрылось окно (щелчок мимо, сдвиг
 // карты, другой снимок) — снимается и выделение
-function selectPhoto(f) {
+function selectPhoto(f, { popup = true } = {}) {
   if (selectedPhoto === (f?.properties.photo || null)) return;
+  if (!f || f.properties.photo !== galleryFocus) galleryFocus = null;
   selectedPhoto = f?.properties.photo || null;
   // картинка выделенного — тот же снимок в розовой рамке, как в ленте
   if (f) {
@@ -917,6 +918,8 @@ function selectPhoto(f) {
   if (map.getLayer("ov-photo-selected")) map.setFilter("ov-photo-selected", ["==", ["get", "photo"], selectedPhoto || ""]);
   for (const [id, el] of photoStripItems) el.classList.toggle("active", id === selectedPhoto);
   if (!f) return;
+  photoStripItems.get(selectedPhoto)?.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "smooth" });
+  if (!popup) return;
   showPhotoInfo(f);
   trailPoiPopup?.setOffset(1.4 * PHOTO_SIZE / 2 + 4);
 }
@@ -963,6 +966,31 @@ function updatePhotoStrip() {
   });
 }
 map.on("moveend", updatePhotoStrip);
+
+// Пока в галерее листают снимки, карта следит за ними (Грегори: «фокус на карте при
+// просмотре фото»): галерея шлёт сюда postMessage, текущий снимок выделяется на карте и в
+// ленте (без окна — снимок и так на весь экран в галерее), а если он у края или за кадром,
+// карта плавно подвигается к нему. Выделение держится, пока карту не тронут руками или
+// галерею не закроют
+let galleryFocus = null;
+window.addEventListener("message", (e) => {
+  if (e.origin !== location.origin || !e.data?.gallery) return;
+  const f = e.data.photo && photoFeatures.get(Number(e.data.photo.slice(6)));
+  if (e.data.gallery === "closed" || !f) {
+    if (galleryFocus && selectedPhoto === galleryFocus) selectPhoto(null);
+    galleryFocus = null;
+    return;
+  }
+  galleryFocus = f.properties.photo;
+  trailPoiPopup?.remove();
+  selectPhoto(f, { popup: false });
+  const { x, y } = map.project(f.geometry.coordinates);
+  const { clientWidth: w, clientHeight: h } = map.getContainer();
+  const stripTop = photoStrip.hidden ? h : h - 110;
+  if (x < w * 0.2 || x > w * 0.8 || y < h * 0.2 || y > stripTop - h * 0.1) {
+    map.easeTo({ center: f.geometry.coordinates, duration: 700 });
+  }
+});
 
 // Галерея (только на компьютере, двойной щелчок по снимку на карте или в ленте) — отдельное
 // окно gallery.html со всеми снимками ленты, начиная с выбранного. Список передаётся через
@@ -1850,7 +1878,10 @@ function showPhotoInfo(f) {
   trailPoiPopup?.remove();
   // closeOnClick: false — на телефоне касание сначала даёт mousemove (окно открылось), а
   // потом click того же касания закрыл бы его; мимо снимка окно закрывает свой обработчик ниже
-  trailPoiPopup = new maplibregl.Popup({ offset: PHOTO_SIZE / 2 + 4, maxWidth: `${width + 20}px`, closeButton: false, closeOnClick: false })
+  // на узком экране окно у снимка то и дело уходило за край (Грегори) — там оно карточкой
+  // над лентой во всю ширину (.photo-sheet, положение задаёт CSS поверх того, что ставит MapLibre)
+  trailPoiPopup = new maplibregl.Popup({ offset: PHOTO_SIZE / 2 + 4, maxWidth: `${width + 20}px`, closeButton: false, closeOnClick: false,
+    className: matchMedia("(max-width: 600px)").matches ? "photo-sheet" : "" })
     .setLngLat(f.geometry.coordinates)
     .setOffset((p.photo === selectedPhoto ? 1.4 : 1) * PHOTO_SIZE / 2 + 4)
     .setHTML(link(`<img class="popup-photo" width="${width}" height="${height}" alt="" src="${escapeHtml(p.thumb.replace(/\/\d+px-/, "/330px-"))}">`)
@@ -1860,6 +1891,8 @@ function showPhotoInfo(f) {
     .addTo(map);
   // у маленьких снимков нет миниатюры 330 px — тогда та, что на карте
   trailPoiPopup.getElement().querySelector("img").addEventListener("error", (e) => { e.target.src = p.thumb; }, { once: true });
+  // #map — position: fixed, свой слой наложения: внутри него карточку накрыли бы «Слои» и кнопки
+  if (trailPoiPopup.getElement().classList.contains("photo-sheet")) document.body.append(trailPoiPopup.getElement());
   trailPoiPopup.on("close", () => {
     if (trailPoiHover === p.photo) trailPoiHover = null;
     if (selectedPhoto === p.photo) selectPhoto(null);
@@ -1913,11 +1946,18 @@ function trailPoiKindOf(p) {
   return p.class;
 }
 
+// касание пальцем тоже присылает mousemove — подсказку по нему не открываем: окно успевало
+// появиться под пальцем, и click того же касания доставался окну, а не карте (снимок не
+// выделялся). На касание подсказка открывается по click
+let touchPointer = false;
+map.getContainer().addEventListener("pointerdown", (e) => { touchPointer = e.pointerType === "touch"; }, true);
+map.getContainer().addEventListener("pointermove", (e) => { if (e.pointerType === "mouse") touchPointer = false; }, true);
 map.on("mousemove", HOVER_POI_LAYERS, (evt) => {
+  if (touchPointer) return;
   clearTimeout(trailPoiHideTimer);
   showTrailPoiInfo(evt.features[0]);
 });
-map.on("mouseleave", HOVER_POI_LAYERS, hideTrailPoiInfoSoon);
+map.on("mouseleave", HOVER_POI_LAYERS, () => { if (!touchPointer) hideTrailPoiInfoSoon(); });
 map.on("click", HOVER_POI_LAYERS, (evt) => { if (!evt.features[0].properties.photo) showTrailPoiInfo(evt.features[0]); });
 
 // ---------- подсказка по щелчку на карте ----------
@@ -2080,12 +2120,13 @@ map.on("mousemove", (evt) => {
 map.on("mouseout", () => { map.getCanvas().style.cursor = ""; });
 
 // любое окно на карте закрывается, как только карта начала двигаться или приближаться
-map.on("movestart", () => {
+map.on("movestart", (evt) => {
   for (const popup of [poiPopup, mapPopup, trailPoiPopup, searchMarker?.getPopup()]) {
     if (popup?.isOpen()) popup.remove();
   }
   trailPoiHover = null;
-  if (selectedPhoto) selectPhoto(null);
+  // снимок, выбранный в галерее, остаётся выделенным, пока карту двигает сама галерея
+  if (selectedPhoto && !(galleryFocus && !evt.originalEvent)) selectPhoto(null);
 });
 
 // setStyle заменяет стиль целиком вместе с проекцией и своими слоями — поэтому globe,

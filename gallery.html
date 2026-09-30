@@ -112,7 +112,7 @@
 <div class="thumbs"></div>
 <script>
 // Галерея снимков ленты: список кладёт app.js в localStorage ("travel-earth.gallery") перед
-// открытием окна. ← → — листать, Home/End — к первому/последнему, Esc — закрыть окно
+// открытием окна; текущий снимок выделяется на карте в главном окне. ← → — листать, Home/End — к первому/последнему, Esc — закрыть окно
 const data = JSON.parse(localStorage.getItem("travel-earth.gallery") || "null") || { photos: [], start: 0 };
 const photos = data.photos;
 let index = Math.min(Math.max(0, data.start || 0), photos.length - 1);
@@ -151,7 +151,14 @@ function show(i) {
   thumbs.forEach((t, k) => t.classList.toggle("active", k === index));
   thumbs[index].scrollIntoView({ block: "nearest", inline: "center", behavior: "smooth" });
   $(".prev").disabled = $(".next").disabled = photos.length < 2;
+  tellMap({ gallery: "photo", photo: p.photo });
 }
+
+// карта в главном окне следит за текущим снимком (выделяет и подвигается к нему)
+function tellMap(msg) {
+  try { window.opener?.postMessage(msg, location.origin); } catch { /* главное окно закрыто */ }
+}
+addEventListener("pagehide", () => tellMap({ gallery: "closed" }));
 
 $(".prev").addEventListener("click", () => show(index - 1));
 $(".next").addEventListener("click", () => show(index + 1));

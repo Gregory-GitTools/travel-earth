@@ -666,6 +666,34 @@ body.has-photo-strip .map-status {
   bottom: 110px;
 }
 
+/* окно снимка на узком экране — карточкой над лентой во всю ширину, чтобы не уходило за
+   край; !important перебивает положение, которое MapLibre пишет в style каждый кадр */
+.maplibregl-popup.photo-sheet {
+  position: fixed;
+  top: auto !important;
+  left: 10px !important;
+  right: 10px;
+  bottom: 108px;
+  max-width: none !important;
+  transform: none !important;
+  z-index: 11; /* над кнопками карты и «Слоями» */
+}
+
+.photo-sheet .maplibregl-popup-tip {
+  display: none;
+}
+
+.photo-sheet .maplibregl-popup-content {
+  width: 100%;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
+}
+
+.photo-sheet .popup-photo {
+  width: 100%;
+  height: auto;
+  max-height: 30vh;
+}
+
 .popup-muted {
   color: #999;
 }
