@@ -399,6 +399,17 @@ function addTrailLines(id, before) {
       "icon-image": ["concat", "plate-", ["get", "color"]], "icon-text-fit": "both", "icon-text-fit-padding": [1, 3, 0, 3] },
     paint: { "text-color": "#fff" } }, firstPoiLayer());
   addTrailPoi();
+  raiseTrailPoi();
+}
+
+// значки у троп — над линиями и табличками всех троп (другой вид троп может включиться
+// позже и встать выше) и над подписями карты, а вышки, площадки, маяки и пикник — над
+// остальными значками. Верхний слой и расставляется первым: при тесноте уступают нижние
+// (Грегори: «наши приоритеты должны быть сверху»)
+const TRAIL_POI_ORDER = ["ov-trail-poi-near", "ov-trail-poi-near-far", "ov-trail-poi-extra-near",
+  "ov-trail-poi", "ov-trail-poi-extra", "ov-trail-poi-far"];
+function raiseTrailPoi() {
+  for (const id of TRAIL_POI_ORDER) if (map.getLayer(id)) map.moveLayer(id, firstPoiLayer());
 }
 
 // Значки у троп — указатели и щиты «i», навесы, места для костра и пикника, кемпинги,
