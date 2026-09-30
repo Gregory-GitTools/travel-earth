@@ -581,6 +581,14 @@ html, body {
   margin-top: 4px;
 }
 
+.popup-photo {
+  display: block;
+  object-fit: cover;
+  border-radius: 6px;
+  margin-bottom: 6px;
+  background: #eee;
+}
+
 .popup-muted {
   color: #999;
 }

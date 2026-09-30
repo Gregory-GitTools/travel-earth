@@ -335,6 +335,7 @@ const CHIP_ICONS = {
   hiking: chipSvg('<g transform="rotate(-12 7 15)"><ellipse cx="7" cy="16.5" rx="2.4" ry="4"/><circle cx="5.2" cy="10.9" r="1.05"/><circle cx="7.1" cy="10.4" r=".8"/><circle cx="8.6" cy="10.9" r=".7"/><circle cx="9.6" cy="11.9" r=".6"/></g><g transform="rotate(12 17 8)"><ellipse cx="17" cy="9.5" rx="2.4" ry="4"/><circle cx="18.8" cy="3.9" r="1.05"/><circle cx="16.9" cy="3.4" r=".8"/><circle cx="15.4" cy="3.9" r=".7"/><circle cx="14.4" cy="4.9" r=".6"/></g>'), // босые следы
   cycling: chipSvg(`<path d="${BIKE_PATH}"/>`),
   mtb: chipSvg(`<path d="M9 1.5l3.5 5h-7z"/><path d="M13.5 3.5l2.8 3h-4.2z" opacity=".75"/><path transform="translate(0 4) scale(1 .85)" d="${BIKE_PATH}"/>`), // велосипед под вершинами
+  photos: chipSvg('<path d="M12 15.2a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4z"/><path d="M9 2 7.17 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2h-3.17L15 2H9zm3 15c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5z"/>'), // фотоаппарат
   railways: chipSvg('<path d="M12 2c-4 0-8 .5-8 4v9.5C4 17.43 5.57 19 7.5 19L6 20.5v.5h2.23l2-2H14l2 2h2v-.5L16.5 19c1.93 0 3.5-1.57 3.5-3.5V6c0-3.5-3.58-4-8-4zM7.5 17c-.83 0-1.5-.67-1.5-1.5S6.67 14 7.5 14s1.5.67 1.5 1.5S8.33 17 7.5 17zm3.5-7H6V6h5v4zm2 0V6h5v4h-5zm3.5 7c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5z"/>'), // поезд, как у флажков станций
 };
 
@@ -352,6 +353,8 @@ const OVERLAYS = [
   { id: "beaches", name: "Пляжи", icon: "", hint: "Пляжи — видны с масштаба 10 км", layers: ["ov-beaches"] },
   { id: "surf", name: "Сёрфинг", icon: "", hint: "Места для сёрфинга, кайта и виндсёрфинга по всему миру — видны на любом масштабе",
     layers: ["ov-surf"] },
+  { id: "photos", name: "Фото", icon: CHIP_ICONS.photos, hint: "Общедоступные фотографии мест из Wikimedia Commons — видны с масштаба 1 км",
+    layers: ["ov-photos"] },
   { id: "railways", name: "Железные дороги", icon: CHIP_ICONS.railways, hint: "Поезда, метро, трамваи и фуникулёры — каждый своим цветом",
     layers: ["ov-rail-tunnel", "ov-rail"] },
 ];
@@ -419,11 +422,12 @@ function addTrailLines(id, before) {
   raiseTrailPoi();
 }
 
-// значки у троп — над линиями и табличками всех троп (другой вид троп может включиться
+// фото — ниже всех своих значков: миниатюры крупные и закрывали бы их.
+// Значки у троп — над линиями и табличками всех троп (другой вид троп может включиться
 // позже и встать выше) и над подписями карты, а вышки, площадки, маяки и пикник — над
 // остальными значками. Верхний слой и расставляется первым: при тесноте уступают нижние
 // (Грегори: «наши приоритеты должны быть сверху»)
-const TRAIL_POI_ORDER = ["ov-trail-poi-near", "ov-trail-poi-near-far", "ov-trail-poi-extra-near", "ov-beaches",
+const TRAIL_POI_ORDER = ["ov-photos", "ov-trail-poi-near", "ov-trail-poi-near-far", "ov-trail-poi-extra-near", "ov-beaches",
   "ov-trail-poi", "ov-trail-poi-extra", "ov-trail-poi-far", "ov-surf"];
 function raiseTrailPoi() {
   for (const id of TRAIL_POI_ORDER) if (map.getLayer(id)) map.moveLayer(id, firstPoiLayer());
@@ -846,6 +850,167 @@ function addSurf(before) {
   if (!surfOsm) loadSurf();
 }
 
+// ---------- фото ----------
+
+// Общедоступные фотографии с координатами из Wikimedia Commons — миниатюрами прямо на
+// карте, со шкалы 1 км. Commons ищет только в небольшом прямоугольнике (больше ~0,15° —
+// ошибка "toobig") и отдаёт ближайшие к его центру снимки, поэтому грузим квадратами
+// тайлов не крупнее 12-го уровня (0,09°). Ближайшие к центру снимки обычно сняты с одной
+// точки и слипаются в один значок, поэтому на квадрат два запроса: список до 500 точек
+// (быстро, без картинок), из него по снимку на клетку сетки PHOTO_GRID×PHOTO_GRID — и уже
+// для них миниатюра, автор, лицензия и дата. При приближении квадраты мельче, и снимков
+// гуще. В старых центрах городов 500 точек покрывают лишь пятачок у центра квадрата —
+// такой квадрат (photoDense) делится на четыре, пока они не мельче половины тайла экрана.
+// Миниатюра рисуется на холсте (скруглённый квадрат в белой рамке) и
+// ставится картинкой карты; после смены карты картинки берутся из кэша photoImages.
+// Грузится в 3 параллельных запроса, ближние к центру квадраты первыми; квадраты, до
+// которых очередь не дошла, при сдвиге карты забываются
+const COMMONS_API = "https://commons.wikimedia.org/w/api.php";
+const PHOTO_MAX_METERS_PER_100PX = 2000;
+const PHOTO_CELL_MIN_Z = 12;
+const PHOTO_GRID = 4;
+const PHOTO_MAX_CELLS = 40;
+const PHOTO_SIZE = 44; // px на карте
+const photoMinZoom = () => zoomForScale(PHOTO_MAX_METERS_PER_100PX);
+const photoCells = new Map(); // "13/4000/2000" → true | "loading" | когда можно повторить
+const photoDense = new Set(); // квадраты, где снимков больше 500
+const photoFeatures = new Map(); // pageid → feature
+const photoImages = new Map(); // "photo-123" → ImageData
+const photoQueue = [];
+let photoActive = 0;
+const photoData = () => ({ type: "FeatureCollection", features: [...photoFeatures.values()] });
+const stripHtml = (html) => new DOMParser().parseFromString(html, "text/html").body.textContent.replace(/\s+/g, " ").trim();
+
+function addPhotos(before) {
+  for (const [id, data] of photoImages) if (!map.hasImage(id)) map.addImage(id, data, { pixelRatio: 2 });
+  map.addSource("ov-photos", { type: "geojson", data: photoData(),
+    attribution: '<a href="https://commons.wikimedia.org/" target="_blank">Wikimedia Commons</a>' });
+  map.addLayer({ id: "ov-photos", type: "symbol", source: "ov-photos", minzoom: photoMinZoom(),
+    layout: { "icon-image": ["get", "img"], "symbol-sort-key": ["get", "z"], "icon-padding": 4,
+      "icon-size": ["interpolate", ["linear"], ["zoom"], 12, 0.8, 16, 1] } }, before);
+  raiseTrailPoi();
+  updatePhotos();
+}
+
+// миниатюра — квадрат из середины снимка в белой скруглённой рамке, вдвое детальнее (pixelRatio 2)
+async function photoThumb(url) {
+  const bmp = await createImageBitmap(await (await fetch(url)).blob());
+  const size = PHOTO_SIZE * 2, border = 5, side = Math.min(bmp.width, bmp.height);
+  const ctx = new OffscreenCanvas(size, size).getContext("2d");
+  ctx.beginPath();
+  ctx.roundRect(1, 1, size - 2, size - 2, 14);
+  ctx.fillStyle = "#fff";
+  ctx.fill();
+  ctx.strokeStyle = "rgba(0,0,0,0.3)";
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.roundRect(border, border, size - 2 * border, size - 2 * border, 10);
+  ctx.clip();
+  ctx.drawImage(bmp, (bmp.width - side) / 2, (bmp.height - side) / 2, side, side, border, border, size - 2 * border, size - 2 * border);
+  return ctx.getImageData(0, 0, size, size);
+}
+
+async function addPhoto(page, z, co) {
+  const ii = page.imageinfo?.[0];
+  if (!ii?.thumburl || photoFeatures.has(page.pageid)) return;
+  const img = `photo-${page.pageid}`;
+  if (!photoImages.has(img)) {
+    try { photoImages.set(img, await photoThumb(ii.thumburl)); } catch { return; }
+  }
+  if (!map.hasImage(img)) try { map.addImage(img, photoImages.get(img), { pixelRatio: 2 }); } catch { /* стиль меняется */ }
+  const meta = ii.extmetadata || {};
+  const text = (k) => stripHtml(meta[k]?.value || "");
+  const title = text("ImageDescription") || page.title.replace(/^File:/, "").replace(/\.\w+$/, "").replace(/_/g, " ");
+  photoFeatures.set(page.pageid, { type: "Feature", geometry: { type: "Point", coordinates: co },
+    properties: { photo: `photo/${page.pageid}`, img, z, thumb: ii.thumburl, page: ii.descriptionurl,
+      aspect: ii.thumbheight / ii.thumbwidth, title: title.length > 160 ? `${title.slice(0, 157)}…` : title,
+      author: text("Artist"), license: text("LicenseShortName"), date: text("DateTimeOriginal").replace(/^Taken on\s*/, "") } });
+}
+
+async function loadPhotoCell(z, x, y) {
+  const n = 2 ** z;
+  const lat = (t) => (Math.atan(Math.sinh(Math.PI * (1 - (2 * t) / n))) * 180) / Math.PI;
+  const lon = (t) => (t / n) * 360 - 180;
+  const [w, s, e, n2] = [lon(x), lat(y + 1), lon(x + 1), lat(y)];
+  const query = async (params) => {
+    const res = await fetch(`${COMMONS_API}?${new URLSearchParams({ action: "query", format: "json", formatversion: 2, origin: "*", ...params })}`,
+      { signal: AbortSignal.timeout(20000) });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return (await res.json()).query || {};
+  };
+  const key = `${z}/${x}/${y}`;
+  try {
+    const found = (await query({ list: "geosearch", gsbbox: `${n2}|${w}|${s}|${e}`, gsnamespace: 6, gslimit: 500 })).geosearch || [];
+    if (found.length >= 500) photoDense.add(key);
+    // по снимку на клетку — ближайший к её центру; только фото: png и svg на Commons — в основном карты и схемы
+    const best = new Map();
+    for (const g of found) {
+      if (!/\.(jpe?g|webp)$/i.test(g.title) || photoFeatures.has(g.pageid)) continue;
+      const fx = ((g.lon - w) / (e - w)) * PHOTO_GRID, fy = ((n2 - g.lat) / (n2 - s)) * PHOTO_GRID;
+      const cell = `${Math.min(PHOTO_GRID - 1, Math.floor(fx))}:${Math.min(PHOTO_GRID - 1, Math.floor(fy))}`;
+      const d = Math.hypot(fx % 1 - 0.5, fy % 1 - 0.5);
+      if (!best.has(cell) || d < best.get(cell).d) best.set(cell, { g, d });
+    }
+    const picked = new Map([...best.values()].map(({ g }) => [g.pageid, [g.lon, g.lat]]));
+    if (picked.size) {
+      const pages = (await query({ pageids: [...picked.keys()].join("|"), prop: "imageinfo", iiprop: "url|extmetadata", iiurlwidth: 120,
+        iiextmetadatafilter: "Artist|LicenseShortName|ImageDescription|DateTimeOriginal" })).pages || [];
+      await Promise.all(pages.map((page) => addPhoto(page, z, picked.get(page.pageid))));
+    }
+    photoCells.set(key, true);
+    map.getSource("ov-photos")?.setData(photoData());
+    if (photoDense.has(key)) setTimeout(updatePhotos);
+  } catch {
+    photoCells.set(key, Date.now() + TRAIL_POI_RETRY_MS);
+    setTimeout(updatePhotos, TRAIL_POI_RETRY_MS + 100);
+  }
+}
+
+function pumpPhotos() {
+  while (photoActive < 3 && photoQueue.length) {
+    const [z, x, y] = photoQueue.shift();
+    photoActive++;
+    loadPhotoCell(z, x, y).finally(() => { photoActive--; pumpPhotos(); });
+  }
+}
+
+// квадраты тайлов в кадре (переполненные — вместе с четвертинками), ближние к центру первыми
+function photoCellsInView() {
+  const z = Math.min(16, Math.max(PHOTO_CELL_MIN_Z, Math.floor(map.getZoom())));
+  const maxZ = Math.floor(map.getZoom()) + 1;
+  // координаты в долях мира: 0…1 слева направо и сверху вниз
+  const tx = (lon) => (lon + 180) / 360;
+  const ty = (lat) => (1 - Math.asinh(Math.tan((lat * Math.PI) / 180)) / Math.PI) / 2;
+  const b = map.getBounds(), c = map.getCenter();
+  const cells = [];
+  const visit = (cz, x, y) => {
+    const n = 2 ** cz;
+    cells.push([cz, x, y, Math.hypot((x + 0.5) / n - tx(c.lng), (y + 0.5) / n - ty(c.lat))]);
+    if (cz < maxZ && photoDense.has(`${cz}/${x}/${y}`)) {
+      for (const [dx, dy] of [[0, 0], [1, 0], [0, 1], [1, 1]]) visit(cz + 1, 2 * x + dx, 2 * y + dy);
+    }
+  };
+  const n = 2 ** z;
+  for (let x = Math.max(0, Math.floor(tx(b.getWest()) * n)); x <= Math.min(n - 1, Math.floor(tx(b.getEast()) * n)); x++) {
+    for (let y = Math.max(0, Math.floor(ty(b.getNorth()) * n)); y <= Math.min(n - 1, Math.floor(ty(b.getSouth()) * n)); y++) visit(z, x, y);
+  }
+  return cells.sort((a, b2) => a[3] - b2[3]);
+}
+
+function updatePhotos() {
+  for (const [z, x, y] of photoQueue.splice(0)) photoCells.delete(`${z}/${x}/${y}`);
+  if (!activeOverlays.has("photos") || map.getZoom() < photoMinZoom()) return;
+  for (const [z, x, y] of photoCellsInView()) {
+    const key = `${z}/${x}/${y}`;
+    const state = photoCells.get(key);
+    if (state === true || state === "loading" || state > Date.now()) continue;
+    photoCells.set(key, "loading");
+    if (photoQueue.push([z, x, y]) >= PHOTO_MAX_CELLS) break;
+  }
+  pumpPhotos();
+}
+map.on("idle", updatePhotos);
 
 function addOverlay(id) {
   const overlay = OVERLAYS.find((o) => o.id === id);
@@ -889,6 +1054,8 @@ function addOverlay(id) {
     addBeaches(firstPoiLayer());
   } else if (id === "surf") {
     addSurf(firstPoiLayer());
+  } else if (id === "photos") {
+    addPhotos(firstPoiLayer());
   } else if (id === "railways") {
     // цвет пути по виду транспорта — те же цвета, что у флажков станций
     const color = ["match", ["get", "subclass"],
@@ -1240,6 +1407,7 @@ function updateScaleZooms() {
     map.setLayerZoomRange("ov-trail-poi-extra-near", trailPoiNearZoom(), 24);
   }
   for (const id of BEACH_LAYERS) if (map.getLayer(id)) map.setLayerZoomRange(id, beachMinZoom(), 24);
+  if (map.getLayer("ov-photos")) map.setLayerZoomRange("ov-photos", photoMinZoom(), 24);
   if (!map.getLayer("poi-air")) return;
   map.setLayerZoomRange("poi-air", airportMinZoom(), 24);
   map.setLayerZoomRange("poi-stops", zoomForScale(STOP_MAX_METERS_PER_100PX), 24);
@@ -1530,11 +1698,12 @@ const BEACH_SURFACE_NAMES = { sand: "песок", fine_gravel: "мелкая г�
 const beachFacts = (tags) => [BEACH_SURFACE_NAMES[tags.surface],
   (tags.supervised === "yes" || tags.lifeguard === "yes") && "спасатели"].filter(Boolean).join(", ");
 // значки со своей подсказкой при наведении
-const HOVER_POI_LAYERS = [...TRAIL_POI_LAYERS, ...BEACH_LAYERS, "ov-surf"];
+const HOVER_POI_LAYERS = [...TRAIL_POI_LAYERS, ...BEACH_LAYERS, "ov-surf", "ov-photos"];
 let trailPoiPopup = null;
 let trailPoiHover = null;
 
 async function showTrailPoiInfo(f) {
+  if (f.properties.photo) return showPhotoInfo(f);
   const key = f.source === "te-poi" ? f.id : f.properties.osm;
   if (trailPoiHover === key && trailPoiPopup?.isOpen()) return;
   trailPoiHover = key;
@@ -1561,6 +1730,32 @@ async function showTrailPoiInfo(f) {
       + (name && kind ? `<div class="popup-kind">${escapeHtml(kind)}</div>` : "")
       + (rows || tags.opening_hours || tags.website ? `<div class="popup-details">${rows}${poiDetailsHtml(tags)}</div>` : ""))
     .addTo(map);
+  keepTrailPoiInfoOnHover();
+}
+
+// фото: снимок крупнее (размер задан заранее — окно не прыгает, пока грузится), подпись,
+// автор, дата и лицензия (Commons требует их указывать), щелчок по снимку — страница на Commons
+function showPhotoInfo(f) {
+  const p = f.properties;
+  if (trailPoiHover === p.photo && trailPoiPopup?.isOpen()) return;
+  trailPoiHover = p.photo;
+  const width = 260, height = Math.min(320, Math.round(width * p.aspect));
+  const link = (html) => `<a href="${escapeHtml(p.page)}" target="_blank" rel="noopener">${html}</a>`;
+  const meta = [p.author, p.date, p.license].filter(Boolean).join(" · ");
+  trailPoiPopup?.remove();
+  trailPoiPopup = new maplibregl.Popup({ offset: PHOTO_SIZE / 2 + 4, maxWidth: `${width + 20}px`, closeButton: false })
+    .setLngLat(f.geometry.coordinates)
+    .setHTML(link(`<img class="popup-photo" width="${width}" height="${height}" alt="" src="${escapeHtml(p.thumb.replace(/\/\d+px-/, "/330px-"))}">`)
+      + `<div class="popup-title">${escapeHtml(p.title)}</div>`
+      + (meta ? `<div class="popup-kind">${escapeHtml(meta)}</div>` : "")
+      + `<div class="popup-row">${link("Wikimedia Commons")}</div>`)
+    .addTo(map);
+  // у маленьких снимков нет миниатюры 330 px — тогда та, что на карте
+  trailPoiPopup.getElement().querySelector("img").addEventListener("error", (e) => { e.target.src = p.thumb; }, { once: true });
+  keepTrailPoiInfoOnHover();
+}
+
+function keepTrailPoiInfoOnHover() {
   const el = trailPoiPopup.getElement();
   el.addEventListener("mouseenter", () => clearTimeout(trailPoiHideTimer));
   el.addEventListener("mouseleave", hideTrailPoiInfoSoon);
