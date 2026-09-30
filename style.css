@@ -1093,6 +1093,38 @@ button.tour-sec-title:hover {
   color: #8a3c00;
 }
 
+.tour-block-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.tour-block-chevron {
+  display: inline-grid;
+  transform: rotate(180deg);
+  transition: transform 0.15s;
+}
+
+.shut > .tour-block-head .tour-block-chevron {
+  transform: none;
+}
+
+.tour-history.shut > p,
+.tour-quote.shut > p {
+  display: none;
+}
+
+.tour-history.shut,
+.tour-quote.shut {
+  padding-bottom: 2px;
+}
+
 .tour-quote .tour-block-head {
   color: #5f6368;
 }

@@ -440,12 +440,15 @@ function addTrailLines(id, before) {
 // позже и встать выше) и над подписями карты, а вышки, площадки, маяки и пикник — над
 // остальными значками. Верхний слой и расставляется первым: при тесноте уступают нижние
 // (Грегори: «наши приоритеты должны быть сверху»)
-const TRAIL_POI_ORDER = ["ov-tour-route", "ov-tour-stops", "ov-tour-sel", "ov-tour-marks", "ov-tour-labels", "ov-mly-lines", "ov-mly-images", "ov-mly-pos", "ov-photo-dots", "ov-photos", "ov-photo-selected",
+const TRAIL_POI_ORDER = ["ov-mly-lines", "ov-mly-images", "ov-mly-pos", "ov-photo-dots", "ov-photos", "ov-photo-selected",
   "ov-my-dots", "ov-my-photos", "ov-my-selected", "ov-my-albums", "ov-trail-poi-near", "ov-trail-poi-near-far", "ov-trail-poi-extra-near", "ov-beaches",
   "ov-trail-poi", "ov-trail-poi-extra", "ov-trail-poi-far", "ov-surf"];
 function raiseTrailPoi() {
   for (const id of TRAIL_POI_ORDER) if (map.getLayer(id)) map.moveLayer(id, firstPoiLayer());
+  // экскурсии — поверх всего, даже флажков мест и снимков (Грегори: их номера тонули в точках фото)
+  for (const id of TOUR_TOP_ORDER) if (map.getLayer(id)) map.moveLayer(id);
 }
+const TOUR_TOP_ORDER = ["ov-tour-route", "ov-tour-stops", "ov-tour-sel", "ov-tour-marks", "ov-tour-labels"];
 
 // Значки у троп — указатели и щиты «i», навесы, места для костра и пикника, кемпинги,
 // вода. В основе карты они появляются только с зума 15–17 (по рангу), в тайлах есть с 14 —
@@ -2062,7 +2065,7 @@ if ("speechSynthesis" in window) speechSynthesis.addEventListener("voiceschanged
 // сворачивает текст всех пунктов (остаются номер, заголовок и строка фактов), стрелка у пункта —
 // раскрывает/сворачивает только его; вторая кнопка сворачивает всю панель до шапки. Выбор
 // запоминается (localStorage). Выделенная остановка всегда раскрыта
-const TOUR_TEXT_KEY = "travel-earth.tour-text", TOUR_MIN_KEY = "travel-earth.tour-min";
+const TOUR_TEXT_KEY = "travel-earth.tour-text", TOUR_MIN_KEY = "travel-earth.tour-min", TOUR_AUDIO_KEY = "travel-earth.tour-audio";
 const FOLD_ICON = `<svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M7.41 18.59 8.83 20 12 16.83 15.17 20l1.41-1.41L12 14l-4.59 4.59zm9.18-13.18L15.17 4 12 7.17 8.83 4 7.41 5.41 12 10l4.59-4.59z"/></svg>`;
 const UNFOLD_ICON = `<svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M12 5.83 15.17 9l1.41-1.41L12 3 7.41 7.59 8.83 9 12 5.83zm0 12.34L8.83 15l-1.41 1.41L12 21l4.59-4.59L15.17 15 12 18.17z"/></svg>`;
 const COLLAPSE_ICON = `<svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M19 13H5v-2h14v2z"/></svg>`;
@@ -2170,7 +2173,17 @@ function renderTourPanel(id) {
       const text = sec[k].join(" ");
       const block = h("div", cls);
       const top = h("div", "tour-block-head");
-      top.append(h("span", "", label), speakBtn(text));
+      // справку и выдержку можно свернуть до строки с кнопкой «Послушать»; последний выбор —
+      // для всех плашек (localStorage)
+      const fold = Object.assign(document.createElement("button"), { className: "tour-block-toggle", title: "Свернуть / развернуть текст" });
+      fold.append(h("span", "", label), Object.assign(document.createElement("span"), { className: "tour-block-chevron", innerHTML: CHEVRON_ICON }));
+      fold.addEventListener("click", () => {
+        const shut = !block.classList.contains("shut");
+        block.classList.toggle("shut", shut);
+        localStorage.setItem(TOUR_AUDIO_KEY, shut ? "shut" : "open");
+      });
+      if (localStorage.getItem(TOUR_AUDIO_KEY) === "shut") block.classList.add("shut");
+      top.append(fold, speakBtn(text));
       block.append(top, h("p", "", text));
       body.append(block);
     }
