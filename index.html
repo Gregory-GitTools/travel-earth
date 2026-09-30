@@ -67,7 +67,16 @@
 <div id="about-modal" class="modal" hidden>
   <div class="modal-content">
     <button id="about-close-btn" class="modal-close" title="Закрыть"><img src="icons/X WIT.png" alt=""></button>
-    <h2>О программе Travel Earth</h2>
+    <h2>Настройки и о программе</h2>
+    <hr class="about-divider">
+    <h3 class="settings-title">Мои фото на этом компьютере</h3>
+    <p class="about-text">Папка с фотографиями — каждая папка со снимками станет альбомом на глобусе по координатам из снимков. Фото остаются на диске и никуда не отправляются; выбор папки запоминается только в этом браузере.</p>
+    <div class="my-photos-row">
+      <span id="my-photos-folder" class="my-photos-folder">не выбрана</span>
+      <button id="my-photos-pick" class="text-btn">Выбрать папку…</button>
+      <button id="my-photos-forget" class="text-btn" hidden>Убрать</button>
+    </div>
+    <p id="my-photos-status" class="about-install-hint"></p>
     <hr class="about-divider">
     <div class="about-brand">
       <img src="icons/icon-512.png" alt="Travel Earth" class="about-logo">
@@ -78,6 +87,7 @@
     <p class="about-text">Личный некоммерческий проект — единый глобус и карта для путешествий из <a href="https://gregory-gittools.github.io/travel-globe/" target="_blank" rel="noopener">Travel Globe</a>. Нет рекламы и сбора данных.</p>
     <p class="about-text">Эта страница полностью сгенерирована ИИ-помощником Claude.</p>
     <p class="about-text">Больше — на канале <a href="https://www.youtube.com/@Gregory-Flow" target="_blank" rel="noopener">Gregory Flow</a>.</p>
+    <hr class="about-divider">
     <hr class="about-divider">
     <p id="about-install-hint" class="about-install-hint">Приложение работает через локальный сервер — перед запуском установленного ярлыка убедитесь, что <code>start.bat</code> запущен.</p>
     <p class="about-credits">Сделано на основе открытых инструментов: <a href="https://maplibre.org/" target="_blank" rel="noopener">MapLibre GL JS</a> (глобус и карта), карты — <a href="https://carto.com/basemaps" target="_blank" rel="noopener">CARTO</a> и <a href="https://openfreemap.org/" target="_blank" rel="noopener">OpenFreeMap</a> по данным <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>, спутниковые снимки — Esri World Imagery, высоты — AWS Terrain Tiles и <a href="https://github.com/onthegomap/maplibre-contour" target="_blank" rel="noopener">maplibre-contour</a>, маршруты — <a href="https://waymarkedtrails.org" target="_blank" rel="noopener">Waymarked Trails</a> и <a href="https://overpass-api.de" target="_blank" rel="noopener">Overpass API</a>, поиск и адреса — Nominatim, описания — Википедия и Викиданные, места — векторные тайлы OpenFreeMap и OpenStreetMap API, шрифт — Google Fonts (Poppins).</p>

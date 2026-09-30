@@ -137,8 +137,12 @@ function show(i) {
   document.title = `${p.title || "Фото"} — Travel Earth`;
   $(".title").textContent = p.title || "";
   const meta = $(".meta");
-  meta.textContent = [p.author, p.date, p.license].filter(Boolean).join(" · ") + " · ";
-  meta.append(Object.assign(document.createElement("a"), { href: p.page, target: "_blank", rel: "noopener", textContent: "Wikimedia Commons" }));
+  meta.textContent = [p.author, p.date, p.license].filter(Boolean).join(" · ");
+  // у своих фото (альбом с компьютера) ссылки на сайт нет
+  if (p.page) {
+    meta.append(" · ", Object.assign(document.createElement("a"), { href: p.page, target: "_blank", rel: "noopener",
+      textContent: p.photo?.startsWith("mly/") ? "Mapillary" : "Wikimedia Commons" }));
+  }
   $(".count").textContent = `${index + 1} / ${photos.length}`;
   photoEl.src = p.thumb;
   photoEl.classList.add("preview");

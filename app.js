@@ -336,6 +336,7 @@ const CHIP_ICONS = {
   cycling: chipSvg(`<path d="${BIKE_PATH}"/>`),
   mtb: chipSvg(`<path d="M9 1.5l3.5 5h-7z"/><path d="M13.5 3.5l2.8 3h-4.2z" opacity=".75"/><path transform="translate(0 4) scale(1 .85)" d="${BIKE_PATH}"/>`), // велосипед под вершинами
   streets: chipSvg('<path fill-rule="evenodd" d="M1.2 6.4 17.6 2.2c.9-.2 1.5.1 1.7.9l.2.7-17.9 4.6zM2.2 8.9 19.6 4.4l.9 3.6c.3 1.1-.2 1.8-1.2 2.1L6.4 13.4c-2.3.6-3.6-.2-4-1.7zM7.9 10.6a2.6 2.6 0 1 0-5.2 0 2.6 2.6 0 0 0 5.2 0z"/><circle cx="5.3" cy="10.6" r="1.1"/><path d="M11 12.3h2.6v4.2h5.4v2.6h-6.7c-.7 0-1.3-.6-1.3-1.3z"/><path fill-rule="evenodd" d="M19.6 12.6h2.2c.6 0 1 .4 1 1v8c0 .6-.4 1-1 1h-2.2zM21.2 14.4a.6.6 0 1 0 0 1.2.6.6 0 0 0 0-1.2zm0 5.2a.6.6 0 1 0 0 1.2.6.6 0 0 0 0-1.2z"/>'), // уличная камера на кронштейне (Грегори выбрал по картинке)
+  myphotos: chipSvg('<path d="M22 16V4c0-1.1-.9-2-2-2H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2zm-11-4 2.03 2.71L16 11l4 5H8l3-4zM2 6v14c0 1.1.9 2 2 2h14v-2H4V6H2z"/>'), // стопка снимков — альбом
   photos: chipSvg('<path d="M12 15.2a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4z"/><path d="M9 2 7.17 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2h-3.17L15 2H9zm3 15c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5z"/>'), // фотоаппарат
   railways: chipSvg('<path d="M12 2c-4 0-8 .5-8 4v9.5C4 17.43 5.57 19 7.5 19L6 20.5v.5h2.23l2-2H14l2 2h2v-.5L16.5 19c1.93 0 3.5-1.57 3.5-3.5V6c0-3.5-3.58-4-8-4zM7.5 17c-.83 0-1.5-.67-1.5-1.5S6.67 14 7.5 14s1.5.67 1.5 1.5S8.33 17 7.5 17zm3.5-7H6V6h5v4zm2 0V6h5v4h-5zm3.5 7c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5z"/>'), // поезд, как у флажков станций
 };
@@ -357,6 +358,9 @@ const OVERLAYS = [
   { id: "photos", name: "Фото", icon: CHIP_ICONS.photos,
     hint: "Общедоступные фотографии мест из Wikimedia Commons — точками с масштаба 3 км, снимками с 1 км и лентой внизу",
     layers: ["ov-photo-selected", "ov-photos", "ov-photo-dots"] },
+  { id: "myphotos", name: "Мои фото", icon: CHIP_ICONS.myphotos,
+    hint: "Фотографии из папки на этом компьютере (выбирается в ⚙ настройках) — альбомы видны на всём глобусе",
+    layers: ["ov-my-selected", "ov-my-photos", "ov-my-dots", "ov-my-albums"], available: () => "showDirectoryPicker" in window },
   { id: "mapillary", name: "Снимки улиц", icon: CHIP_ICONS.streets,
     hint: "Снимки и панорамы улиц и дорог из Mapillary — линии со шкалы 1 км, точки снимков со 100 м; двойной щелчок — просмотр",
     layers: ["ov-mly-pos", "ov-mly-images", "ov-mly-lines"] },
@@ -432,7 +436,8 @@ function addTrailLines(id, before) {
 // позже и встать выше) и над подписями карты, а вышки, площадки, маяки и пикник — над
 // остальными значками. Верхний слой и расставляется первым: при тесноте уступают нижние
 // (Грегори: «наши приоритеты должны быть сверху»)
-const TRAIL_POI_ORDER = ["ov-mly-lines", "ov-mly-images", "ov-mly-pos", "ov-photo-dots", "ov-photos", "ov-photo-selected", "ov-trail-poi-near", "ov-trail-poi-near-far", "ov-trail-poi-extra-near", "ov-beaches",
+const TRAIL_POI_ORDER = ["ov-mly-lines", "ov-mly-images", "ov-mly-pos", "ov-photo-dots", "ov-photos", "ov-photo-selected",
+  "ov-my-dots", "ov-my-photos", "ov-my-selected", "ov-my-albums", "ov-trail-poi-near", "ov-trail-poi-near-far", "ov-trail-poi-extra-near", "ov-beaches",
   "ov-trail-poi", "ov-trail-poi-extra", "ov-trail-poi-far", "ov-surf"];
 function raiseTrailPoi() {
   for (const id of TRAIL_POI_ORDER) if (map.getLayer(id)) map.moveLayer(id, firstPoiLayer());
@@ -913,13 +918,13 @@ function selectPhoto(f, { popup = true } = {}) {
   selectedPhoto = f?.properties.photo || null;
   // картинка выделенного — тот же снимок в розовой рамке, как в ленте
   if (f) {
-    photoThumb(f.properties.thumb, PHOTO_COLOR).then((data) => {
+    (f.properties.thumb ? Promise.resolve(f.properties.thumb) : ensureMyThumb(f)).then((url) => photoThumb(url, PHOTO_COLOR)).then((data) => {
       if (selectedPhoto !== f.properties.photo) return;
       if (map.hasImage("photo-selected")) map.removeImage("photo-selected");
       map.addImage("photo-selected", data, { pixelRatio: 2 });
     }).catch(() => {});
   }
-  if (map.getLayer("ov-photo-selected")) map.setFilter("ov-photo-selected", ["==", ["get", "photo"], selectedPhoto || ""]);
+  for (const id of ["ov-photo-selected", "ov-my-selected"]) if (map.getLayer(id)) map.setFilter(id, ["==", ["get", "photo"], selectedPhoto || ""]);
   for (const [id, el] of photoStripItems) el.classList.toggle("active", id === selectedPhoto);
   if (!f) return;
   photoStripItems.get(selectedPhoto)?.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "smooth" });
@@ -944,9 +949,10 @@ let photoStripFrame = 0;
 function updatePhotoStrip() {
   cancelAnimationFrame(photoStripFrame);
   photoStripFrame = requestAnimationFrame(() => {
-    const on = activeOverlays.has("photos") && map.getZoom() >= photoDotZoom();
+    const on = map.getZoom() >= photoDotZoom();
     const bounds = map.getBounds();
-    const shown = on ? [...photoFeatures.values()]
+    const pool = [...(activeOverlays.has("photos") ? photoFeatures.values() : []), ...(activeOverlays.has("myphotos") ? myPhotoFeatures.values() : [])];
+    const shown = on ? pool
       .filter((f) => f.properties.img && bounds.contains(f.geometry.coordinates))
       .map((f) => [f, map.project(f.geometry.coordinates).x]).sort((a, b) => a[1] - b[1]).map(([f]) => f) : [];
     photoStripList = shown;
@@ -966,6 +972,8 @@ function updatePhotoStrip() {
       if (photoStrip.children[i] !== el) photoStrip.insertBefore(el, photoStrip.children[i] || null);
     });
     photoStrip.hidden = !shown.length;
+    // запас справа (из-под кнопок) — только когда ленту есть куда крутить, иначе пустая полоса
+    photoStrip.classList.toggle("scrolls", shown.length * 74 > photoStrip.parentElement.clientWidth - 106 - 150);
     document.body.classList.toggle("has-photo-strip", shown.length > 0);
   });
 }
@@ -979,7 +987,7 @@ map.on("moveend", updatePhotoStrip);
 let galleryFocus = null;
 window.addEventListener("message", (e) => {
   if (e.origin !== location.origin || !e.data?.gallery) return;
-  const f = e.data.photo && photoFeatures.get(Number(e.data.photo.slice(6)));
+  const f = e.data.photo && photoById(e.data.photo);
   if (e.data.gallery === "closed" || !f) {
     if (galleryFocus && selectedPhoto === galleryFocus) selectPhoto(null);
     galleryFocus = null;
@@ -991,10 +999,14 @@ window.addEventListener("message", (e) => {
   const { x, y } = map.project(f.geometry.coordinates);
   const { clientWidth: w, clientHeight: h } = map.getContainer();
   const stripTop = photoStrip.hidden ? h : h - 110;
-  if (x < w * 0.2 || x > w * 0.8 || y < h * 0.2 || y > stripTop - h * 0.1) {
+  // снимок альбома может быть на другом конце глобуса — туда перелёт с приближением
+  if (map.getZoom() < photoMinZoom()) map.flyTo({ center: f.geometry.coordinates, zoom: photoMinZoom() + 1, duration: 2500 });
+  else if (x < w * 0.2 || x > w * 0.8 || y < h * 0.2 || y > stripTop - h * 0.1) {
     map.easeTo({ center: f.geometry.coordinates, duration: 700 });
   }
 });
+
+const photoById = (id) => (String(id).startsWith("my/") ? myPhotoFeatures.get(id) : photoFeatures.get(Number(String(id).slice(6))));
 
 // Галерея (только на компьютере, двойной щелчок по снимку на карте или в ленте) — отдельное
 // окно gallery.html со всеми снимками ленты, начиная с выбранного. Список передаётся через
@@ -1005,6 +1017,7 @@ const canOpenGallery = () => matchMedia("(pointer: fine)").matches;
 
 function openPhotoGallery(f) {
   if (!canOpenGallery()) return;
+  if (f.properties.photo.startsWith("my/")) return openAlbumGallery(f.properties.album, f.properties.photo);
   const list = photoStripList.some((g) => g.properties.photo === f.properties.photo) ? photoStripList : [f, ...photoStripList];
   const photos = list.map((g) => {
     const { photo, title, author, date, license, page, thumb, full, fullWidth } = g.properties;
@@ -1019,8 +1032,8 @@ function openPhotoGallery(f) {
 
 // миниатюра — квадрат из середины снимка в тонкой (1,5 px) белой скруглённой рамке, вдвое
 // детальнее (pixelRatio 2). Толстая рамка с серой каймой Грегори не понравилась
-async function photoThumb(url, frame = "#fff") {
-  const bmp = await createImageBitmap(await (await fetch(url)).blob());
+async function photoThumb(src, frame = "#fff") {
+  const bmp = await createImageBitmap(src instanceof Blob ? src : await (await fetch(src)).blob());
   const size = PHOTO_SIZE * 2, border = frame === "#fff" ? 3 : 5, side = Math.min(bmp.width, bmp.height);
   const ctx = new OffscreenCanvas(size, size).getContext("2d");
   ctx.beginPath();
@@ -1261,6 +1274,382 @@ window.addEventListener("message", (e) => {
   if (x < w * 0.2 || x > w * 0.8 || y < h * 0.2 || y > h * 0.75) map.easeTo({ center: [m.lng, m.lat], duration: 700 });
 });
 
+// ---------- мои фото (папка на этом компьютере) ----------
+
+// Пункт 3 плана фото: свои снимки из папки на компьютере (путь задаётся в ⚙ настройках —
+// своя папка у каждой машины). Браузер не пускает страницу на диск по пути вроде
+// E:\MyFotos — папку один раз выбирают в системном окне (File System Access API, Chrome и
+// Edge на компьютере; на телефоне слоя нет), её «ключ» (handle) хранится в IndexedDB этого
+// браузера, снимки никуда не отправляются. После перезапуска Chrome может спросить
+// разрешение снова — тогда кнопка «Открыть мои фото» (нужен щелчок пользователя).
+// Альбом = папка со снимками. Обход папки: у каждого альбома ищется первый снимок с GPS
+// (EXIF, библиотека exifr) — точка альбома на глобусе, видна на любом масштабе до «3 км».
+// Потом в фоне читаются координаты всех снимков (альбомы ближе к центру карты — первыми),
+// они — точками со «3 км» и миниатюрами с «1 км», как у Commons, и в той же ленте. EXIF
+// кэшируется в IndexedDB (путь + размер + дата файла), второй запуск — без чтения снимков.
+// Миниатюры — встроенная в EXIF (быстро) или уменьшенный снимок, если он повёрнут.
+// Щелчок по альбому — перелёт к нему, двойной — альбом в окне галереи (все снимки папки);
+// двойной по снимку — тот же альбом с этого снимка; галерея ведёт карту (перелёт к снимку)
+const MY_COLOR = "#7c4dff";
+const MY_IMAGE_RE = /\.(jpe?g|webp|png)$/i;
+const MY_ALBUM_PROBE = 25; // сколько снимков альбома пробовать в поисках координат на первом проходе
+const myPhotoFeatures = new Map(); // "my/12" → feature снимка с координатами
+const myFiles = new Map(); // "my/12" → { handle, name, path, album, rec }
+const myAlbums = new Map(); // "album/3" → { id, name, path, files: ["my/12", …], point, indexed }
+let myDir = null;
+let myScan = null; // идущий обход
+let myFileSeq = 0, myAlbumSeq = 0;
+let myStatus = "";
+const myData = () => ({ type: "FeatureCollection", features: [
+  ...[...myAlbums.values()].filter((a) => a.point).map((a) => ({ type: "Feature", geometry: { type: "Point", coordinates: a.point },
+    properties: { album: a.id, kind: "album", title: a.name, path: a.path, count: a.files.length } })),
+  ...myPhotoFeatures.values()] });
+let myDataTimer = 0;
+function refreshMyData() {
+  clearTimeout(myDataTimer);
+  myDataTimer = setTimeout(() => { map.getSource("ov-myphotos")?.setData(myData()); updatePhotoStrip(); }, 300);
+}
+
+// IndexedDB: settings — выбранная папка, exif — кэш координат по пути файла
+let myDbOpen = null;
+const myDb = () => (myDbOpen ||= new Promise((resolve, reject) => {
+  const req = indexedDB.open("travel-earth-my-photos", 1);
+  req.onupgradeneeded = () => { req.result.createObjectStore("settings"); req.result.createObjectStore("exif"); };
+  req.onsuccess = () => resolve(req.result);
+  req.onerror = () => reject(req.error);
+}));
+async function idb(store, mode, fn) {
+  const db = await myDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(store, mode);
+    const req = fn(tx.objectStore(store));
+    tx.oncomplete = () => resolve(req?.result);
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+let exifrLoad = null;
+const loadExifr = () => (exifrLoad ||= new Promise((resolve, reject) => {
+  const script = Object.assign(document.createElement("script"), { src: "https://unpkg.com/exifr@7.1.3/dist/full.umd.js" });
+  script.onload = () => resolve(window.exifr);
+  script.onerror = () => { exifrLoad = null; reject(new Error("exifr")); };
+  document.head.append(script);
+}));
+
+function setMyStatus(text) {
+  myStatus = text;
+  const node = document.getElementById("my-photos-status");
+  if (node) node.textContent = text;
+}
+
+function addMyPhotos(before) {
+  for (const [id, data] of photoImages) if (!map.hasImage(id)) map.addImage(id, data, { pixelRatio: 2 });
+  map.addSource("ov-myphotos", { type: "geojson", data: myData() });
+  const kind = (k) => ["==", ["get", "kind"], k];
+  map.addLayer({ id: "ov-my-albums", type: "circle", source: "ov-myphotos", maxzoom: photoDotZoom(), filter: kind("album"),
+    paint: { "circle-color": MY_COLOR, "circle-radius": ["interpolate", ["linear"], ["zoom"], 2, 5, 10, 7],
+      "circle-stroke-color": "#fff", "circle-stroke-width": 2 } }, before);
+  map.addLayer({ id: "ov-my-dots", type: "circle", source: "ov-myphotos", minzoom: photoDotZoom(), filter: kind("photo"),
+    paint: { "circle-color": MY_COLOR, "circle-radius": 4, "circle-stroke-color": "#fff", "circle-stroke-width": 1.5 } }, before);
+  map.addLayer({ id: "ov-my-photos", type: "symbol", source: "ov-myphotos", minzoom: photoMinZoom(), filter: ["all", kind("photo"), ["has", "img"]],
+    layout: { "icon-image": ["get", "img"], "icon-padding": 4 } }, before);
+  map.addLayer({ id: "ov-my-selected", type: "symbol", source: "ov-myphotos", minzoom: photoDotZoom(),
+    filter: ["==", ["get", "photo"], selectedPhoto || ""],
+    layout: { "icon-image": "photo-selected", "icon-size": 1.4, "icon-allow-overlap": true, "icon-ignore-placement": true } }, before);
+  raiseTrailPoi();
+  initMyPhotos();
+}
+
+// выбранная папка из IndexedDB; есть разрешение — обход, нет — кнопка «Открыть мои фото»
+async function initMyPhotos() {
+  if (myDir || !("showDirectoryPicker" in window)) { updateMyThumbs(); return; }
+  const handle = await idb("settings", "readonly", (st) => st.get("dir")).catch(() => null);
+  renderMySettings(handle);
+  if (!handle) { setMyStatus(""); return; }
+  if (await handle.queryPermission({ mode: "read" }) === "granted") startMyScan(handle);
+  else showMyAccessButton(handle);
+}
+
+function showMyAccessButton(handle) {
+  let btn = document.getElementById("my-photos-access");
+  if (!btn) {
+    btn = Object.assign(document.createElement("button"), { id: "my-photos-access", className: "my-photos-access" });
+    document.body.append(btn);
+  }
+  btn.innerHTML = `${CHIP_ICONS.myphotos}<span></span>`;
+  btn.lastChild.textContent = `Открыть мои фото (${handle.name})`;
+  btn.hidden = false;
+  btn.onclick = async () => {
+    if (await handle.requestPermission({ mode: "read" }) !== "granted") return;
+    btn.hidden = true;
+    startMyScan(handle);
+  };
+}
+
+async function pickMyFolder() {
+  let handle;
+  try { handle = await window.showDirectoryPicker({ id: "travel-earth-photos", mode: "read" }); } catch { return; }
+  await idb("settings", "readwrite", (st) => st.put(handle, "dir"));
+  resetMyPhotos();
+  renderMySettings(handle);
+  if (!activeOverlays.has("myphotos")) toggleOverlay("myphotos");
+  startMyScan(handle);
+}
+
+async function forgetMyFolder() {
+  await idb("settings", "readwrite", (st) => st.delete("dir"));
+  resetMyPhotos();
+  renderMySettings(null);
+  setMyStatus("");
+}
+
+function resetMyPhotos() {
+  myDir = null;
+  myScan = null;
+  myPhotoFeatures.clear();
+  myFiles.clear();
+  myAlbums.clear();
+  if (selectedPhoto?.startsWith("my/")) selectPhoto(null);
+  refreshMyData();
+}
+
+function renderMySettings(handle) {
+  const name = document.getElementById("my-photos-folder");
+  if (!name) return;
+  const supported = "showDirectoryPicker" in window;
+  name.textContent = !supported ? "нужен Chrome или Edge на компьютере" : handle ? handle.name : "не выбрана";
+  document.getElementById("my-photos-pick").disabled = !supported;
+  document.getElementById("my-photos-pick").textContent = handle ? "Выбрать другую…" : "Выбрать папку…";
+  document.getElementById("my-photos-forget").hidden = !handle;
+  document.getElementById("my-photos-status").textContent = myStatus;
+}
+
+async function startMyScan(handle) {
+  myDir = handle;
+  const scan = myScan = {};
+  const exifr = await loadExifr().catch(() => null);
+  if (!exifr) { setMyStatus("Не загрузилась библиотека чтения EXIF — проверьте интернет"); return; }
+  const keys = await idb("exif", "readonly", (st) => st.getAllKeys()).catch(() => []);
+  const values = await idb("exif", "readonly", (st) => st.getAll()).catch(() => []);
+  const cache = new Map(keys.map((k, i) => [k, values[i]]));
+  const pending = [];
+  const flush = () => {
+    const batch = pending.splice(0);
+    if (batch.length) idb("exif", "readwrite", (st) => { for (const [k, v] of batch) st.put(v, k); }).catch(() => {});
+  };
+  let checked = 0, located = 0;
+  const report = (done) => setMyStatus(`${done ? "Готово" : "Читаю папку…"} Альбомов на карте: ${[...myAlbums.values()].filter((a) => a.point).length} из ${myAlbums.size}, снимков с координатами: ${located}, проверено: ${checked}`);
+
+  // координаты и дата снимка — из кэша или из EXIF
+  const exifOf = async (id) => {
+    const file = myFiles.get(id);
+    if (file.rec) return file.rec;
+    const f = await file.handle.getFile();
+    const hit = cache.get(file.path);
+    if (hit && hit.size === f.size && hit.mtime === f.lastModified) return (file.rec = hit);
+    let rec = { size: f.size, mtime: f.lastModified };
+    try {
+      const e = await exifr.parse(f, { tiff: true, exif: true, gps: true, xmp: false, icc: false, iptc: false, jfif: false, ihdr: false, translateValues: false });
+      if (Number.isFinite(e?.latitude) && Number.isFinite(e?.longitude) && (e.latitude || e.longitude)) rec = { ...rec, lat: e.latitude, lon: e.longitude };
+      if (e?.DateTimeOriginal instanceof Date) rec.date = e.DateTimeOriginal.getTime();
+      if (e?.Orientation) rec.orient = e.Orientation;
+    } catch { /* без EXIF */ }
+    checked++;
+    pending.push([file.path, rec]);
+    if (pending.length >= 200) flush();
+    return (file.rec = rec);
+  };
+  const addPhotoFeature = (id) => {
+    const file = myFiles.get(id);
+    if (!file.rec?.lat || myPhotoFeatures.has(id)) return;
+    located++;
+    const album = myAlbums.get(file.album);
+    myPhotoFeatures.set(id, { type: "Feature", geometry: { type: "Point", coordinates: [file.rec.lon, file.rec.lat] },
+      properties: { photo: id, kind: "photo", album: album.id, albumName: album.name, title: file.name,
+        date: file.rec.date ? new Date(file.rec.date).toLocaleDateString("ru") : "", z: 0 } });
+  };
+
+  // проход 1: папки и первая точка каждого альбома
+  const walk = async (dir, path) => {
+    const files = [], dirs = [];
+    try {
+      for await (const [name, h] of dir.entries()) {
+        if (h.kind === "directory") { if (!name.startsWith(".")) dirs.push([name, h]); }
+        else if (MY_IMAGE_RE.test(name)) files.push([name, h]);
+      }
+    } catch { return; }
+    if (scan !== myScan) return;
+    if (files.length) {
+      const album = { id: `album/${++myAlbumSeq}`, name: dir.name, path, files: [], point: null, indexed: false };
+      myAlbums.set(album.id, album);
+      for (const [name, h] of files.sort((a, b) => a[0].localeCompare(b[0], undefined, { numeric: true }))) {
+        const id = `my/${++myFileSeq}`;
+        myFiles.set(id, { handle: h, name, path: `${path}/${name}`, album: album.id, rec: null });
+        album.files.push(id);
+      }
+      for (const id of album.files.slice(0, MY_ALBUM_PROBE)) {
+        const rec = await exifOf(id);
+        if (rec.lat) { album.point = [rec.lon, rec.lat]; addPhotoFeature(id); break; }
+      }
+      refreshMyData();
+      report(false);
+    }
+    for (const [name, h] of dirs.sort((a, b) => a[0].localeCompare(b[0], undefined, { numeric: true }))) await walk(h, `${path}/${name}`);
+  };
+  setMyStatus("Читаю папку…");
+  await walk(handle, handle.name);
+
+  // проход 2: все снимки, альбомы ближе к центру карты — первыми
+  for (;;) {
+    if (scan !== myScan) return;
+    const c = map.getCenter();
+    const rest = [...myAlbums.values()].filter((a) => !a.indexed);
+    if (!rest.length) break;
+    const dist = (a) => (a.point ? Math.hypot(a.point[0] - c.lng, a.point[1] - c.lat) : 1e9);
+    const album = rest.reduce((best, a) => (dist(a) < dist(best) ? a : best));
+    for (const id of album.files) {
+      const rec = await exifOf(id);
+      if (rec.lat && !album.point) album.point = [rec.lon, rec.lat];
+      addPhotoFeature(id);
+    }
+    album.indexed = true;
+    refreshMyData();
+    report(false);
+    updateMyThumbs();
+  }
+  flush();
+  report(true);
+}
+
+// миниатюры снимков в кадре (со «3 км» — для ленты, с «1 км» — и на карте)
+const myThumbQueue = [];
+const myThumbBusy = new Map(); // id → Promise url
+let myThumbActive = 0;
+function updateMyThumbs() {
+  if (!activeOverlays.has("myphotos") || map.getZoom() < photoDotZoom()) return;
+  const b = map.getBounds(), c = map.getCenter();
+  myThumbQueue.length = 0;
+  myThumbQueue.push(...[...myPhotoFeatures.values()]
+    .filter((f) => !f.properties.img && !myThumbBusy.has(f.properties.photo) && b.contains(f.geometry.coordinates))
+    .sort((a, b2) => Math.hypot(a.geometry.coordinates[0] - c.lng, a.geometry.coordinates[1] - c.lat)
+      - Math.hypot(b2.geometry.coordinates[0] - c.lng, b2.geometry.coordinates[1] - c.lat))
+    .slice(0, 120));
+  while (myThumbActive < 2 && myThumbQueue.length) {
+    myThumbActive++;
+    ensureMyThumb(myThumbQueue.shift()).catch(() => {}).finally(() => { myThumbActive--; updateMyThumbs(); });
+  }
+}
+map.on("idle", updateMyThumbs);
+
+function ensureMyThumb(f) {
+  const id = f.properties.photo;
+  if (f.properties.thumb) return Promise.resolve(f.properties.thumb);
+  if (!myThumbBusy.has(id)) myThumbBusy.set(id, makeMyThumb(id));
+  return myThumbBusy.get(id);
+}
+
+async function makeMyThumb(id) {
+  const file = myFiles.get(id), f = myPhotoFeatures.get(id);
+  const blobFile = await file.handle.getFile();
+  let blob = null;
+  // встроенная миниатюра EXIF — быстро, но без поворота: только у неповёрнутых снимков
+  if (!(file.rec?.orient > 1)) {
+    try {
+      const t = await (await loadExifr()).thumbnail(blobFile);
+      if (t) blob = new Blob([t], { type: "image/jpeg" });
+    } catch { /* нет встроенной */ }
+  }
+  const bmp = await createImageBitmap(blob || blobFile, blob ? {} : { resizeWidth: 320, resizeQuality: "medium" });
+  if (!blob) {
+    const canvas = new OffscreenCanvas(bmp.width, bmp.height);
+    canvas.getContext("2d").drawImage(bmp, 0, 0);
+    blob = await canvas.convertToBlob({ type: "image/jpeg", quality: 0.85 });
+  }
+  const url = URL.createObjectURL(blob);
+  const img = `my-${id.slice(3)}`;
+  photoImages.set(img, await photoThumb(blob));
+  if (!map.hasImage(img)) try { map.addImage(img, photoImages.get(img), { pixelRatio: 2 }); } catch { /* стиль меняется */ }
+  if (f) Object.assign(f.properties, { img, thumb: url, aspect: bmp.height / bmp.width });
+  refreshMyData();
+  return url;
+}
+
+// в окне снимка — сам файл вместо миниатюры (ссылка освобождается, когда окно закроется)
+async function showMyPhotoFull(id, imgEl) {
+  const file = myFiles.get(id);
+  if (!file || !imgEl) return;
+  const url = URL.createObjectURL(await file.handle.getFile());
+  imgEl.src = url;
+  trailPoiPopup?.once("close", () => URL.revokeObjectURL(url));
+}
+
+// альбом в окне галереи: все снимки папки (и без координат), крупно — сами файлы
+let myGalleryUrls = [];
+async function openAlbumGallery(albumId, startId) {
+  const album = myAlbums.get(albumId);
+  if (!album || !canOpenGallery()) return;
+  // окно — сразу, пока действует щелчок пользователя (дальше чтение файлов, ожидание)
+  const w = Math.round(screen.availWidth * 0.8), h = Math.round(screen.availHeight * 0.85);
+  const win = window.open("", "travel-earth-gallery",
+    `popup,width=${w},height=${h},left=${Math.round((screen.availWidth - w) / 2)},top=${Math.round((screen.availHeight - h) / 2)}`);
+  for (const url of myGalleryUrls) URL.revokeObjectURL(url);
+  myGalleryUrls = [];
+  const photos = [];
+  for (const id of album.files) {
+    const file = myFiles.get(id), f = myPhotoFeatures.get(id);
+    const full = URL.createObjectURL(await file.handle.getFile());
+    myGalleryUrls.push(full);
+    photos.push({ photo: id, title: file.name, date: file.rec?.date ? new Date(file.rec.date).toLocaleDateString("ru") : "",
+      license: `Альбом «${album.name}»`, thumb: f?.properties.thumb || full, full });
+  }
+  localStorage.setItem(PHOTO_GALLERY_KEY, JSON.stringify({ photos, start: Math.max(0, album.files.indexOf(startId)) }));
+  if (!win) return;
+  win.location.href = `gallery.html?t=${Date.now()}`;
+  win.focus();
+}
+
+// альбом: наведение — название и число снимков, щелчок — перелёт, двойной — галерея
+const albumAt = (point) => (map.getLayer("ov-my-albums") ? map.queryRenderedFeatures(point, { layers: ["ov-my-albums"] })[0] : null);
+function showAlbumInfo(f) {
+  const p = f.properties;
+  if (trailPoiHover === p.album && trailPoiPopup?.isOpen()) return;
+  trailPoiHover = p.album;
+  trailPoiPopup?.remove();
+  trailPoiPopup = new maplibregl.Popup({ offset: 10, maxWidth: "260px", closeButton: false, closeOnClick: false,
+    className: matchMedia("(max-width: 600px)").matches ? "photo-sheet" : "" })
+    .setLngLat(f.geometry.coordinates)
+    .setHTML(`<div class="popup-title">${escapeHtml(p.title)}</div>`
+      + `<div class="popup-kind">${escapeHtml(`Альбом · ${p.count} фото`)}</div>`
+      + `<div class="popup-row popup-muted">${escapeHtml(canOpenGallery() ? "Щелчок — к альбому, двойной — открыть" : "Нажмите — к альбому")}</div>`)
+    .addTo(map);
+  if (trailPoiPopup.getElement().classList.contains("photo-sheet")) document.body.append(trailPoiPopup.getElement());
+  trailPoiPopup.on("close", () => { if (trailPoiHover === p.album) trailPoiHover = null; });
+  keepTrailPoiInfoOnHover();
+}
+function flyToAlbum(albumId) {
+  const album = myAlbums.get(albumId);
+  if (!album?.point) return;
+  const pts = album.files.map((id) => myPhotoFeatures.get(id)?.geometry.coordinates).filter(Boolean);
+  const lons = pts.map((c) => c[0]), lats = pts.map((c) => c[1]);
+  if (pts.length > 1 && Math.max(...lons) - Math.min(...lons) + Math.max(...lats) - Math.min(...lats) > 0.0005) {
+    map.fitBounds([[Math.min(...lons), Math.min(...lats)], [Math.max(...lons), Math.max(...lats)]],
+      { padding: { top: 90, bottom: 130, left: 110, right: 90 }, maxZoom: 17, duration: 2500 });
+  } else map.flyTo({ center: album.point, zoom: 16, duration: 2500 });
+}
+map.on("mousemove", "ov-my-albums", (evt) => {
+  if (touchPointer) return;
+  clearTimeout(trailPoiHideTimer);
+  showAlbumInfo(evt.features[0]);
+});
+map.on("mouseleave", "ov-my-albums", () => { if (!touchPointer) hideTrailPoiInfoSoon(); });
+map.on("click", "ov-my-albums", (evt) => flyToAlbum(evt.features[0].properties.album));
+map.on("dblclick", (evt) => {
+  const a = albumAt(evt.point);
+  if (!a || !canOpenGallery()) return;
+  evt.preventDefault();
+  openAlbumGallery(a.properties.album, null);
+});
+
 function addOverlay(id) {
   const overlay = OVERLAYS.find((o) => o.id === id);
   const before = firstLabelLayer();
@@ -1307,6 +1696,8 @@ function addOverlay(id) {
     addPhotos(firstPoiLayer());
   } else if (id === "mapillary") {
     addMapillary(firstPoiLayer());
+  } else if (id === "myphotos") {
+    addMyPhotos(firstPoiLayer());
   } else if (id === "railways") {
     // цвет пути по виду транспорта — те же цвета, что у флажков станций
     const color = ["match", ["get", "subclass"],
@@ -1332,6 +1723,7 @@ function removeOverlay(id) {
   if (id === "terrain3d") map.setTerrain(null);
   if (id === "photos") { selectPhoto(null); updatePhotoStrip(); }
   if (id === "mapillary" && map.getSource("ov-mly-pos")) map.removeSource("ov-mly-pos");
+  if (id === "myphotos") { if (selectedPhoto?.startsWith("my/")) selectPhoto(null); updatePhotoStrip(); }
   for (const sourceId of [`ov-${id}`, `ov-${id}-vec`]) if (map.getSource(sourceId)) map.removeSource(sourceId);
   if (overlay.trails && !trailOverlayActive()) {
     for (const layerId of TRAIL_POI_LAYERS) if (map.getLayer(layerId)) map.removeLayer(layerId);
@@ -1660,6 +2052,12 @@ function updateScaleZooms() {
     map.setLayerZoomRange("ov-trail-poi-extra-near", trailPoiNearZoom(), 24);
   }
   for (const id of BEACH_LAYERS) if (map.getLayer(id)) map.setLayerZoomRange(id, beachMinZoom(), 24);
+  if (map.getLayer("ov-my-albums")) {
+    map.setLayerZoomRange("ov-my-albums", 0, photoDotZoom());
+    map.setLayerZoomRange("ov-my-dots", photoDotZoom(), 24);
+    map.setLayerZoomRange("ov-my-photos", photoMinZoom(), 24);
+    map.setLayerZoomRange("ov-my-selected", photoDotZoom(), 24);
+  }
   if (map.getLayer("ov-photos")) {
     map.setLayerZoomRange("ov-photos", photoMinZoom(), 24);
     map.setLayerZoomRange("ov-photo-dots", photoDotZoom(), 24);
@@ -1955,7 +2353,7 @@ const BEACH_SURFACE_NAMES = { sand: "песок", fine_gravel: "мелкая г�
 const beachFacts = (tags) => [BEACH_SURFACE_NAMES[tags.surface],
   (tags.supervised === "yes" || tags.lifeguard === "yes") && "спасатели"].filter(Boolean).join(", ");
 // значки со своей подсказкой при наведении
-const HOVER_POI_LAYERS = [...TRAIL_POI_LAYERS, ...BEACH_LAYERS, "ov-surf", "ov-photos", "ov-photo-selected"];
+const HOVER_POI_LAYERS = [...TRAIL_POI_LAYERS, ...BEACH_LAYERS, "ov-surf", "ov-photos", "ov-photo-selected", "ov-my-photos", "ov-my-selected"];
 let trailPoiPopup = null;
 let trailPoiHover = null;
 
@@ -2000,7 +2398,8 @@ function showPhotoInfo(f) {
   photoStripItems.get(p.photo)?.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "smooth" });
   trailPoiHover = p.photo;
   const width = 260, height = Math.min(220, Math.round(width * p.aspect)); // высокие — обрезаются, чтобы окно не уходило под ленту
-  const link = (html) => `<a href="${escapeHtml(p.page)}" target="_blank" rel="noopener">${html}</a>`;
+  const mine = p.photo.startsWith("my/");
+  const link = (html) => (p.page ? `<a href="${escapeHtml(p.page)}" target="_blank" rel="noopener">${html}</a>` : `<span>${html}</span>`);
   const meta = [p.author, p.date, p.license].filter(Boolean).join(" · ");
   trailPoiPopup?.remove();
   // closeOnClick: false — на телефоне касание сначала даёт mousemove (окно открылось), а
@@ -2014,7 +2413,7 @@ function showPhotoInfo(f) {
     .setHTML(link(`<img class="popup-photo" width="${width}" height="${height}" alt="" src="${escapeHtml(p.thumb.replace(/\/\d+px-/, "/330px-"))}">`)
       + `<div class="popup-title">${escapeHtml(p.title)}</div>`
       + (meta ? `<div class="popup-kind">${escapeHtml(meta)}</div>` : "")
-      + `<div class="popup-row">${link(p.photo.startsWith("mly/") ? "Mapillary" : "Wikimedia Commons")}</div>`)
+      + `<div class="popup-row">${mine ? escapeHtml(`Альбом «${p.albumName}»`) : link(p.photo.startsWith("mly/") ? "Mapillary" : "Wikimedia Commons")}</div>`)
     .addTo(map);
   // у маленьких снимков нет миниатюры 330 px — тогда та, что на карте
   trailPoiPopup.getElement().querySelector("img").addEventListener("error", (e) => { e.target.src = p.thumb; }, { once: true });
@@ -2024,10 +2423,11 @@ function showPhotoInfo(f) {
     if (trailPoiHover === p.photo) trailPoiHover = null;
     if (selectedPhoto === p.photo) selectPhoto(null);
   });
+  if (mine) showMyPhotoFull(p.photo, trailPoiPopup.getElement().querySelector(".popup-photo"));
   if (canOpenGallery()) {
     const mly = p.photo.startsWith("mly/");
-    trailPoiPopup.getElement().querySelector(".popup-photo").title = mly ? "Двойной щелчок — просмотр" : "Двойной щелчок — галерея";
-    trailPoiPopup.getElement().querySelector("a").addEventListener("dblclick", (e) => {
+    trailPoiPopup.getElement().querySelector(".popup-photo").title = mly ? "Двойной щелчок — просмотр" : mine ? "Двойной щелчок — альбом" : "Двойной щелчок — галерея";
+    trailPoiPopup.getElement().querySelector(".popup-photo").parentElement.addEventListener("dblclick", (e) => {
       e.preventDefault();
       if (mly) openMapillaryViewer(p.photo.slice(4)); else openPhotoGallery(f);
     });
@@ -2035,20 +2435,20 @@ function showPhotoInfo(f) {
   keepTrailPoiInfoOnHover();
 }
 
-const PHOTO_LAYERS = ["ov-photos", "ov-photo-selected"];
+const PHOTO_LAYERS = ["ov-photos", "ov-photo-selected", "ov-my-photos", "ov-my-selected"];
 const photoAt = (point) => map.queryRenderedFeatures(point, { layers: PHOTO_LAYERS.filter((id) => map.getLayer(id)) })[0];
 // щелчок по снимку на карте — то же, что в ленте; мимо — закрыть окно снимка
 map.on("click", (evt) => {
   const f = photoAt(evt.point);
-  if (f) selectPhoto(photoFeatures.get(Number(f.properties.photo.slice(6))) || f);
-  else if (/^(photo|mly)\//.test(String(trailPoiHover)) && !mlyAt(evt.point)) trailPoiPopup?.remove();
+  if (f) selectPhoto(photoById(f.properties.photo) || f);
+  else if (/^(photo|mly|my|album)\//.test(String(trailPoiHover)) && !mlyAt(evt.point) && !albumAt(evt.point)) trailPoiPopup?.remove();
 });
 // двойной щелчок по снимку — галерея вместо приближения карты
 map.on("dblclick", (evt) => {
   const f = photoAt(evt.point);
   if (!f || !canOpenGallery()) return;
   evt.preventDefault();
-  openPhotoGallery(photoFeatures.get(Number(f.properties.photo.slice(6))) || f);
+  openPhotoGallery(photoById(f.properties.photo) || f);
 });
 
 function keepTrailPoiInfoOnHover() {
@@ -2187,7 +2587,7 @@ async function pointInfoHtml(lngLat) {
     + (address ? `<div class="popup-kind">${escapeHtml(address)}</div>` : "");
 }
 
-const ownInfoLayers = () => [...POI_LAYERS, ...HOVER_POI_LAYERS, ...MLY_LAYERS].filter((id) => map.getLayer(id));
+const ownInfoLayers = () => [...POI_LAYERS, ...HOVER_POI_LAYERS, ...MLY_LAYERS, "ov-my-albums"].filter((id) => map.getLayer(id));
 
 // значок карты в нескольких пикселях от точки, о котором щелчок покажет подсказку
 // Значки мест без названия (пикник, навес, туалет) — тоже, если вид известен
@@ -2491,7 +2891,10 @@ el("search-clear-btn").addEventListener("click", () => {
 
 // ---------- элементы управления справа внизу ----------
 
-function openAboutModal() { el("about-modal").hidden = false; }
+function openAboutModal() {
+  el("about-modal").hidden = false;
+  idb("settings", "readonly", (st) => st.get("dir")).catch(() => null).then((handle) => renderMySettings(handle || myDir));
+}
 function closeAboutModal() { el("about-modal").hidden = true; }
 
 // шестерёнка — отдельный контрол MapLibre, чтобы встать в тот же столбик в правом нижнем
@@ -2731,6 +3134,8 @@ map.once("load", () => {
 });
 
 el("about-close-btn").addEventListener("click", closeAboutModal);
+el("my-photos-pick").addEventListener("click", pickMyFolder);
+el("my-photos-forget").addEventListener("click", forgetMyFolder);
 el("about-modal").addEventListener("click", (evt) => {
   if (evt.target.id === "about-modal") closeAboutModal();
 });

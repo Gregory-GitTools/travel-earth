@@ -589,6 +589,175 @@ html, body {
   background: #eee;
 }
 
+.modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+}
+
+.modal-content {
+  position: relative;
+  background: var(--panel);
+  border-radius: 10px;
+  padding: 24px;
+  max-width: 480px;
+  max-height: 80vh;
+  overflow-y: auto;
+}
+
+.modal-content h2 { margin: 0 0 12px; font-size: 0.9rem; font-weight: 400; }
+
+.modal-close {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+}
+
+.about-divider {
+  border: none;
+  border-top: 1px solid #3a3a42;
+  margin: 0 0 16px;
+}
+
+.about-brand {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 4px;
+  margin: 0 0 16px;
+}
+
+.about-logo {
+  width: 160px;
+  height: 160px;
+  object-fit: contain;
+  border-radius: 24px;
+}
+
+.about-wordmark {
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.modal-content .about-text {
+  color: var(--text);
+  font-size: 0.9rem;
+  line-height: 1.5;
+  margin: 0 0 8px;
+}
+
+.modal-content .about-credits {
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.5;
+  margin: 0 0 16px;
+}
+
+.modal-content a { color: var(--accent); text-decoration: none; }
+.modal-content a:hover { text-decoration: underline; }
+
+.about-install-hint {
+  color: var(--muted);
+  font-size: 0.8rem;
+  margin: 0 0 12px;
+}
+
+.about-install-hint code {
+  font: inherit;
+  background: var(--bg);
+  border: 1px solid #3a3a42;
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+
+.text-btn {
+  padding: 8px 14px;
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid #3a3a42;
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.text-btn:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.text-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.about-install-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.about-install-btn img {
+  width: 18px;
+  height: 18px;
+}
+
+/* настройки: мои фото */
+.settings-title {
+  margin: 0 0 6px;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.my-photos-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.my-photos-folder {
+  flex: 1;
+  min-width: 120px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* «Открыть мои фото» — после перезапуска Chrome разрешение на папку нужно дать щелчком */
+.my-photos-access {
+  position: fixed;
+  top: 64px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 12;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 14px;
+  border: none;
+  border-radius: 18px;
+  background: #fff;
+  color: #3c4043;
+  font: inherit;
+  font-size: 0.85rem;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+  cursor: pointer;
+}
+
+.my-photos-access[hidden] {
+  display: none;
+}
+
 /* лента фото внизу — в уровень и в высоту плитки переключателя карт (76 px, снизу 24 px, рамка
    2 px как у плитки), до
    правого края; кнопки справа внизу (шкала, ⓘ, шестерёнка, масштаб) — поверх неё (z-index 2 у
@@ -615,7 +784,7 @@ html, body {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
 }
 
-.photo-strip::after {
+.photo-strip.scrolls::after {
   content: "";
   flex: none;
   width: 150px;
