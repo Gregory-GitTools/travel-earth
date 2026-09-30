@@ -1775,6 +1775,21 @@ const tours = new Map(); // путь файла → { id, file, mtime, title, re
 let tourStatus = "";
 let tourGeoQueue = Promise.resolve();
 
+// поля строки «Ключ: значение»; несколько фактов можно писать одной строкой через «·», как в
+// шаблоне: «Длина: 11 км · Время: 4 ч · Сложность: средняя». Кусок без знакомого ключа
+// остаётся в значении предыдущего поля; строка не с поля — null
+function tourFields(line) {
+  const fields = [];
+  for (const part of line.split(/\s+·\s+/)) {
+    const m = part.match(/^([А-Яа-яЁё]+)\s*:\s*(.*)$/);
+    const key = m && TOUR_KEYS[m[1].toLowerCase()];
+    if (key) fields.push([key, m[2]]);
+    else if (fields.length) fields[fields.length - 1][1] += ` · ${part}`;
+    else return null;
+  }
+  return fields;
+}
+
 // разбор файла: «# Название», поля «Ключ: значение», «## Раздел» (остановка, если есть «Место:»),
 // списки «- …» к последнему полю-списку (по умолчанию — особенности), остальное — абзацы
 function parseTour(text, file) {
@@ -1798,12 +1813,15 @@ function parseTour(text, file) {
       key = null;
       continue;
     }
-    if ((m = line.match(/^([А-Яа-яЁё]+)\s*:\s*(.*)$/)) && TOUR_KEYS[m[1].toLowerCase()]) {
-      key = TOUR_KEYS[m[1].toLowerCase()];
-      if (target === tour && ["place", "trail", "length", "time", "difficulty", "points", "features", "history", "quote"].includes(key) && !tour.sections.length) {
-        tour.sections.push(target = { title: "", paras: [] }); // поля остановки до первого «##» — безымянный раздел
+    const fields = tourFields(line);
+    if (fields) {
+      for (const [k, v] of fields) {
+        key = k;
+        if (target === tour && ["place", "trail", "length", "time", "difficulty", "points", "features", "history", "quote"].includes(key) && !tour.sections.length) {
+          tour.sections.push(target = { title: "", paras: [] }); // поля остановки до первого «##» — безымянный раздел
+        }
+        add(key, v);
       }
-      add(key, m[2]);
       continue;
     }
     if ((m = line.match(/^[-*•]\s+(.+)/))) { add(key && TOUR_LIST_KEYS.has(key) ? key : target === tour ? "idea" : "features", m[1]); continue; }
@@ -2459,7 +2477,7 @@ const TOUR_HELP = [
   ["Просто текст в шапке", "идея поездки"],
   ["## Остановка", "раздел; с полем «Место:» — номер на карте"],
   ["Место: Rabaçal, Madeira", "название места или «32.76, -16.91»"],
-  ["Тропа: PR 6\nДлина: 11 км\nВремя: 4 ч\nСложность: средняя\nСезон: весна", "факты одной строкой"],
+  ["Тропа: PR 6\nДлина: 11 км · Время: 4 ч\nСложность: средняя · Сезон: весна", "факты — каждый с новой строки или несколько в строке через «·»; в панели — одной строкой"],
   ["Точки: Старт → Водопад", "основные точки"],
   ["Особенности:\n- взять фонарик", "список"],
   ["Справка: текст…", "историческая справка — можно послушать"],
