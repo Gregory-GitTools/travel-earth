@@ -1000,25 +1000,27 @@ const PIN_GLYPHS = {
 // фуникулёр — вагончик трамвая, наклонённый как на склоне
 PIN_GLYPHS.funicular = { path: PIN_GLYPHS.tram, rotate: -30 };
 
-// у эмодзи кровати цветная картинка, выбивающаяся из ряда, — вместо неё монохромный
-// значок в стиле Material Icons ("hotel")
-const HOTEL_ICON = `<svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M7 13c1.66 0 3-1.34 3-3S8.66 7 7 7s-3 1.34-3 3 1.34 3 3 3zm12-6h-8v7H3V5H1v15h2v-3h18v3h2v-9c0-2.21-1.79-4-4-4z"/></svg>`;
+// значки чипов — монохромные Material Icons, как условные обозначения на картах, а не цветные
+// эмодзи (кровать выбивалась из ряда, 🍴 в шрифте Windows не узнать): прибор, кровать, билет,
+// колонны, автобус, тележка
+const placeIcon = (d) => `<svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="${d}"/></svg>`;
+const HOTEL_ICON = placeIcon("M7 13c1.66 0 3-1.34 3-3S8.66 7 7 7s-3 1.34-3 3 1.34 3 3 3zm12-6h-8v7H3V5H1v15h2v-3h18v3h2v-9c0-2.21-1.79-4-4-4z");
 
 const CATEGORIES = [
-  { id: "food", name: "Рестораны", icon: "🍴", color: "#f57c00",
+  { id: "food", name: "Рестораны", icon: placeIcon("M11 9H9V2H7v7H5V2H3v7c0 2.12 1.66 3.84 3.75 3.97V22h2.5v-9.03C11.34 12.84 13 11.12 13 9V2h-2v7zm5-3v8h2.5v8H21V2c-2.76 0-5 2.24-5 4z"), color: "#f57c00",
     subclasses: ["restaurant", "cafe", "fast_food", "food_court", "bar", "pub", "biergarten", "ice_cream"] },
   { id: "hotels", name: "Гостиницы", icon: HOTEL_ICON, color: "#8e24aa",
     subclasses: ["hotel", "hostel", "guest_house", "motel", "apartment", "chalet", "camp_site", "caravan_site"] },
-  { id: "fun", name: "Развлечения", icon: "📷", color: "#d81b60",
+  { id: "fun", name: "Развлечения", icon: placeIcon("M20 12c0-1.1.9-2 2-2V6c0-1.1-.9-2-2-2H4c-1.1 0-1.99.9-1.99 2v4c1.1 0 1.99.9 1.99 2s-.89 2-2 2v4c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2v-4c-1.1 0-2-.9-2-2zm-4.42 4.8L12 14.5l-3.58 2.3 1.08-4.12-3.29-2.69 4.24-.25L12 5.8l1.54 3.95 4.24.25-3.29 2.69 1.09 4.11z"), color: "#d81b60",
     subclasses: ["attraction", "viewpoint", "theme_park", "zoo", "petting_zoo", "aquarium", "castle", "monument", "theatre", "cinema", "arts_centre", "escape_game"] },
-  { id: "museums", name: "Музеи", icon: "🏛️", color: "#3949ab", subclasses: ["museum", "gallery"] },
+  { id: "museums", name: "Музеи", icon: placeIcon("M4 10v7h3v-7H4zm6 0v7h3v-7h-3zM2 22h19v-3H2v3zm14-12v7h3v-7h-3zm-4.5-9L2 6v2h19V6l-9.5-5z"), color: "#3949ab", subclasses: ["museum", "gallery"] },
   // вокзалы, станции, метро, паромы и аэропорты (airports — из отдельного слоя), а
   // остановки (stops) — только на крупном масштабе. station — и ж/д станции, и станции
   // канатных дорог (class aerialway); станции фуникулёров в тайлах не отличить от ж/д —
   // их находит updateFunicularStations по рельсам фуникулёра рядом. lifts — фуникулёры и
   // канатные дороги поверх: их станции ищутся отдельно, а рельсы и тросы подсвечены.
   // modes: цвет и значок флажка по виду транспорта — первое совпадение по subclass/class
-  { id: "transport", name: "Транспорт", icon: "🚌", color: "#00897b", airports: true, lifts: true,
+  { id: "transport", name: "Транспорт", icon: placeIcon(PIN_GLYPHS.bus), color: "#00897b", airports: true, lifts: true,
     subclasses: ["bus_station", "station", "halt", "subway", "ferry_terminal"],
     stops: ["bus_stop", "tram_stop"],
     modes: [
@@ -1029,7 +1031,7 @@ const CATEGORIES = [
       { class: "ferry_terminal", glyph: "boat", color: "#0288d1" },
       { class: "railway", glyph: "train", color: "#3949ab" },
     ] },
-  { id: "shops", name: "Магазины", icon: "🛒", color: "#1e88e5", subcategories: [
+  { id: "shops", name: "Магазины", icon: placeIcon("M7 18c-1.1 0-1.99.9-1.99 2S5.9 22 7 22s2-.9 2-2-.9-2-2-2zM1 2v2h2l3.6 7.59-1.35 2.45c-.16.28-.25.61-.25.96 0 1.1.9 2 2 2h12v-2H7.42c-.14 0-.25-.11-.25-.25l.03-.12.9-1.63h7.45c.75 0 1.41-.41 1.75-1.03l3.58-6.49A1.003 1.003 0 0 0 20 4H5.21l-.94-2H1zm16 16c-1.1 0-1.99.9-1.99 2s.89 2 1.99 2 2-.9 2-2-.9-2-2-2z"), color: "#1e88e5", subcategories: [
     { id: "grocery", name: "Продукты", subclasses: ["supermarket", "convenience", "greengrocer", "bakery", "pastry", "butcher", "seafood", "deli", "cheese", "dairy", "frozen_food", "health_food", "confectionery", "chocolate", "coffee", "tea", "farm"] },
     { id: "market", name: "Рынки", subclasses: ["marketplace"] },
     { id: "goods", name: "Промтовары и хозтовары", subclasses: ["hardware", "doityourself", "houseware", "variety_store", "general", "department_store", "furniture", "garden_centre", "paint", "kitchen", "bathroom_furnishing", "interior_decoration", "electrical", "trade", "bed", "fabric", "craft"] },
