@@ -2153,7 +2153,10 @@ async function showSlides(point) {
     const near = (c) => Math.hypot((c[0] - point[0]) * Math.cos((point[1] * Math.PI) / 180), c[1] - point[1]) < 0.009;
     for (const f of myPhotoFeatures.values()) {
       if (slides.length >= 6) break;
-      if (near(f.geometry.coordinates)) slides.push({ mine: f.properties.photo, caption: `${f.properties.albumName} · ${f.properties.date || f.properties.title}` });
+      if (near(f.geometry.coordinates)) {
+        slides.push({ mine: f.properties.photo, title: f.properties.title, date: f.properties.date, album: f.properties.albumName,
+          caption: `${f.properties.albumName} · ${f.properties.date || f.properties.title}` });
+      }
     }
     try {
       const q = (params) => fetch(`${COMMONS_API}?${new URLSearchParams({ action: "query", format: "json", formatversion: 2, origin: "*", ...params })}`)
@@ -2161,7 +2164,7 @@ async function showSlides(point) {
       const found = ((await q({ list: "geosearch", gscoord: `${point[1]}|${point[0]}`, gsradius: 1000, gsnamespace: 6, gslimit: 40 })).geosearch || [])
         .filter((g) => /\.(jpe?g|webp)$/i.test(g.title)).slice(0, 10 - slides.length);
       if (found.length) {
-        const pages = (await q({ pageids: found.map((g) => g.pageid).join("|"), prop: "imageinfo", iiprop: "url|extmetadata",
+        const pages = (await q({ pageids: found.map((g) => g.pageid).join("|"), prop: "imageinfo", iiprop: "url|size|extmetadata",
           iiurlwidth: 960, iiextmetadatafilter: "Artist|LicenseShortName" })).pages || [];
         // по расстоянию от точки, как их отдал geosearch
         const order = new Map(found.map((g, i) => [g.pageid, i]));
@@ -2170,7 +2173,10 @@ async function showSlides(point) {
           const ii = pg.imageinfo?.[0];
           if (!ii?.thumburl) continue;
           const meta = ii.extmetadata || {};
-          slides.push({ url: ii.thumburl, caption: [stripHtml(meta.Artist?.value || ""), meta.LicenseShortName?.value, "Wikimedia Commons"].filter(Boolean).join(" · ") });
+          const author = stripHtml(meta.Artist?.value || ""), license = meta.LicenseShortName?.value || "";
+          slides.push({ url: ii.thumburl, full: ii.url, width: ii.width, page: ii.descriptionurl, pageid: pg.pageid, author, license,
+            title: pg.title.replace(/^File:/, "").replace(/\.\w+$/, "").replace(/_/g, " "),
+            caption: [author, license, "Wikimedia Commons"].filter(Boolean).join(" · ") });
         }
       }
     } catch { /* без Commons — только свои */ }
@@ -2178,13 +2184,16 @@ async function showSlides(point) {
   }
   if (tourPlay !== play || !slides.length) { if (!slides.length) hideSlides(); return; }
   let k = 0, front = 0;
+  tourSlides.slides = slides;
   const imgs = tourSlides.querySelectorAll("img");
   const show = async () => {
     const sl = slides[k++ % slides.length];
     const url = sl.mine ? await myFileFull(sl.mine).catch(() => "") : sl.url;
     if (!url || tourPlay !== play) return;
     const next = imgs[1 - front];
+    const index = (k - 1) % slides.length;
     next.onload = () => {
+      tourSlides.current = index;
       next.classList.add("on");
       imgs[front].classList.remove("on");
       front = 1 - front;
@@ -2196,6 +2205,19 @@ async function showSlides(point) {
   await show();
   if (slides.length > 1) slideTimer = setInterval(show, 5000);
 }
+
+// двойной щелчок по слайд-шоу — эти же фото в окне галереи, с текущего (Грегори: «фотки в новое
+// окно; на полный экран не надо»). Свои снимки галерея читает через главное окно, как альбом
+tourSlides.title = "Двойной щелчок — фото в отдельном окне";
+tourSlides.addEventListener("dblclick", () => {
+  const slides = tourSlides.slides;
+  if (!slides?.length) return;
+  const photos = slides.map((sl) => (sl.mine
+    ? { photo: sl.mine, my: true, title: sl.title, date: sl.date, license: sl.album ? `Альбом «${sl.album}»` : "", thumb: myFiles.get(sl.mine)?.thumb || "" }
+    : { photo: `photo/${sl.pageid}`, title: sl.title, author: sl.author, license: sl.license, page: sl.page, thumb: sl.url, full: sl.full, fullWidth: sl.width }));
+  localStorage.setItem(PHOTO_GALLERY_KEY, JSON.stringify({ photos, start: tourSlides.current || 0 }));
+  openSideWindow(`gallery.html?t=${Date.now()}`, "travel-earth-gallery");
+});
 
 function hideSlides() {
   clearInterval(slideTimer);
