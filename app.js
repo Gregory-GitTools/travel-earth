@@ -414,10 +414,15 @@ function addTrailLines(id, before) {
 // показываем: их десятки на каждой тропе. Навесы тоже: почти все — остановки автобуса.
 // Значки свои, в одном стиле: символ цвета группы в белой обводке, без кружка (viewBox 24×24)
 const TRAIL_POI_ZOOM = 14;
-// видны, как только шкала показывает 3 км и меньше (до 5 км в 100 px, см. AIRPORT_MAX_METERS_PER_100PX) —
-// раньше табличек троп; порог зависит от широты
+// вышки, смотровые площадки, маяки и места для пикника видны, как только шкала показывает
+// 3 км и меньше (до 5 км в 100 px, см. AIRPORT_MAX_METERS_PER_100PX) — раньше табличек троп;
+// остальные — со «500 м» (до 1 км в 100 px; Грегори: «давай на 500 м»; 3 км — слишком
+// густо). Пороги зависят от широты
 const TRAIL_POI_MAX_METERS_PER_100PX = 5000;
+const TRAIL_POI_NEAR_MAX_METERS_PER_100PX = 1000;
+const TRAIL_POI_FAR_KINDS = ["tower", "viewpoint", "lighthouse", "picnic_site"];
 const trailPoiMinZoom = () => Math.min(zoomForScale(TRAIL_POI_MAX_METERS_PER_100PX), TRAIL_POI_ZOOM);
+const trailPoiNearZoom = () => Math.min(zoomForScale(TRAIL_POI_NEAR_MAX_METERS_PER_100PX), TRAIL_POI_ZOOM);
 const TRAIL_POI_CLASSES = ["information", "picnic_site", "campsite", "drinking_water", "attraction", "toilets"];
 const TRAIL_POI_RETRY_MS = 60000;
 const OVERPASS_URLS = ["https://overpass-api.de/api/interpreter", "https://maps.mail.ru/osm/tools/overpass/api/interpreter"];
@@ -428,30 +433,34 @@ const TRAIL_POI_ICONS = {
   board: { color: "#8a9099", path: "M3 4h18v11H3z M6.5 15h2v6h-2z M15.5 15h2v6h-2z" },
   map: { color: "#8a9099", evenodd: true,
     path: "M2.5 6.5L9 4l6 2.5L21.5 4v13.5L15 20l-6-2.5-6.5 2.5z M8.3 5.5h1.4v12H8.3z M14.3 8h1.4v12h-1.4z" },
-  // виды — зелёные; смотровая площадка — тем же значком вышки (Грегори: «все вышка»)
+  // виды — зелёные
+  viewpoint: { color: "#2e7d32", path: "M14 6l-3.75 5 2.85 3.8-1.6 1.2C9.81 13.75 7 10 7 10l-6 8h22z " +
+    "M5 3a2.2 2.2 0 1 1 0 4.4a2.2 2.2 0 1 1 0-4.4z" },
   tower: { color: "#2e7d32", path: "M5 2h14l-2 2.5v1.5H7V4.5z M8 6h2.2L8.2 22H6z M13.8 6H16l2 16h-2.2z " +
     "M8.5 10.5h7v1.6h-7z M7.8 15.5h8.4v1.6H7.8z" },
   attraction: { color: "#2e7d32", path: "M12 2l2.9 6.6 7.1.6-5.4 4.7 1.6 7L12 17.3 5.8 20.9l1.6-7L2 9.2l7.1-.6z" },
-  // стоянки — коричневые, кострище — красное
-  campsite: { color: "#8d5a2b", path: "M12 3L1.5 21H9l3-6 3 6h7.5z" },
+  // стоянки — коричневые, палатка — светло-зелёная, кострище — красное
+  campsite: { color: "#7cb342", path: "M12 3L1.5 21H9l3-6 3 6h7.5z" },
   picnic_site: { color: "#8d5a2b", path: "M3 6h18v2.6H3z M6.3 8.6h2.4L6.4 20H4z M15.3 8.6h2.4L20 20h-2.4z M2 13h20v2.2H2z" },
   firepit: { color: "#d32f2f", path: "M12 2c1 4 6.5 6 6.5 12.5a6.5 6.5 0 0 1-13 0c0-3.2 1.8-5.3 3-6.5 0 2.2 1 3.5 2.3 3.5C10.5 8 10 5 12 2z" },
   // вода и туалет — голубые
   drinking_water: { color: "#0288d1", path: "M12 2.5S5 10.5 5 15a7 7 0 0 0 14 0c0-4.5-7-12.5-7-12.5z" },
   toilets: { color: "#0288d1", text: "WC" },
-  // маяк: купол, фонарь с окошком и расходящимися лучами, башня в белых полосах
-  lighthouse: { color: "#2e7d32", evenodd: true, path: "M9 5a3 3 0 0 1 6 0z M9.5 5h5v3h-5z M10.7 5.8h2.6v1.5h-2.6z " +
-    "M8 8h8v1.5H8z M9.2 9.5h5.6l1.5 10.5H7.7z M9 12.5h6v1.8H9z M8.6 16.3h6.8v1.8H8.6z M6 20h12v2H6z " +
-    "M9 6.5L3 3.5v6z M15 6.5l6-3v6z" },
+  // маяк — чёрно-белый: купол, фонарь с лучами, башня; окошко и полосы — white
+  lighthouse: { color: "#222", path: "M9 5a3 3 0 0 1 6 0z M9.5 5h5v3h-5z M8 8h8v1.5H8z M9.2 9.5h5.6l1.5 10.5H7.7z " +
+    "M6 20h12v2H6z M9 6.5L3 3.5v6z M15 6.5l6-3v6z",
+    white: "M10.7 5.8h2.6v1.5h-2.6z M9 12.5h6v1.8H9z M8.6 16.3h6.8v1.8H8.6z" },
 };
-TRAIL_POI_ICONS.viewpoint = TRAIL_POI_ICONS.tower;
 // вид точки из тайла: class, а у информации и достопримечательностей — ещё и subclass
 const TRAIL_POI_KIND = ["match", ["get", "class"],
   "information", ["match", ["get", "subclass"], ["guidepost", "board", "map"], ["get", "subclass"], "info"],
   "attraction", ["match", ["get", "subclass"], "viewpoint", "viewpoint", "attraction"],
   ["get", "class"]];
-// только в Overpass — их слой виден и там, где уже есть тайлы
-const TRAIL_POI_OVERPASS_ONLY = ["tower", "firepit", "lighthouse"];
+// только в Overpass — их слои видны и там, где уже есть тайлы
+const TRAIL_POI_OVERPASS_ONLY = ["tower", "lighthouse"];
+const TRAIL_POI_OVERPASS_ONLY_NEAR = ["firepit"];
+const TRAIL_POI_LAYERS = ["ov-trail-poi", "ov-trail-poi-near", "ov-trail-poi-far", "ov-trail-poi-near-far",
+  "ov-trail-poi-extra", "ov-trail-poi-extra-near"];
 const trailPoiCells = new Map(); // "247:594" → true | "loading" | когда можно повторить
 const trailPoiFeatures = new Map(); // "node/123" → feature
 const trailPoiTags = new Map(); // "node/123" или id тайла → теги OSM, для подсказки
@@ -463,22 +472,30 @@ function addTrailPoi() {
   if (map.getLayer("ov-trail-poi")) return;
   for (const kind of Object.keys(TRAIL_POI_ICONS)) trailPoiImage(kind);
   const icon = ["concat", "trail-poi-", ["get", "kind"]];
+  const tileIcon = ["concat", "trail-poi-", TRAIL_POI_KIND];
   const nearSize = ["interpolate", ["linear"], ["zoom"], 14, 1, 16, 1.2];
-  map.addLayer({ id: "ov-trail-poi", type: "symbol", source: "te-poi", "source-layer": "poi", minzoom: TRAIL_POI_ZOOM,
-    filter: ["all", ["in", ["get", "class"], ["literal", TRAIL_POI_CLASSES]], ["!=", ["get", "subclass"], "route_marker"]],
-    layout: { "icon-image": ["concat", "trail-poi-", TRAIL_POI_KIND], "icon-size": nearSize } }, firstPoiLayer());
+  const far = ["literal", TRAIL_POI_FAR_KINDS];
+  const tileFilter = ["all", ["in", ["get", "class"], ["literal", TRAIL_POI_CLASSES]], ["!=", ["get", "subclass"], "route_marker"]];
+  const layers = [
+    { id: "ov-trail-poi", source: "te-poi", minzoom: TRAIL_POI_ZOOM, filter: ["all", tileFilter, ["in", TRAIL_POI_KIND, far]] },
+    { id: "ov-trail-poi-near", source: "te-poi", minzoom: TRAIL_POI_ZOOM, filter: ["all", tileFilter, ["!", ["in", TRAIL_POI_KIND, far]]] },
+    { id: "ov-trail-poi-far", minzoom: trailPoiMinZoom(), maxzoom: TRAIL_POI_ZOOM, filter: ["in", ["get", "kind"], far],
+      size: ["interpolate", ["linear"], ["zoom"], 11, 0.8, 14, 1] },
+    { id: "ov-trail-poi-near-far", minzoom: trailPoiNearZoom(), maxzoom: TRAIL_POI_ZOOM,
+      filter: ["!", ["in", ["get", "kind"], ["literal", [...TRAIL_POI_FAR_KINDS, ...TRAIL_POI_OVERPASS_ONLY_NEAR]]]] },
+    { id: "ov-trail-poi-extra", minzoom: TRAIL_POI_ZOOM, filter: ["in", ["get", "kind"], ["literal", TRAIL_POI_OVERPASS_ONLY]] },
+    { id: "ov-trail-poi-extra-near", minzoom: trailPoiNearZoom(), filter: ["in", ["get", "kind"], ["literal", TRAIL_POI_OVERPASS_ONLY_NEAR]] },
+  ];
   map.addSource("ov-trail-poi-far", { type: "geojson", data: trailPoiData() });
-  map.addLayer({ id: "ov-trail-poi-far", type: "symbol", source: "ov-trail-poi-far",
-    minzoom: trailPoiMinZoom(), maxzoom: TRAIL_POI_ZOOM,
-    layout: { "icon-image": icon, "icon-size": ["interpolate", ["linear"], ["zoom"], 11, 0.8, 14, 1] } }, firstPoiLayer());
-  map.addLayer({ id: "ov-trail-poi-extra", type: "symbol", source: "ov-trail-poi-far", minzoom: TRAIL_POI_ZOOM,
-    filter: ["in", ["get", "kind"], ["literal", TRAIL_POI_OVERPASS_ONLY]],
-    layout: { "icon-image": icon, "icon-size": nearSize } }, firstPoiLayer());
+  for (const { id, source = "ov-trail-poi-far", size = nearSize, maxzoom = 24, ...rest } of layers) {
+    map.addLayer({ id, type: "symbol", source, ...(source === "te-poi" && { "source-layer": "poi" }), maxzoom, ...rest,
+      layout: { "icon-image": source === "te-poi" ? tileIcon : icon, "icon-size": size } }, firstPoiLayer());
+  }
 }
 
 function trailPoiImage(kind) {
   if (map.hasImage(`trail-poi-${kind}`)) return;
-  const { color, path, text, evenodd } = TRAIL_POI_ICONS[kind];
+  const { color, path, text, evenodd, white } = TRAIL_POI_ICONS[kind];
   const size = 56; // pixelRatio 2: символ 24 px и обводка
   const ctx = Object.assign(document.createElement("canvas"), { width: size, height: size }).getContext("2d");
   ctx.fillStyle = color;
@@ -499,6 +516,10 @@ function trailPoiImage(kind) {
     const shape = new Path2D(path);
     ctx.stroke(shape);
     ctx.fill(shape, evenodd ? "evenodd" : "nonzero");
+    if (white) {
+      ctx.fillStyle = "#fff";
+      ctx.fill(new Path2D(white));
+    }
   }
   map.addImage(`trail-poi-${kind}`, ctx.getImageData(0, 0, size, size), { pixelRatio: 2 });
 }
@@ -704,7 +725,7 @@ function removeOverlay(id) {
   if (id === "terrain3d") map.setTerrain(null);
   for (const sourceId of [`ov-${id}`, `ov-${id}-vec`]) if (map.getSource(sourceId)) map.removeSource(sourceId);
   if (overlay.trails && !trailOverlayActive()) {
-    for (const layerId of ["ov-trail-poi", "ov-trail-poi-far", "ov-trail-poi-extra"]) if (map.getLayer(layerId)) map.removeLayer(layerId);
+    for (const layerId of TRAIL_POI_LAYERS) if (map.getLayer(layerId)) map.removeLayer(layerId);
     if (map.getSource("ov-trail-poi-far")) map.removeSource("ov-trail-poi-far");
   }
 }
@@ -1022,7 +1043,11 @@ function applyPoiFilters() {
 
 // пороги "по шкале" зависят от широты — пересчитываются после каждого движения
 function updateScaleZooms() {
-  if (map.getLayer("ov-trail-poi-far")) map.setLayerZoomRange("ov-trail-poi-far", trailPoiMinZoom(), TRAIL_POI_ZOOM);
+  if (map.getLayer("ov-trail-poi-far")) {
+    map.setLayerZoomRange("ov-trail-poi-far", trailPoiMinZoom(), TRAIL_POI_ZOOM);
+    map.setLayerZoomRange("ov-trail-poi-near-far", trailPoiNearZoom(), TRAIL_POI_ZOOM);
+    map.setLayerZoomRange("ov-trail-poi-extra-near", trailPoiNearZoom(), 24);
+  }
   if (!map.getLayer("poi-air")) return;
   map.setLayerZoomRange("poi-air", airportMinZoom(), 24);
   map.setLayerZoomRange("poi-stops", zoomForScale(STOP_MAX_METERS_PER_100PX), 24);
@@ -1296,7 +1321,6 @@ map.on("idle", () => {
 // При наведении (на телефоне — по касанию): вид точки, название, высота, описание,
 // направления указателя. Теги точек из Overpass уже есть, у точек из тайлов — из OSM API
 // (как у флажков мест), не дольше 1 с, чтобы подсказка не запаздывала
-const TRAIL_POI_LAYERS = ["ov-trail-poi", "ov-trail-poi-far", "ov-trail-poi-extra"];
 const TRAIL_POI_KIND_NAMES = {
   info: "Информация", guidepost: "Указатель", board: "Информационный щит", map: "Карта местности",
   viewpoint: "Смотровая площадка", tower: "Смотровая вышка", lighthouse: "Маяк", attraction: "Достопримечательность",
@@ -1307,12 +1331,11 @@ let trailPoiPopup = null;
 let trailPoiHover = null;
 
 async function showTrailPoiInfo(f) {
-  const layer = f.layer.id;
-  const key = layer === "ov-trail-poi" ? f.id : f.properties.osm;
+  const key = f.source === "te-poi" ? f.id : f.properties.osm;
   if (trailPoiHover === key && trailPoiPopup?.isOpen()) return;
   trailPoiHover = key;
   let tags = trailPoiTags.get(key);
-  if (!tags && layer === "ov-trail-poi") {
+  if (!tags && f.source === "te-poi") {
     tags = await withTimeout(loadPoiTags(f.id).catch(() => null), 1000, null);
     if (tags) trailPoiTags.set(key, tags);
   }
