@@ -900,8 +900,11 @@ function addPhotos(before) {
   updatePhotos();
 }
 
-// выделить снимок на карте и в ленте (null — снять выделение)
+// выделить снимок на карте и в ленте (null — снять выделение). Одинаково по щелчку в ленте
+// и на карте; выделение живёт, пока открыто окно снимка: закрылось окно (щелчок мимо, сдвиг
+// карты, другой снимок) — снимается и выделение
 function selectPhoto(f) {
+  if (selectedPhoto === (f?.properties.photo || null)) return;
   selectedPhoto = f?.properties.photo || null;
   // картинка выделенного — тот же снимок в розовой рамке, как в ленте
   if (f) {
@@ -913,7 +916,9 @@ function selectPhoto(f) {
   }
   if (map.getLayer("ov-photo-selected")) map.setFilter("ov-photo-selected", ["==", ["get", "photo"], selectedPhoto || ""]);
   for (const [id, el] of photoStripItems) el.classList.toggle("active", id === selectedPhoto);
-  if (f) showPhotoInfo(f);
+  if (!f) return;
+  showPhotoInfo(f);
+  trailPoiPopup?.setOffset(1.4 * PHOTO_SIZE / 2 + 4);
 }
 
 // лента внизу: загруженные снимки в кадре, слева направо как на карте; снимки, ушедшие
@@ -922,6 +927,7 @@ const photoStrip = Object.assign(document.createElement("div"), { className: "ph
 // внутри контейнера карты — чтобы кнопки в углах MapLibre (z-index 2) были поверх ленты
 map.getContainer().append(photoStrip);
 const photoStripItems = new Map(); // "photo/123" → кнопка
+let photoStripList = []; // снимки ленты по порядку — для галереи
 photoStrip.addEventListener("wheel", (e) => {
   if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) photoStrip.scrollLeft += e.deltaY;
   e.preventDefault();
@@ -936,6 +942,7 @@ function updatePhotoStrip() {
     const shown = on ? [...photoFeatures.values()]
       .filter((f) => f.properties.img && bounds.contains(f.geometry.coordinates))
       .map((f) => [f, map.project(f.geometry.coordinates).x]).sort((a, b) => a[1] - b[1]).map(([f]) => f) : [];
+    photoStripList = shown;
     const keep = new Set(shown.map((f) => f.properties.photo));
     for (const [id, el] of photoStripItems) if (!keep.has(id)) { el.remove(); photoStripItems.delete(id); }
     shown.forEach((f, i) => {
@@ -945,6 +952,7 @@ function updatePhotoStrip() {
         el = Object.assign(document.createElement("button"), { className: "photo-strip-item", title: f.properties.title });
         el.append(Object.assign(document.createElement("img"), { src: f.properties.thumb, alt: "" }));
         el.addEventListener("click", () => selectPhoto(f));
+        el.addEventListener("dblclick", () => openPhotoGallery(f));
         el.classList.toggle("active", id === selectedPhoto);
         photoStripItems.set(id, el);
       }
@@ -955,6 +963,27 @@ function updatePhotoStrip() {
   });
 }
 map.on("moveend", updatePhotoStrip);
+
+// Галерея (только на компьютере, двойной щелчок по снимку на карте или в ленте) — отдельное
+// окно gallery.html со всеми снимками ленты, начиная с выбранного. Список передаётся через
+// localStorage (то же устройство, наружу не уходит); окно одно и то же ("travel-earth-gallery"),
+// повторный двойной щелчок перезагружает его с новым списком
+const PHOTO_GALLERY_KEY = "travel-earth.gallery";
+const canOpenGallery = () => matchMedia("(pointer: fine)").matches;
+
+function openPhotoGallery(f) {
+  if (!canOpenGallery()) return;
+  const list = photoStripList.some((g) => g.properties.photo === f.properties.photo) ? photoStripList : [f, ...photoStripList];
+  const photos = list.map((g) => {
+    const { photo, title, author, date, license, page, thumb, full, fullWidth } = g.properties;
+    return { photo, title, author, date, license, page, thumb, full, fullWidth };
+  });
+  localStorage.setItem(PHOTO_GALLERY_KEY, JSON.stringify({ photos, start: list.indexOf(f) < 0 ? 0 : list.indexOf(f) }));
+  const w = Math.round(screen.availWidth * 0.8), h = Math.round(screen.availHeight * 0.85);
+  const win = window.open(`gallery.html?t=${Date.now()}`, "travel-earth-gallery",
+    `popup,width=${w},height=${h},left=${Math.round((screen.availWidth - w) / 2)},top=${Math.round((screen.availHeight - h) / 2)}`);
+  win?.focus();
+}
 
 // миниатюра — квадрат из середины снимка в тонкой (1,5 px) белой скруглённой рамке, вдвое
 // детальнее (pixelRatio 2). Толстая рамка с серой каймой Грегори не понравилась
@@ -985,7 +1014,7 @@ async function addPhoto(page, z, co) {
   const text = (k) => stripHtml(meta[k]?.value || "");
   const title = text("ImageDescription") || page.title.replace(/^File:/, "").replace(/\.\w+$/, "").replace(/_/g, " ");
   photoFeatures.set(page.pageid, { type: "Feature", geometry: { type: "Point", coordinates: co },
-    properties: { photo: `photo/${page.pageid}`, img, z, thumb: ii.thumburl, page: ii.descriptionurl,
+    properties: { photo: `photo/${page.pageid}`, img, z, thumb: ii.thumburl, page: ii.descriptionurl, full: ii.url, fullWidth: ii.width,
       aspect: ii.thumbheight / ii.thumbwidth, title: title.length > 160 ? `${title.slice(0, 157)}…` : title,
       author: text("Artist"), license: text("LicenseShortName"), date: text("DateTimeOriginal").replace(/^Taken on\s*/, "") } });
 }
@@ -1021,7 +1050,7 @@ async function loadPhotoCell(z, x, y) {
     }
     map.getSource("ov-photos")?.setData(photoData());
     if (picked.size) {
-      const pages = (await query({ pageids: [...picked.keys()].join("|"), prop: "imageinfo", iiprop: "url|extmetadata", iiurlwidth: 120,
+      const pages = (await query({ pageids: [...picked.keys()].join("|"), prop: "imageinfo", iiprop: "url|size|extmetadata", iiurlwidth: 120,
         iiextmetadatafilter: "Artist|LicenseShortName|ImageDescription|DateTimeOriginal" })).pages || [];
       await Promise.all(pages.map((page) => addPhoto(page, z, picked.get(page.pageid))));
     }
@@ -1819,7 +1848,9 @@ function showPhotoInfo(f) {
   const link = (html) => `<a href="${escapeHtml(p.page)}" target="_blank" rel="noopener">${html}</a>`;
   const meta = [p.author, p.date, p.license].filter(Boolean).join(" · ");
   trailPoiPopup?.remove();
-  trailPoiPopup = new maplibregl.Popup({ offset: PHOTO_SIZE / 2 + 4, maxWidth: `${width + 20}px`, closeButton: false })
+  // closeOnClick: false — на телефоне касание сначала даёт mousemove (окно открылось), а
+  // потом click того же касания закрыл бы его; мимо снимка окно закрывает свой обработчик ниже
+  trailPoiPopup = new maplibregl.Popup({ offset: PHOTO_SIZE / 2 + 4, maxWidth: `${width + 20}px`, closeButton: false, closeOnClick: false })
     .setLngLat(f.geometry.coordinates)
     .setOffset((p.photo === selectedPhoto ? 1.4 : 1) * PHOTO_SIZE / 2 + 4)
     .setHTML(link(`<img class="popup-photo" width="${width}" height="${height}" alt="" src="${escapeHtml(p.thumb.replace(/\/\d+px-/, "/330px-"))}">`)
@@ -1829,8 +1860,32 @@ function showPhotoInfo(f) {
     .addTo(map);
   // у маленьких снимков нет миниатюры 330 px — тогда та, что на карте
   trailPoiPopup.getElement().querySelector("img").addEventListener("error", (e) => { e.target.src = p.thumb; }, { once: true });
+  trailPoiPopup.on("close", () => {
+    if (trailPoiHover === p.photo) trailPoiHover = null;
+    if (selectedPhoto === p.photo) selectPhoto(null);
+  });
+  if (canOpenGallery()) {
+    trailPoiPopup.getElement().querySelector(".popup-photo").title = "Двойной щелчок — галерея";
+    trailPoiPopup.getElement().querySelector("a").addEventListener("dblclick", (e) => { e.preventDefault(); openPhotoGallery(f); });
+  }
   keepTrailPoiInfoOnHover();
 }
+
+const PHOTO_LAYERS = ["ov-photos", "ov-photo-selected"];
+const photoAt = (point) => map.queryRenderedFeatures(point, { layers: PHOTO_LAYERS.filter((id) => map.getLayer(id)) })[0];
+// щелчок по снимку на карте — то же, что в ленте; мимо — закрыть окно снимка
+map.on("click", (evt) => {
+  const f = photoAt(evt.point);
+  if (f) selectPhoto(photoFeatures.get(Number(f.properties.photo.slice(6))) || f);
+  else if (String(trailPoiHover).startsWith("photo/")) trailPoiPopup?.remove();
+});
+// двойной щелчок по снимку — галерея вместо приближения карты
+map.on("dblclick", (evt) => {
+  const f = photoAt(evt.point);
+  if (!f || !canOpenGallery()) return;
+  evt.preventDefault();
+  openPhotoGallery(photoFeatures.get(Number(f.properties.photo.slice(6))) || f);
+});
 
 function keepTrailPoiInfoOnHover() {
   const el = trailPoiPopup.getElement();
@@ -1844,7 +1899,8 @@ let trailPoiHideTimer = 0;
 function hideTrailPoiInfoSoon() {
   clearTimeout(trailPoiHideTimer);
   trailPoiHideTimer = setTimeout(() => {
-    if (trailPoiPopup?.getElement().matches(":hover")) return;
+    if (trailPoiPopup?.getElement()?.matches(":hover")) return;
+    if (selectedPhoto && trailPoiHover === selectedPhoto) return;
     trailPoiHover = null;
     trailPoiPopup?.remove();
   }, 300);
@@ -1862,7 +1918,7 @@ map.on("mousemove", HOVER_POI_LAYERS, (evt) => {
   showTrailPoiInfo(evt.features[0]);
 });
 map.on("mouseleave", HOVER_POI_LAYERS, hideTrailPoiInfoSoon);
-map.on("click", HOVER_POI_LAYERS, (evt) => showTrailPoiInfo(evt.features[0]));
+map.on("click", HOVER_POI_LAYERS, (evt) => { if (!evt.features[0].properties.photo) showTrailPoiInfo(evt.features[0]); });
 
 // ---------- подсказка по щелчку на карте ----------
 
