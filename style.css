@@ -562,6 +562,7 @@ html, body {
 .maplibregl-popup-content {
   font-family: "Poppins", system-ui, "Segoe UI", sans-serif;
   color: #222;
+  border-radius: 10px;
 }
 
 .popup-title {

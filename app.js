@@ -1404,14 +1404,10 @@ function trailPoiKindOf(p) {
 }
 
 map.on("mousemove", TRAIL_POI_LAYERS, (evt) => {
-  map.getCanvas().style.cursor = "pointer";
   clearTimeout(trailPoiHideTimer);
   showTrailPoiInfo(evt.features[0]);
 });
-map.on("mouseleave", TRAIL_POI_LAYERS, () => {
-  map.getCanvas().style.cursor = "";
-  hideTrailPoiInfoSoon();
-});
+map.on("mouseleave", TRAIL_POI_LAYERS, hideTrailPoiInfoSoon);
 map.on("click", TRAIL_POI_LAYERS, (evt) => showTrailPoiInfo(evt.features[0]));
 
 // ---------- подсказка по щелчку на карте ----------
@@ -1510,18 +1506,24 @@ async function pointInfoHtml(lngLat) {
     + (address ? `<div class="popup-kind">${escapeHtml(address)}</div>` : "");
 }
 
+const ownInfoLayers = () => [...POI_LAYERS, ...TRAIL_POI_LAYERS].filter((id) => map.getLayer(id));
+
+// значок карты в нескольких пикселях от точки, о котором щелчок покажет подсказку
+function mapInfoHit({ x, y }) {
+  return map.queryRenderedFeatures([[x - 8, y - 8], [x + 8, y + 8]]).find((f) => f.layer.type === "symbol"
+    && MAP_INFO_SOURCE_LAYERS.includes(f.sourceLayer) && f.properties.name && !POI_LAYERS.includes(f.layer.id));
+}
+
 map.on("click", async (evt) => {
   // щелчок по флажку места или по маркеру поиска — у них свои попапы
   if (evt.originalEvent.target !== map.getCanvas()) return;
   // щелчок мимо глобуса, по звёздам, — не на Земле, координат у него нет
   if (map.transform.isPointOnMapSurface?.(evt.point) === false) return;
-  if (map.queryRenderedFeatures(evt.point, { layers: [...POI_LAYERS, ...TRAIL_POI_LAYERS].filter((id) => map.getLayer(id)) }).length) return;
+  if (map.queryRenderedFeatures(evt.point, { layers: ownInfoLayers() }).length) return;
   // первый щелчок только закрывает открытое: попап, список поиска, меню
   if (poiPopup?.isOpen() || mapPopup?.isOpen() || searchMarker?.getPopup()?.isOpen()
     || !el("search-results").hidden || !el("lang-menu").hidden || !el("shop-menu").hidden) return;
-  const { x, y } = evt.point;
-  const hit = map.queryRenderedFeatures([[x - 8, y - 8], [x + 8, y + 8]]).find((f) => f.layer.type === "symbol"
-    && MAP_INFO_SOURCE_LAYERS.includes(f.sourceLayer) && f.properties.name && !POI_LAYERS.includes(f.layer.id));
+  const hit = mapInfoHit(evt.point);
   const click = ++poiClick;
   const html = hit ? await featureInfoHtml(hit) : await pointInfoHtml(evt.lngLat);
   // пока ждали ответа, успели щёлкнуть ещё раз
@@ -1539,8 +1541,29 @@ document.addEventListener("click", (evt) => {
   coords.textContent = "Скопировано";
   setTimeout(() => { coords.textContent = coords.dataset.coords; }, 1500);
 });
-map.on("mouseenter", POI_LAYERS, () => { map.getCanvas().style.cursor = "pointer"; });
-map.on("mouseleave", POI_LAYERS, () => { map.getCanvas().style.cursor = ""; });
+
+// над всем, о чём щелчок или наведение что-то покажет, курсор — стрелка вместо ладони
+// (Грегори); проверка — раз за кадр, пока кнопка мыши не нажата (при перетаскивании — ладонь)
+let cursorCheck = null;
+map.on("mousemove", (evt) => {
+  if (evt.originalEvent.buttons) return;
+  if (!cursorCheck) requestAnimationFrame(() => {
+    const point = cursorCheck;
+    cursorCheck = null;
+    const info = map.queryRenderedFeatures(point, { layers: ownInfoLayers() }).length || mapInfoHit(point);
+    map.getCanvas().style.cursor = info ? "default" : "";
+  });
+  cursorCheck = evt.point;
+});
+map.on("mouseout", () => { map.getCanvas().style.cursor = ""; });
+
+// любое окно на карте закрывается, как только карта начала двигаться или приближаться
+map.on("movestart", () => {
+  for (const popup of [poiPopup, mapPopup, trailPoiPopup, searchMarker?.getPopup()]) {
+    if (popup?.isOpen()) popup.remove();
+  }
+  trailPoiHover = null;
+});
 
 // setStyle заменяет стиль целиком вместе с проекцией и своими слоями — поэтому globe,
 // язык подписей и слой мест выставляются заново после каждой загрузки стиля
