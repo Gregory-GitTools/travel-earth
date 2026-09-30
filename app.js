@@ -404,13 +404,13 @@ function addTrailLines(id, before) {
 // Значки у троп — указатели и щиты «i», навесы, места для костра и пикника, кемпинги,
 // вода. В основе карты они появляются только с зума 15–17 (по рангу), в тайлах есть с 14 —
 // оттуда свой слой, общий для пеших, вело и МТБ. Мельче 14 в тайлах этих точек нет,
-// поэтому со шкалы 3 км (trailPoiMinZoom) они подгружаются из Overpass по тем же
-// квадратам, что и тропы, одной очередью после троп. Overpass отвечает 1–15 с и часто
-// ошибкой — тогда значки просто появятся позже или только с 14 (Грегори: «если не
-// успеют, то и не очень надо»), без сообщений. Туалеты и достопримечательности — только
+// поэтому со шкалы 3 км (trailPoiMinZoom) они подгружаются из QLever квадратами по
+// полградуса, одной очередью после троп. QLever отвечает 8–17 с (Overpass, который был
+// раньше, часто не отвечал вовсе); при ошибке значки просто появятся позже или только
+// с 14 (Грегори: «если не успеют, то и не очень надо»), без сообщений. Туалеты и достопримечательности — только
 // из тайлов: в городах их слишком много. Смотровых вышек, кострищ и маяков в тайлах нет (маяк там —
 // обычная «достопримечательность», и только с 14) — они
-// только из Overpass, зато на любом зуме. Метки краской на деревьях (route_marker) не
+// только из QLever, зато на любом зуме. Метки краской на деревьях (route_marker) не
 // показываем: их десятки на каждой тропе. Навесы тоже: почти все — остановки автобуса.
 // Значки свои, в одном стиле: символ цвета группы в белой обводке, без кружка (viewBox 24×24)
 const TRAIL_POI_ZOOM = 14;
@@ -425,9 +425,8 @@ const trailPoiMinZoom = () => Math.min(zoomForScale(TRAIL_POI_MAX_METERS_PER_100
 const trailPoiNearZoom = () => Math.min(zoomForScale(TRAIL_POI_NEAR_MAX_METERS_PER_100PX), TRAIL_POI_ZOOM);
 const TRAIL_POI_CLASSES = ["information", "picnic_site", "campsite", "drinking_water", "attraction", "toilets"];
 const TRAIL_POI_RETRY_MS = 60000;
-const OVERPASS_URLS = ["https://overpass-api.de/api/interpreter", "https://maps.mail.ru/osm/tools/overpass/api/interpreter"];
-// сервер, ответивший последним, спрашивается первым: упавший держит до 25 с на каждом квадрате
-let overpassFirst = 0;
+const TRAIL_POI_CELL = 0.5;
+const QLEVER_URL = "https://qlever.dev/api/osm-planet";
 const TRAIL_POI_ICONS = {
   // информация — светло-синие, щиты и карты — серые: их много
   info: { color: "#6a9fe0", path: "M10.2 9.5h3.6V20h-3.6z M12 3.5a2.2 2.2 0 1 1 0 4.4a2.2 2.2 0 1 1 0-4.4z" },
@@ -460,7 +459,7 @@ const TRAIL_POI_KIND = ["match", ["get", "class"],
   "information", ["match", ["get", "subclass"], ["guidepost", "board", "map"], ["get", "subclass"], "info"],
   "attraction", ["match", ["get", "subclass"], "viewpoint", "viewpoint", "attraction"],
   ["get", "class"]];
-// только в Overpass — их слои видны и там, где уже есть тайлы
+// только в QLever — их слои видны и там, где уже есть тайлы
 const TRAIL_POI_OVERPASS_ONLY = ["tower", "lighthouse"];
 const TRAIL_POI_OVERPASS_ONLY_NEAR = ["firepit"];
 const TRAIL_POI_LAYERS = ["ov-trail-poi", "ov-trail-poi-near", "ov-trail-poi-far", "ov-trail-poi-near-far",
@@ -529,46 +528,50 @@ function trailPoiImage(kind) {
   map.addImage(`trail-poi-${kind}`, ctx.getImageData(0, 0, size, size), { pixelRatio: 2 });
 }
 
-// вид точки по тегам OSM (как TRAIL_POI_KIND для тайлов)
-function trailPoiKind(t) {
-  if (t.tourism === "information") {
-    if (t.information === "route_marker") return null;
-    return ["guidepost", "board", "map"].includes(t.information) ? t.information : "info";
-  }
-  if (t.man_made === "lighthouse") return "lighthouse";
-  if (t.man_made === "tower") return "tower";
-  return { viewpoint: "viewpoint", picnic_site: "picnic_site", camp_site: "campsite" }[t.tourism] ||
-    (t.amenity === "drinking_water" ? "drinking_water" : null) ||
-    (t.leisure === "firepit" ? "firepit" : null);
-}
+// QLever (SPARQL по всему OSM) отвечает за 8–17 с почти независимо от размера квадрата —
+// поэтому квадраты по полградуса. Тегов он не отдаёт — они для подсказки берутся из OSM API
+const TRAIL_POI_QUERY = (s, w, n, e) => `PREFIX osmkey: <https://www.openstreetmap.org/wiki/Key:>
+PREFIX geo: <http://www.opengis.net/ont/geosparql#>
+PREFIX geof: <http://www.opengis.net/def/function/geosparql/>
+SELECT ?osm ?c ?kind ?info WHERE {
+  { ?osm osmkey:tourism "viewpoint" . BIND("viewpoint" AS ?kind) }
+  UNION { ?osm osmkey:tourism "picnic_site" . BIND("picnic_site" AS ?kind) }
+  UNION { ?osm osmkey:tourism "camp_site" . BIND("campsite" AS ?kind) }
+  UNION { ?osm osmkey:man_made "lighthouse" . BIND("lighthouse" AS ?kind) }
+  UNION { ?osm osmkey:man_made "tower" . ?osm <https://www.openstreetmap.org/wiki/Key:tower:type> "observation" . BIND("tower" AS ?kind) }
+  UNION { ?osm osmkey:amenity "drinking_water" . BIND("drinking_water" AS ?kind) }
+  UNION { ?osm osmkey:leisure "firepit" . BIND("firepit" AS ?kind) }
+  UNION { ?osm osmkey:tourism "information" . BIND("info" AS ?kind) OPTIONAL { ?osm osmkey:information ?info } }
+  ?osm geo:hasGeometry/geo:asWKT ?wkt .
+  BIND (geof:centroid(?wkt) AS ?c)
+  FILTER (geof:latitude(?c) > ${s} && geof:latitude(?c) < ${n} && geof:longitude(?c) > ${w} && geof:longitude(?c) < ${e})
+}`;
 
 async function loadTrailPoiCell(cx, cy) {
   const key = `${cx}:${cy}`;
-  const bbox = [cy, cx, cy + 1, cx + 1].map((v) => (v * TRAIL_CELL).toFixed(2)).join(",");
-  const query = `[out:json][timeout:20];(nwr[tourism~"^(information|viewpoint|picnic_site|camp_site)$"](${bbox});` +
-    `nwr[amenity=drinking_water](${bbox});nwr[man_made=tower]["tower:type"=observation](${bbox});` +
-    `nwr[leisure=firepit](${bbox});nwr[man_made=lighthouse](${bbox}););out center;`;
-  for (let i = 0; i < OVERPASS_URLS.length; i++) {
-    const server = (overpassFirst + i) % OVERPASS_URLS.length;
-    try {
-      const res = await fetch(OVERPASS_URLS[server], { method: "POST", body: new URLSearchParams({ data: query }), signal: AbortSignal.timeout(25000) });
-      if (!res.ok) continue;
-      for (const e of (await res.json()).elements) {
-        const kind = trailPoiKind(e.tags || {});
-        const lon = e.lon ?? e.center?.lon, lat = e.lat ?? e.center?.lat;
-        if (kind && lon != null) trailPoiFeatures.set(`${e.type}/${e.id}`, { type: "Feature",
-          geometry: { type: "Point", coordinates: [lon, lat] }, properties: { kind, osm: `${e.type}/${e.id}` } });
-        if (kind) trailPoiTags.set(`${e.type}/${e.id}`, e.tags);
+  const [w, s, e, n] = [cx, cy, cx + 1, cy + 1].map((v) => (v * TRAIL_POI_CELL).toFixed(2));
+  try {
+    const res = await fetch(QLEVER_URL, { method: "POST", headers: { Accept: "application/sparql-results+json" },
+      body: new URLSearchParams({ query: TRAIL_POI_QUERY(s, w, n, e) }), signal: AbortSignal.timeout(40000) });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    for (const b of (await res.json()).results.bindings) {
+      let kind = b.kind.value;
+      if (kind === "info") {
+        const info = b.info?.value;
+        if (info === "route_marker") continue;
+        if (["guidepost", "board", "map"].includes(info)) kind = info;
       }
-      trailPoiCells.set(key, true);
-      overpassFirst = server;
-      map.getSource("ov-trail-poi-far")?.setData(trailPoiData());
-      return;
-    } catch { /* следующий сервер */ }
+      const osm = b.osm.value.replace(/^.*\/(node|way|relation)\/(\d+)$/, "$1/$2");
+      const [lon, lat] = b.c.value.match(/-?[\d.]+/g).map(Number);
+      trailPoiFeatures.set(osm, { type: "Feature", geometry: { type: "Point", coordinates: [lon, lat] }, properties: { kind, osm } });
+    }
+    trailPoiCells.set(key, true);
+    map.getSource("ov-trail-poi-far")?.setData(trailPoiData());
+  } catch {
+    trailPoiCells.set(key, Date.now() + TRAIL_POI_RETRY_MS);
+    // повтор — сам: если стоять на месте, значки всё-таки появятся
+    setTimeout(updateTrails, TRAIL_POI_RETRY_MS + 100);
   }
-  trailPoiCells.set(key, Date.now() + TRAIL_POI_RETRY_MS);
-  // повтор — сам: если стоять на месте, значки всё-таки появятся
-  setTimeout(updateTrails, TRAIL_POI_RETRY_MS + 100);
 }
 
 // табличка с закруглёнными углами, растягивается под номер (icon-text-fit)
@@ -658,7 +661,17 @@ function updateTrails() {
   // значки у троп — после самих троп; на любом зуме: вышек и кострищ в тайлах нет
   if (!trailOverlayActive()) return;
   const after = Promise.all(trailQueues);
-  for (const [cx, cy] of cells.slice(0, TRAIL_MAX_CELLS)) {
+  const poiRange = (min, max, c) => [Math.floor(Math.max(min, c - 0.5) / TRAIL_POI_CELL), Math.floor(Math.min(max, c + 0.5) / TRAIL_POI_CELL)];
+  const [px0, px1] = poiRange(bounds.getWest(), bounds.getEast(), center.lng);
+  const [py0, py1] = poiRange(bounds.getSouth(), bounds.getNorth(), center.lat);
+  const poiCells = [];
+  for (let cx = px0; cx <= px1; cx++) {
+    for (let cy = py0; cy <= py1; cy++) {
+      poiCells.push([cx, cy, Math.hypot((cx + 0.5) * TRAIL_POI_CELL - center.lng, (cy + 0.5) * TRAIL_POI_CELL - center.lat)]);
+    }
+  }
+  poiCells.sort((a, b) => a[2] - b[2]);
+  for (const [cx, cy] of poiCells) {
     const key = `${cx}:${cy}`;
     const state = trailPoiCells.get(key);
     if (state === true || state === "loading" || state > Date.now()) continue;
@@ -1259,8 +1272,12 @@ const OSM_TYPES = { 1: "node", 2: "way", 3: "relation" };
 
 async function loadPoiTags(featureId) {
   const type = OSM_TYPES[featureId % 10];
-  if (!type) return null;
-  const resp = await fetch(`https://api.openstreetmap.org/api/0.6/${type}/${Math.floor(featureId / 10)}.json`);
+  return type ? loadOsmTags(`${type}/${Math.floor(featureId / 10)}`) : null;
+}
+
+// osm — "node/123"
+async function loadOsmTags(osm) {
+  const resp = await fetch(`https://api.openstreetmap.org/api/0.6/${osm}.json`);
   if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
   return (await resp.json()).elements[0]?.tags || null;
 }
@@ -1326,8 +1343,8 @@ map.on("idle", () => {
 // ---------- подсказка у значков троп ----------
 
 // При наведении (на телефоне — по касанию): вид точки, название, высота, описание,
-// направления указателя. Теги точек из Overpass уже есть, у точек из тайлов — из OSM API
-// (как у флажков мест), не дольше 1 с, чтобы подсказка не запаздывала
+// направления указателя. Теги — из OSM API (как у флажков мест), не дольше 1 с, чтобы
+// подсказка не запаздывала. Подсказка не прячется, пока курсор на ней: в ней бывает ссылка на сайт
 const TRAIL_POI_KIND_NAMES = {
   info: "Информация", guidepost: "Указатель", board: "Информационный щит", map: "Карта местности",
   viewpoint: "Смотровая площадка", tower: "Смотровая вышка", lighthouse: "Маяк", attraction: "Достопримечательность",
@@ -1342,8 +1359,8 @@ async function showTrailPoiInfo(f) {
   if (trailPoiHover === key && trailPoiPopup?.isOpen()) return;
   trailPoiHover = key;
   let tags = trailPoiTags.get(key);
-  if (!tags && f.source === "te-poi") {
-    tags = await withTimeout(loadPoiTags(f.id).catch(() => null), 1000, null);
+  if (!tags) {
+    tags = await withTimeout((f.source === "te-poi" ? loadPoiTags(f.id) : loadOsmTags(key)).catch(() => null), 1000, null);
     if (tags) trailPoiTags.set(key, tags);
   }
   // пока ждали ответа, курсор ушёл
@@ -1362,6 +1379,21 @@ async function showTrailPoiInfo(f) {
       + (name && kind ? `<div class="popup-kind">${escapeHtml(kind)}</div>` : "")
       + (rows || tags.opening_hours || tags.website ? `<div class="popup-details">${rows}${poiDetailsHtml(tags)}</div>` : ""))
     .addTo(map);
+  const el = trailPoiPopup.getElement();
+  el.addEventListener("mouseenter", () => clearTimeout(trailPoiHideTimer));
+  el.addEventListener("mouseleave", hideTrailPoiInfoSoon);
+}
+
+// с значка на подсказку курсор идёт через пустое место — прячем с задержкой и только
+// если курсор не на самой подсказке
+let trailPoiHideTimer = 0;
+function hideTrailPoiInfoSoon() {
+  clearTimeout(trailPoiHideTimer);
+  trailPoiHideTimer = setTimeout(() => {
+    if (trailPoiPopup?.getElement().matches(":hover")) return;
+    trailPoiHover = null;
+    trailPoiPopup?.remove();
+  }, 300);
 }
 
 // вид точки из тайла — то же, что TRAIL_POI_KIND, для подсказки
@@ -1373,12 +1405,12 @@ function trailPoiKindOf(p) {
 
 map.on("mousemove", TRAIL_POI_LAYERS, (evt) => {
   map.getCanvas().style.cursor = "pointer";
+  clearTimeout(trailPoiHideTimer);
   showTrailPoiInfo(evt.features[0]);
 });
 map.on("mouseleave", TRAIL_POI_LAYERS, () => {
   map.getCanvas().style.cursor = "";
-  trailPoiHover = null;
-  trailPoiPopup?.remove();
+  hideTrailPoiInfoSoon();
 });
 map.on("click", TRAIL_POI_LAYERS, (evt) => showTrailPoiInfo(evt.features[0]));
 
