@@ -919,7 +919,8 @@ function selectPhoto(f) {
 // лента внизу: загруженные снимки в кадре, слева направо как на карте; снимки, ушедшие
 // из кадра, из ленты убираются. Элементы переиспользуются — прокрутка ленты не сбрасывается
 const photoStrip = Object.assign(document.createElement("div"), { className: "photo-strip", hidden: true });
-document.body.append(photoStrip);
+// внутри контейнера карты — чтобы кнопки в углах MapLibre (z-index 2) были поверх ленты
+map.getContainer().append(photoStrip);
 const photoStripItems = new Map(); // "photo/123" → кнопка
 photoStrip.addEventListener("wheel", (e) => {
   if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) photoStrip.scrollLeft += e.deltaY;

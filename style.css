@@ -589,25 +589,35 @@ html, body {
   background: #eee;
 }
 
-/* лента фото внизу — между переключателем карт и шкалой; на узком экране над шкалой */
+/* лента фото внизу — в уровень и в высоту плитки переключателя карт (76 px, снизу 24 px), до
+   правого края; кнопки справа внизу (шкала, ⓘ, шестерёнка, масштаб) — поверх неё (z-index 2 у
+   углов MapLibre), поэтому справа запас прокрутки, чтобы последние снимки из-под них выезжали */
 .photo-strip {
   position: fixed;
   left: 96px;
-  right: 176px;
-  bottom: 10px;
-  z-index: 5;
+  right: 10px;
+  bottom: 24px;
+  z-index: 1;
+  box-sizing: border-box;
   display: flex;
   gap: 6px;
   width: max-content;
-  max-width: calc(100vw - 272px);
+  max-width: calc(100vw - 106px);
+  height: 76px;
   margin: 0 auto;
-  padding: 6px;
+  padding: 6px 6px 6px 6px;
   overflow-x: auto;
-  scrollbar-width: thin;
-  scrollbar-color: #c4c7c5 transparent;
+  overflow-y: hidden;
+  scrollbar-width: none;
   background: #fff;
   border-radius: 12px;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+}
+
+.photo-strip::after {
+  content: "";
+  flex: none;
+  width: 150px;
 }
 
 .photo-strip[hidden] {
@@ -616,8 +626,8 @@ html, body {
 
 .photo-strip-item {
   flex: none;
-  width: 60px;
-  height: 60px;
+  width: 64px;
+  height: 64px;
   padding: 0;
   border: 2px solid transparent;
   border-radius: 8px;
@@ -642,19 +652,7 @@ html, body {
 }
 
 body.has-photo-strip .map-status {
-  bottom: 94px;
-}
-
-@media (max-width: 520px) {
-  .photo-strip {
-    right: 10px;
-    bottom: 52px;
-    max-width: calc(100vw - 106px);
-  }
-
-  body.has-photo-strip .map-status {
-    bottom: 136px;
-  }
+  bottom: 110px;
 }
 
 .popup-muted {
