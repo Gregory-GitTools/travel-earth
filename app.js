@@ -364,7 +364,7 @@ const OVERLAYS = [
     layers: ["ov-my-selected", "ov-my-photos", "ov-my-dots", "ov-my-albums"], available: () => "showDirectoryPicker" in window },
   { id: "tours", name: "Экскурсии", icon: CHIP_ICONS.tours,
     hint: "Наброски будущих путешествий из текстовых файлов в своей папке (выбирается в ⚙ настройках) — маршрут, точки, справки",
-    layers: ["ov-tour-labels", "ov-tour-marks", "ov-tour-stops", "ov-tour-route"], available: () => "showDirectoryPicker" in window },
+    layers: ["ov-tour-labels", "ov-tour-marks", "ov-tour-sel", "ov-tour-stops", "ov-tour-route"], available: () => "showDirectoryPicker" in window },
   { id: "mapillary", name: "Снимки улиц", icon: CHIP_ICONS.streets,
     hint: "Снимки и панорамы улиц и дорог из Mapillary — линии со шкалы 1 км, точки снимков со 100 м; двойной щелчок — просмотр",
     layers: ["ov-mly-pos", "ov-mly-images", "ov-mly-lines"] },
@@ -440,7 +440,7 @@ function addTrailLines(id, before) {
 // позже и встать выше) и над подписями карты, а вышки, площадки, маяки и пикник — над
 // остальными значками. Верхний слой и расставляется первым: при тесноте уступают нижние
 // (Грегори: «наши приоритеты должны быть сверху»)
-const TRAIL_POI_ORDER = ["ov-tour-route", "ov-tour-stops", "ov-tour-marks", "ov-tour-labels", "ov-mly-lines", "ov-mly-images", "ov-mly-pos", "ov-photo-dots", "ov-photos", "ov-photo-selected",
+const TRAIL_POI_ORDER = ["ov-tour-route", "ov-tour-stops", "ov-tour-sel", "ov-tour-marks", "ov-tour-labels", "ov-mly-lines", "ov-mly-images", "ov-mly-pos", "ov-photo-dots", "ov-photos", "ov-photo-selected",
   "ov-my-dots", "ov-my-photos", "ov-my-selected", "ov-my-albums", "ov-trail-poi-near", "ov-trail-poi-near-far", "ov-trail-poi-extra-near", "ov-beaches",
   "ov-trail-poi", "ov-trail-poi-extra", "ov-trail-poi-far", "ov-surf"];
 function raiseTrailPoi() {
@@ -1742,7 +1742,22 @@ map.on("dblclick", (evt) => {
 // снова в фокусе — правка в Блокноте видна сразу после переключения
 const TOUR_COLOR = "#ef6c00";
 const TOUR_TEXT_RE = /\.(md|txt)$/i;
-const TOUR_LAYERS = ["ov-tour-marks", "ov-tour-labels", "ov-tour-stops"];
+const TOUR_LAYERS = ["ov-tour-marks", "ov-tour-labels", "ov-tour-stops", "ov-tour-sel"];
+let tourSel = null; // { tour, n } — выделенная остановка
+let tourEditing = false; // в панели открыта правка файла — перечитывание её не трогает
+const tourSelFilter = () => ["all", ["==", ["get", "kind"], "stop"], ["==", ["get", "tour"], tourSel?.tour || ""], ["==", ["get", "n"], tourSel?.n || -1]];
+
+// выделить остановку на карте и в панели (Грегори: «выделять точки при клике на панели и в
+// панели при клике на карте»); null — снять
+function selectTourStop(tour, n) {
+  tourSel = tour ? { tour, n } : null;
+  if (map.getLayer("ov-tour-sel")) map.setFilter("ov-tour-sel", tourSelFilter());
+  for (const sec of tourPanel.querySelectorAll(".tour-section[data-n]")) {
+    const on = tourSel?.tour === tourPanelId && Number(sec.dataset.n) === tourSel?.n;
+    sec.classList.toggle("current", on);
+    if (on) sec.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }
+}
 const TOUR_KEYS = { "место": "place", "регион": "region", "тропа": "trail", "длина": "length", "время": "time",
   "сложность": "difficulty", "сезон": "season", "точки": "points", "особенности": "features", "справка": "history",
   "выдержка": "quote", "выдержки": "quote", "источник": "sources", "источники": "sources", "теги": "tags", "идея": "idea", "маршрут": "route" };
@@ -1848,12 +1863,12 @@ const tourData = () => {
 };
 const refreshTours = () => map.getSource("ov-tours")?.setData(tourData());
 
-// кружок остановки: оранжевый в белой обводке, 22 px (номер пишется текстом поверх)
-function tourStopImage() {
+// кружок остановки: оранжевый в белой (у выделенной — розовой) обводке, 22 px; номер — текстом поверх
+function tourStopImage(ring = "#fff") {
   const ctx = new OffscreenCanvas(44, 44).getContext("2d");
   ctx.beginPath();
   ctx.arc(22, 22, 21, 0, 2 * Math.PI);
-  ctx.fillStyle = "#fff";
+  ctx.fillStyle = ring;
   ctx.fill();
   ctx.beginPath();
   ctx.arc(22, 22, 17, 0, 2 * Math.PI);
@@ -1871,6 +1886,14 @@ function addTours(before) {
   map.addLayer({ id: "ov-tour-stops", type: "symbol", source: "ov-tours", minzoom: 6, filter: kind("stop"),
     layout: { "icon-image": "tour-stop", "icon-offset": ["array", "number", 2, ["get", "off"]],
       "text-field": ["to-string", ["get", "n"]], "text-font": styleFont(), "text-size": 11,
+      "text-offset": ["array", "number", 2, ["get", "textOff"]],
+      "icon-allow-overlap": true, "text-allow-overlap": true, "icon-ignore-placement": true, "text-ignore-placement": true },
+    paint: { "text-color": "#fff" } }, before);
+  // выделенная остановка — крупнее, в розовом кольце, как выделенный снимок
+  if (!map.hasImage("tour-stop-sel")) map.addImage("tour-stop-sel", tourStopImage(PHOTO_COLOR), { pixelRatio: 2 });
+  map.addLayer({ id: "ov-tour-sel", type: "symbol", source: "ov-tours", minzoom: 6, filter: tourSelFilter(),
+    layout: { "icon-image": "tour-stop-sel", "icon-size": 1.35, "icon-offset": ["array", "number", 2, ["get", "off"]],
+      "text-field": ["to-string", ["get", "n"]], "text-font": styleFont(), "text-size": 14,
       "text-offset": ["array", "number", 2, ["get", "textOff"]],
       "icon-allow-overlap": true, "text-allow-overlap": true, "icon-ignore-placement": true, "text-ignore-placement": true },
     paint: { "text-color": "#fff" } }, before);
@@ -1915,7 +1938,7 @@ async function readTours(handle) {
         const bytes = await file.arrayBuffer();
         let text;
         try { text = new TextDecoder("utf-8", { fatal: true }).decode(bytes); } catch { text = new TextDecoder("windows-1251").decode(bytes); }
-        tours.set(id, { id, file: name, mtime: file.lastModified, ...parseTour(text, name) });
+        tours.set(id, { id, file: name, handle: h, mtime: file.lastModified, ...parseTour(text, name) });
       }
     }
   };
@@ -1930,7 +1953,7 @@ async function readTours(handle) {
     if (t.region && !t.point) t.point = await tourGeocode(t.region).catch(() => null);
     for (const sec of t.sections) if (sec.place && !sec.point) sec.point = await tourGeocode(sec.place).catch(() => null);
     refreshTours();
-    if (tourPanelId === t.id) renderTourPanel(t.id);
+    if (tourPanelId === t.id && !tourEditing) renderTourPanel(t.id);
   }
   const lost = list.flatMap((t) => t.sections.filter((sec) => sec.place && !sec.point).map((sec) => sec.place));
   setTourStatus(`Экскурсий: ${list.length}${lost.length ? `; не нашлись места: ${lost.join(", ")}` : ""}`);
@@ -1978,21 +2001,57 @@ document.body.append(tourPanel);
 function closeTourPanel() {
   tourPanel.hidden = true;
   tourPanelId = null;
+  tourEditing = false;
   speechSynthesis?.cancel();
+  selectTourStop(null);
 }
+
+// Голос — один из установленных в системе и браузере (своего синтеза у страницы нет). Лучшие —
+// «естественные» онлайн-голоса: в Edge «Microsoft Svetlana/Dmitry Online (Natural)», в Chrome
+// «Google русский»; простые голоса Windows (Irina, Pavel) — роботизированные. По умолчанию
+// берётся лучший из найденных, выбор и скорость — в ⚙ настройках (localStorage, этот браузер).
+// Текст читается по предложениям: Chrome обрывает длинную фразу онлайн-голоса через ~15 с
+const VOICE_KEY = "travel-earth.voice", VOICE_RATE_KEY = "travel-earth.voice-rate";
+const voiceRank = (v) => (/natural|neural|online/i.test(v.name) ? 0 : /google/i.test(v.name) ? 1 : 2);
+function ruVoices() {
+  if (!("speechSynthesis" in window)) return [];
+  return speechSynthesis.getVoices().filter((v) => /^ru/i.test(v.lang)).sort((a, b) => voiceRank(a) - voiceRank(b) || a.name.localeCompare(b.name));
+}
+const pickVoice = () => { const list = ruVoices(); return list.find((v) => v.name === localStorage.getItem(VOICE_KEY)) || list[0] || null; };
 
 function speak(text, btn) {
   if (!("speechSynthesis" in window)) return;
-  const was = btn.classList.contains("speaking");
+  const was = btn?.classList.contains("speaking");
   speechSynthesis.cancel();
-  for (const b of tourPanel.querySelectorAll(".speaking")) b.classList.remove("speaking");
+  for (const b of document.querySelectorAll(".speaking")) b.classList.remove("speaking");
   if (was) return;
-  const u = new SpeechSynthesisUtterance(text);
-  u.lang = "ru-RU";
-  u.onend = u.onerror = () => btn.classList.remove("speaking");
-  btn.classList.add("speaking");
-  speechSynthesis.speak(u);
+  const voice = pickVoice(), rate = Number(localStorage.getItem(VOICE_RATE_KEY)) || 1;
+  const parts = text.match(/[^.!?…]+[.!?…]*\s*/g)?.map((x) => x.trim()).filter(Boolean) || [text];
+  parts.forEach((part, i) => {
+    const u = new SpeechSynthesisUtterance(part);
+    u.lang = voice?.lang || "ru-RU";
+    if (voice) u.voice = voice;
+    u.rate = rate;
+    if (i === parts.length - 1) u.onend = () => btn?.classList.remove("speaking");
+    u.onerror = () => btn?.classList.remove("speaking");
+    speechSynthesis.speak(u);
+  });
+  btn?.classList.add("speaking");
 }
+
+function renderVoiceSettings() {
+  const select = document.getElementById("voice-select");
+  if (!select) return;
+  const list = ruVoices(), current = pickVoice();
+  select.replaceChildren(...list.map((v) => Object.assign(document.createElement("option"), {
+    value: v.name, selected: v === current,
+    textContent: `${v.name.replace(/^Microsoft\s+/, "").replace(/\s*-\s*Russian.*$/i, "")}${voiceRank(v) < 2 ? " — хороший" : ""}` })));
+  if (!list.length) select.append(Object.assign(document.createElement("option"), { textContent: "русских голосов нет" }));
+  select.disabled = !list.length;
+  document.getElementById("voice-rate").value = localStorage.getItem(VOICE_RATE_KEY) || "1";
+  document.getElementById("voice-hint").hidden = list.some((v) => voiceRank(v) < 2);
+}
+if ("speechSynthesis" in window) speechSynthesis.addEventListener("voiceschanged", renderVoiceSettings);
 
 function renderTourPanel(id) {
   const t = tours.get(id);
@@ -2004,10 +2063,13 @@ function renderTourPanel(id) {
     b.addEventListener("click", () => speak(text, b));
     return b;
   };
+  tourEditing = false;
   const close = Object.assign(document.createElement("button"), { className: "tour-close", title: "Закрыть", textContent: "×" });
   close.addEventListener("click", closeTourPanel);
+  const edit = Object.assign(document.createElement("button"), { className: "tour-edit", title: "Править файл экскурсии", innerHTML: EDIT_ICON });
+  edit.addEventListener("click", () => editTour(id));
   const head = h("div", "tour-head");
-  head.append(h("h2", "", t.title), close);
+  head.append(h("h2", "", t.title), edit, close);
   const nodes = [head];
   const meta = [t.region, t.tags].filter(Boolean).join(" · ");
   if (meta) nodes.push(h("div", "tour-meta", meta));
@@ -2015,12 +2077,17 @@ function renderTourPanel(id) {
   if (t.idea.length) nodes.push(...t.idea.map((line) => h("p", "tour-idea", line)));
   for (const sec of t.sections) {
     const box = h("section", "tour-section");
+    if (sec.n) box.dataset.n = sec.n;
+    if (sec.n && tourSel?.tour === id && tourSel.n === sec.n) box.classList.add("current");
     const title = h(sec.point ? "button" : "div", "tour-sec-title");
     if (sec.n) title.append(h("span", "tour-num", String(sec.n)));
     title.append(sec.title || sec.place || "");
     if (sec.point) {
       title.title = "Показать на карте";
-      title.addEventListener("click", () => map.flyTo({ center: sec.point, zoom: Math.max(map.getZoom(), 12), duration: 2000 }));
+      title.addEventListener("click", () => {
+        selectTourStop(id, sec.n);
+        map.flyTo({ center: sec.point, zoom: Math.max(map.getZoom(), 12), duration: 2000 });
+      });
     }
     box.append(title);
     const facts = [sec.trail, sec.length, sec.time, sec.difficulty, sec.season].filter(Boolean).join(" · ");
@@ -2061,7 +2128,55 @@ function renderTourPanel(id) {
   }
   nodes.push(h("div", "tour-file", `Файл: ${t.id}`));
   tourPanel.replaceChildren(...nodes);
+  tourPanel.classList.remove("editing");
   tourPanel.hidden = false;
+}
+
+// Правка файла прямо в панели: страница не может запустить Блокнот, зато может записать в
+// файл выбранной папки (File System Access API) — при первом сохранении Chrome спросит
+// разрешение на изменение файлов. Ctrl+S — сохранить, Esc — отмена. Сохраняется в UTF-8
+const EDIT_ICON = `<svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>`;
+async function editTour(id) {
+  const t = tours.get(id);
+  if (!t?.handle) return;
+  const bytes = await (await t.handle.getFile()).arrayBuffer();
+  let text;
+  try { text = new TextDecoder("utf-8", { fatal: true }).decode(bytes); } catch { text = new TextDecoder("windows-1251").decode(bytes); }
+  tourEditing = true;
+  speechSynthesis?.cancel();
+  const h = (tag, cls, txt) => Object.assign(document.createElement(tag), { className: cls || "", textContent: txt || "" });
+  const area = Object.assign(document.createElement("textarea"), { className: "tour-editor", value: text, spellcheck: true });
+  const status = h("span", "tour-edit-status");
+  const save = h("button", "text-btn tour-save", "Сохранить");
+  const cancel = h("button", "text-btn tour-cancel", "Отмена");
+  const doSave = async () => {
+    try {
+      if (await t.handle.queryPermission({ mode: "readwrite" }) !== "granted"
+        && await t.handle.requestPermission({ mode: "readwrite" }) !== "granted") { status.textContent = "Нет разрешения на запись"; return; }
+      const w = await t.handle.createWritable();
+      await w.write(area.value);
+      await w.close();
+    } catch (err) { status.textContent = `Не сохранилось: ${err.message}`; return; }
+    tourEditing = false;
+    t.mtime = null;
+    await readTours(tourDir);
+    renderTourPanel(id);
+  };
+  save.addEventListener("click", doSave);
+  cancel.addEventListener("click", () => renderTourPanel(id));
+  area.addEventListener("keydown", (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") { e.preventDefault(); doSave(); }
+    else if (e.key === "Escape") renderTourPanel(id);
+  });
+  const head = h("div", "tour-head");
+  head.append(h("h2", "", `Правка: ${t.file}`));
+  const bar = h("div", "tour-edit-bar");
+  bar.append(save, cancel, status);
+  tourPanel.replaceChildren(head, area, bar, h("div", "tour-file", "Ctrl+S — сохранить, Esc — отмена. Образец формата — _Шаблон экскурсии.md"));
+  tourPanel.classList.add("editing");
+  area.focus();
+  area.setSelectionRange(0, 0);
+  area.scrollTop = 0;
 }
 
 function openTour(id) {
@@ -2093,8 +2208,10 @@ onHover(TOUR_LAYERS, (evt) => {
 map.on("click", TOUR_LAYERS, (evt) => {
   const p = evt.features[0].properties;
   trailPoiPopup?.remove();
-  if (p.kind === "stop") renderTourPanel(p.tour);
-  else openTour(p.tour);
+  if (p.kind === "stop") {
+    if (tourPanelId !== p.tour || tourEditing) renderTourPanel(p.tour);
+    selectTourStop(p.tour, p.n);
+  } else openTour(p.tour);
 });
 
 function addOverlay(id) {
@@ -3355,6 +3472,7 @@ function openAboutModal() {
   el("about-modal").hidden = false;
   idb("settings", "readonly", (st) => st.get("dir")).catch(() => null).then((handle) => renderMySettings(handle || myDir));
   idb("settings", "readonly", (st) => st.get("tours")).catch(() => null).then((handle) => renderTourSettings(handle || tourDir));
+  renderVoiceSettings();
 }
 function closeAboutModal() { el("about-modal").hidden = true; }
 
@@ -3598,6 +3716,9 @@ el("about-close-btn").addEventListener("click", closeAboutModal);
 el("my-photos-pick").addEventListener("click", pickMyFolder);
 el("tours-pick").addEventListener("click", pickTourFolder);
 el("tours-forget").addEventListener("click", forgetTourFolder);
+el("voice-select").addEventListener("change", (e) => localStorage.setItem(VOICE_KEY, e.target.value));
+el("voice-rate").addEventListener("change", (e) => localStorage.setItem(VOICE_RATE_KEY, e.target.value));
+el("voice-test").addEventListener("click", (e) => speak("Левады строили с пятнадцатого века, чтобы уводить воду с дождливого севера острова на солнечный юг.", e.currentTarget));
 el("my-photos-forget").addEventListener("click", forgetMyFolder);
 el("about-modal").addEventListener("click", (evt) => {
   if (evt.target.id === "about-modal") closeAboutModal();

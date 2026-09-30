@@ -795,6 +795,82 @@ html, body {
   font-weight: 600;
 }
 
+.tour-edit {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: #5f6368;
+  cursor: pointer;
+}
+
+.tour-edit:hover {
+  background: #f1f3f4;
+}
+
+/* правка файла экскурсии в панели */
+.tour-panel.editing {
+  display: flex;
+  flex-direction: column;
+}
+
+.tour-editor {
+  flex: 1;
+  min-height: 200px;
+  margin-top: 10px;
+  padding: 8px;
+  border: 1px solid #dadce0;
+  border-radius: 8px;
+  background: #fff;
+  color: #222;
+  font: 0.82rem/1.45 Consolas, "Cascadia Mono", monospace;
+  resize: none;
+}
+
+.tour-edit-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.tour-panel .text-btn {
+  color: #222;
+  background: #f1f3f4;
+  border: 1px solid #dadce0;
+}
+
+.tour-edit-status {
+  color: #d93025;
+  font-size: 0.78rem;
+}
+
+/* выделенная остановка (щелчок на карте или в панели) */
+.tour-section.current {
+  margin-left: -8px;
+  padding-left: 6px;
+  border-left: 2px solid #e91e63;
+}
+
+.tour-section.current .tour-num {
+  background: #e91e63;
+}
+
+.voice-row span {
+  font-size: 0.85rem;
+}
+
+.voice-select {
+  max-width: 200px;
+  padding: 4px 6px;
+  border-radius: 6px;
+  font: inherit;
+  font-size: 0.82rem;
+}
+
 .tour-close {
   border: none;
   background: transparent;
