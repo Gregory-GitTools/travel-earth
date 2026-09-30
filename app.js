@@ -1922,7 +1922,7 @@ async function featureInfoHtml(f) {
   const p = f.properties;
   const name = p[`name:${uiLanguageCode()}`] || p.name;
   const kind = [
-    (f.sourceLayer === "poi" && (POI_CLASS_KIND_NAMES[p.class] || POI_KIND_NAMES[p.subclass])) || MAP_INFO_KIND_NAMES[p.class],
+    poiKindName(f) || MAP_INFO_KIND_NAMES[p.class],
     p.ele && `${Math.round(p.ele).toLocaleString("ru")} м`,
   ].filter(Boolean).join(" · ");
   let details = "";
@@ -1940,8 +1940,8 @@ async function featureInfoHtml(f) {
   } catch (err) {
     console.warn("OSM API", err);
   }
-  return `<div class="popup-title">${escapeHtml(name)}</div>`
-    + (kind ? `<div class="popup-kind">${escapeHtml(kind)}</div>` : "")
+  return `<div class="popup-title">${escapeHtml(name || kind)}</div>`
+    + (name && kind ? `<div class="popup-kind">${escapeHtml(kind)}</div>` : "")
     + (details ? `<div class="popup-details">${details}</div>` : "");
 }
 
@@ -1963,9 +1963,21 @@ async function pointInfoHtml(lngLat) {
 const ownInfoLayers = () => [...POI_LAYERS, ...HOVER_POI_LAYERS].filter((id) => map.getLayer(id));
 
 // значок карты в нескольких пикселях от точки, о котором щелчок покажет подсказку
+// Значки мест без названия (пикник, навес, туалет) — тоже, если вид известен
+const MAP_POI_KIND_NAMES = {
+  shelter: "Навес", picnic_shelter: "Навес для пикника", bench: "Скамейка", water_point: "Питьевая вода",
+  playground: "Детская площадка", parking: "Парковка", bicycle_parking: "Велопарковка", information: "Информация",
+  place_of_worship: "Храм", fuel: "Заправка", atm: "Банкомат", bank: "Банк", post_office: "Почта", police: "Полиция",
+  hospital: "Больница", doctors: "Врач", dentist: "Стоматолог", school: "Школа", kindergarten: "Детский сад",
+  library: "Библиотека", swimming_pool: "Бассейн", sports_centre: "Спортивный центр", pitch: "Спортплощадка",
+  golf_course: "Гольф", spring: "Родник", waterfall: "Водопад", cave_entrance: "Пещера", ruins: "Руины",
+  memorial: "Мемориал", artwork: "Арт-объект", fountain: "Фонтан", wayside_shrine: "Придорожная часовня",
+};
+const poiKindName = (f) => f.sourceLayer === "poi" && (POI_CLASS_KIND_NAMES[f.properties.class] || POI_KIND_NAMES[f.properties.subclass]
+  || TRAIL_POI_KIND_NAMES[f.properties.subclass] || MAP_POI_KIND_NAMES[f.properties.subclass] || MAP_POI_KIND_NAMES[f.properties.class]);
 function mapInfoHit({ x, y }) {
   return map.queryRenderedFeatures([[x - 8, y - 8], [x + 8, y + 8]]).find((f) => f.layer.type === "symbol"
-    && MAP_INFO_SOURCE_LAYERS.includes(f.sourceLayer) && f.properties.name && !POI_LAYERS.includes(f.layer.id));
+    && MAP_INFO_SOURCE_LAYERS.includes(f.sourceLayer) && (f.properties.name || poiKindName(f)) && !POI_LAYERS.includes(f.layer.id));
 }
 
 map.on("click", async (evt) => {
