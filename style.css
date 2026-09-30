@@ -902,6 +902,93 @@ html, body {
   font-size: 0.78rem;
 }
 
+/* обзорная экскурсия: плеер под шапкой и слайд-шоу */
+.tour-play.on {
+  background: #fff3e0;
+  color: #ef6c00;
+}
+
+.tour-player {
+  position: sticky;
+  top: 35px;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin: 0 -16px;
+  padding: 4px 10px;
+  background: #fff3e0;
+  color: #8a3c00;
+}
+
+.tour-player-label {
+  flex: 1;
+  min-width: 0;
+  margin-left: 6px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tour-slides {
+  position: fixed;
+  left: 110px;
+  bottom: 110px;
+  z-index: 11;
+  width: min(320px, calc(100vw - 530px));
+  aspect-ratio: 4 / 3;
+  border: 2px solid #fff;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #222;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
+}
+
+.tour-slides[hidden] {
+  display: none;
+}
+
+.tour-slides img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0;
+  transition: opacity 0.8s;
+}
+
+.tour-slides img.on {
+  opacity: 1;
+}
+
+.tour-slides-caption {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 14px 10px 5px;
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.65));
+  color: #fff;
+  font-size: 0.72rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@media (max-width: 600px) {
+  .tour-slides {
+    left: 10px;
+    right: 10px;
+    bottom: auto;
+    top: 64px;
+    width: auto;
+    aspect-ratio: 16 / 9;
+  }
+}
+
 /* выделенная остановка (щелчок на карте или в панели) */
 .tour-section.current {
   margin-left: -8px;

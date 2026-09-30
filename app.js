@@ -2007,11 +2007,200 @@ const tourPanel = Object.assign(document.createElement("aside"), { className: "t
 document.body.append(tourPanel);
 
 function closeTourPanel() {
+  stopTourPlay();
   tourPanel.hidden = true;
   tourPanelId = null;
   tourEditing = false;
   speechSynthesis?.cancel();
   selectTourStop(null);
+}
+
+// ---------- обзорная экскурсия: озвучка с переходами по точкам и слайд-шоу ----------
+
+// Грегори: «обзорная озвучка с переходами по точкам, возможно слайд-шоу». Кнопка ▶ в шапке
+// панели: вступление (название и идея, вся поездка в кадре), затем по порядку каждая остановка
+// с местом — подсвечивается, карта перелетает к ней, читается номер, название, точки,
+// особенности, справка и выдержка; пока читается — слайд-шоу фото этого места: сначала свои
+// (слой «Мои фото», снимки ближе 1 км), затем общедоступные из Commons (поиск вокруг точки,
+// кэш tourSlideCache). Полоска плеера под шапкой: назад, пауза, вперёд, стоп и «3 / 7 ·
+// название». Пауза = остановить чтение; продолжение — с начала текущей остановки (пауза
+// онлайн-голосов в Chrome ненадёжна). Любая кнопка «Послушать» или закрытие панели — стоп
+let tourPlay = null; // { id, stops, i, paused, run }
+const PAUSE_ICON = `<svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>`;
+const PREV_ICON = `<svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M6 6h2v12H6zm3.5 6 8.5 6V6z"/></svg>`;
+const NEXT_ICON = `<svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="m6 18 8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg>`;
+const STOP_ICON = `<svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M6 6h12v12H6z"/></svg>`;
+const PLAY_BIG_ICON = `<svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M8 5v14l11-7z"/></svg>`;
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+const tourSlides = Object.assign(document.createElement("div"), { className: "tour-slides", hidden: true });
+tourSlides.innerHTML = `<img alt=""><img alt=""><div class="tour-slides-caption"></div>`;
+document.body.append(tourSlides);
+const tourSlideCache = new Map(); // "lon,lat" → [{ url, caption }]
+let slideTimer = 0;
+
+// что читать на остановке
+function stopNarration(sec) {
+  return [
+    `${sec.n}. ${sec.title || sec.place}.`,
+    sec.points?.length && `Точки: ${sec.points.join(", ").replace(/\s*→\s*/g, ", ")}.`,
+    sec.features?.length && sec.features.map((f) => f.replace(/[.;]?$/, ".")).join(" "),
+    sec.paras?.join(" "),
+    sec.history?.join(" "),
+    sec.quote?.join(" "),
+  ].filter(Boolean).join(" ");
+}
+
+function startTourPlay(id, from = 0) {
+  const t = tours.get(id);
+  if (!t) return;
+  speechSynthesis?.cancel();
+  for (const b of document.querySelectorAll(".speaking")) b.classList.remove("speaking");
+  const stops = t.sections.filter((sec) => sec.n && sec.point);
+  tourPlay = { id, stops, i: from, paused: false, run: {} };
+  tourPanel.classList.remove("min");
+  playTourStep();
+}
+
+function stopTourPlay() {
+  if (!tourPlay) return;
+  tourPlay.run = null;
+  tourPlay = null;
+  speechSynthesis?.cancel();
+  hideSlides();
+  renderTourPlayer();
+}
+
+async function playTourStep() {
+  const play = tourPlay;
+  if (!play) return;
+  const run = play.run = {}; // новая попытка — предыдущая, увидев чужой run, сама выходит
+  const alive = () => tourPlay === play && play.run === run && !play.paused;
+  renderTourPlayer();
+  const t = tours.get(play.id);
+  if (play.i < 0) {
+    // вступление: вся поездка в кадре
+    hideSlides();
+    openTour(play.id);
+    await speakText([t.title, ...t.idea].join(". "));
+  } else {
+    const sec = play.stops[play.i];
+    selectTourStop(play.id, sec.n);
+    // точка — в свободной части кадра: справа панель, внизу слева слайд-шоу
+    const narrow = matchMedia("(max-width: 600px)").matches;
+    map.flyTo({ center: sec.point, zoom: Math.max(14, Math.min(map.getZoom(), 15)), duration: 3000,
+      offset: narrow ? [0, 110] : [-200, -140] });
+    await new Promise((r) => { map.once("moveend", r); setTimeout(r, 4000); });
+    if (!alive()) return;
+    showSlides(sec.point);
+    await speakText(stopNarration(sec));
+  }
+  if (!alive()) return;
+  await wait(1200);
+  if (!alive()) return;
+  if (play.i + 1 >= play.stops.length) { stopTourPlay(); return; }
+  play.i++;
+  playTourStep();
+}
+
+function tourPlayGo(delta) {
+  if (!tourPlay) return;
+  tourPlay.i = Math.max(-1, Math.min(tourPlay.stops.length - 1, tourPlay.i + delta));
+  tourPlay.paused = false;
+  speechSynthesis.cancel();
+  playTourStep();
+}
+
+function tourPlayPause() {
+  if (!tourPlay) return;
+  tourPlay.paused = !tourPlay.paused;
+  if (tourPlay.paused) { tourPlay.run = null; speechSynthesis.cancel(); clearInterval(slideTimer); renderTourPlayer(); }
+  else playTourStep();
+}
+
+// полоска плеера под шапкой панели
+function renderTourPlayer() {
+  tourPanel.querySelector(".tour-player")?.remove();
+  const play = tourPlay;
+  const btn = tourPanel.querySelector(".tour-play");
+  if (btn) {
+    btn.innerHTML = PLAY_BIG_ICON;
+    btn.classList.toggle("on", !!play && play.id === tourPanelId);
+  }
+  if (!play || play.id !== tourPanelId) return;
+  const bar = Object.assign(document.createElement("div"), { className: "tour-player" });
+  const b = (icon, title, fn) => {
+    const x = Object.assign(document.createElement("button"), { className: "tour-edit", title, innerHTML: icon });
+    x.addEventListener("click", fn);
+    return x;
+  };
+  const sec = play.stops[play.i];
+  const label = Object.assign(document.createElement("span"), { className: "tour-player-label",
+    textContent: play.i < 0 ? "Вступление" : `${play.i + 1} / ${play.stops.length} · ${sec.title || sec.place}` });
+  bar.append(b(PREV_ICON, "Назад", () => tourPlayGo(-1)),
+    b(play.paused ? PLAY_BIG_ICON : PAUSE_ICON, play.paused ? "Продолжить" : "Пауза", tourPlayPause),
+    b(NEXT_ICON, "Дальше", () => tourPlayGo(1)), b(STOP_ICON, "Стоп", stopTourPlay), label);
+  tourPanel.querySelector(".tour-head").after(bar);
+}
+
+// слайд-шоу: свои снимки ближе 1 км, потом Commons вокруг точки; смена раз в 5 с с растворением
+async function showSlides(point) {
+  clearInterval(slideTimer);
+  const key = point.join(",");
+  const play = tourPlay;
+  let slides = tourSlideCache.get(key);
+  if (!slides) {
+    slides = [];
+    const near = (c) => Math.hypot((c[0] - point[0]) * Math.cos((point[1] * Math.PI) / 180), c[1] - point[1]) < 0.009;
+    for (const f of myPhotoFeatures.values()) {
+      if (slides.length >= 6) break;
+      if (near(f.geometry.coordinates)) slides.push({ mine: f.properties.photo, caption: `${f.properties.albumName} · ${f.properties.date || f.properties.title}` });
+    }
+    try {
+      const q = (params) => fetch(`${COMMONS_API}?${new URLSearchParams({ action: "query", format: "json", formatversion: 2, origin: "*", ...params })}`)
+        .then((r) => r.json()).then((d) => d.query || {});
+      const found = ((await q({ list: "geosearch", gscoord: `${point[1]}|${point[0]}`, gsradius: 1000, gsnamespace: 6, gslimit: 40 })).geosearch || [])
+        .filter((g) => /\.(jpe?g|webp)$/i.test(g.title)).slice(0, 10 - slides.length);
+      if (found.length) {
+        const pages = (await q({ pageids: found.map((g) => g.pageid).join("|"), prop: "imageinfo", iiprop: "url|extmetadata",
+          iiurlwidth: 960, iiextmetadatafilter: "Artist|LicenseShortName" })).pages || [];
+        // по расстоянию от точки, как их отдал geosearch
+        const order = new Map(found.map((g, i) => [g.pageid, i]));
+        pages.sort((a, b) => order.get(a.pageid) - order.get(b.pageid));
+        for (const pg of pages) {
+          const ii = pg.imageinfo?.[0];
+          if (!ii?.thumburl) continue;
+          const meta = ii.extmetadata || {};
+          slides.push({ url: ii.thumburl, caption: [stripHtml(meta.Artist?.value || ""), meta.LicenseShortName?.value, "Wikimedia Commons"].filter(Boolean).join(" · ") });
+        }
+      }
+    } catch { /* без Commons — только свои */ }
+    tourSlideCache.set(key, slides);
+  }
+  if (tourPlay !== play || !slides.length) { if (!slides.length) hideSlides(); return; }
+  let k = 0, front = 0;
+  const imgs = tourSlides.querySelectorAll("img");
+  const show = async () => {
+    const sl = slides[k++ % slides.length];
+    const url = sl.mine ? await myFileFull(sl.mine).catch(() => "") : sl.url;
+    if (!url || tourPlay !== play) return;
+    const next = imgs[1 - front];
+    next.onload = () => {
+      next.classList.add("on");
+      imgs[front].classList.remove("on");
+      front = 1 - front;
+      tourSlides.querySelector(".tour-slides-caption").textContent = sl.caption;
+    };
+    next.src = url;
+  };
+  tourSlides.hidden = false;
+  await show();
+  if (slides.length > 1) slideTimer = setInterval(show, 5000);
+}
+
+function hideSlides() {
+  clearInterval(slideTimer);
+  tourSlides.hidden = true;
+  for (const img of tourSlides.querySelectorAll("img")) { img.classList.remove("on"); img.removeAttribute("src"); }
 }
 
 // Голос — один из установленных в системе и браузере (своего синтеза у страницы нет). Лучшие —
@@ -2030,21 +2219,34 @@ const pickVoice = () => { const list = ruVoices(); return list.find((v) => v.nam
 function speak(text, btn) {
   if (!("speechSynthesis" in window)) return;
   const was = btn?.classList.contains("speaking");
+  stopTourPlay();
   speechSynthesis.cancel();
   for (const b of document.querySelectorAll(".speaking")) b.classList.remove("speaking");
   if (was) return;
-  const voice = pickVoice(), rate = Number(localStorage.getItem(VOICE_RATE_KEY)) || 1;
-  const parts = text.match(/[^.!?…]+[.!?…]*\s*/g)?.map((x) => x.trim()).filter(Boolean) || [text];
-  parts.forEach((part, i) => {
-    const u = new SpeechSynthesisUtterance(part);
-    u.lang = voice?.lang || "ru-RU";
-    if (voice) u.voice = voice;
-    u.rate = rate;
-    if (i === parts.length - 1) u.onend = () => btn?.classList.remove("speaking");
-    u.onerror = () => btn?.classList.remove("speaking");
-    speechSynthesis.speak(u);
-  });
   btn?.classList.add("speaking");
+  speakText(text).then(() => btn?.classList.remove("speaking"));
+}
+
+// прочитать текст выбранным голосом; промис — когда дочитано (или прервано cancel)
+function speakText(text) {
+  return new Promise((resolve) => {
+    if (!("speechSynthesis" in window) || !text) { resolve(); return; }
+    const voice = pickVoice(), rate = Number(localStorage.getItem(VOICE_RATE_KEY)) || 1;
+    const parts = text.match(/[^.!?…]+[.!?…]*\s*/g)?.map((x) => x.trim()).filter(Boolean) || [text];
+    parts.forEach((part, i) => {
+      const u = new SpeechSynthesisUtterance(part);
+      u.lang = voice?.lang || "ru-RU";
+      if (voice) u.voice = voice;
+      u.rate = rate;
+      if (i === parts.length - 1) u.onend = () => resolve();
+      u.onerror = () => resolve();
+      speechSynthesis.speak(u);
+    });
+    // Chrome иногда не присылает onend — тогда «дочитано», когда синтезатор замолчал
+    const poll = setInterval(() => {
+      if (!speechSynthesis.speaking && !speechSynthesis.pending) { clearInterval(poll); resolve(); }
+    }, 700);
+  });
 }
 
 function renderVoiceSettings() {
@@ -2127,7 +2329,10 @@ function renderTourPanel(id) {
   tourPanel.classList.toggle("min", localStorage.getItem(TOUR_MIN_KEY) === "1");
   setTextBtn();
   setMinBtn();
-  head.append(title, textBtn, tourHelpButton(), edit, minBtn, close);
+  const playBtn = Object.assign(document.createElement("button"), { className: "tour-edit tour-play",
+    title: "Обзорная экскурсия: озвучка с переходами по точкам и слайд-шоу", innerHTML: PLAY_BIG_ICON });
+  playBtn.addEventListener("click", () => (tourPlay?.id === id ? stopTourPlay() : startTourPlay(id, -1)));
+  head.append(title, playBtn, textBtn, tourHelpButton(), edit, minBtn, close);
   const nodes = [head];
   // шапка экскурсии (регион, маршрут, идея) — тоже пункт, сворачивается как остальные
   const about = h("section", "tour-section tour-about");
@@ -2213,6 +2418,7 @@ function renderTourPanel(id) {
   tourPanel.replaceChildren(...nodes);
   tourPanel.classList.remove("editing");
   tourPanel.hidden = false;
+  renderTourPlayer();
 }
 
 // Правка файла прямо в панели: страница не может запустить Блокнот, зато может записать в
@@ -2261,6 +2467,7 @@ function tourHelpButton() {
 async function editTour(id) {
   const t = tours.get(id);
   if (!t?.handle) return;
+  stopTourPlay();
   const bytes = await (await t.handle.getFile()).arrayBuffer();
   let text;
   try { text = new TextDecoder("utf-8", { fatal: true }).decode(bytes); } catch { text = new TextDecoder("windows-1251").decode(bytes); }
