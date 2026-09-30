@@ -441,6 +441,7 @@ const TRAIL_POI_CLASSES = ["information", "picnic_site", "campsite", "drinking_w
 const TRAIL_POI_RETRY_MS = 60000;
 const TRAIL_POI_CELL = 0.5;
 const QLEVER_URL = "https://qlever.dev/api/osm-planet";
+const BRIGHT_YELLOW = "#ffd600";
 const TRAIL_POI_ICONS = {
   // информация — светло-синие, щиты и карты — серые: их много
   info: { color: "#6a9fe0", path: "M10.2 9.5h3.6V20h-3.6z M12 3.5a2.2 2.2 0 1 1 0 4.4a2.2 2.2 0 1 1 0-4.4z" },
@@ -463,10 +464,10 @@ const TRAIL_POI_ICONS = {
   // вода и туалет — голубые
   drinking_water: { color: "#0288d1", path: "M12 2.5S5 10.5 5 15a7 7 0 0 0 14 0c0-4.5-7-12.5-7-12.5z" },
   toilets: { color: "#0288d1", text: "WC" },
-  // пляж — наклонный зонтик на песке, ярко-оранжевый; сёрфинг — кайтер: воздушный змей, стропы, райдер на доске
-  beach: { color: "#ff6d00", path: "M1.53 16.1A8.5 8.5 0 0 1 16.55 8.12A2.83 2.83 0 0 0 11.54 10.78A2.83 2.83 0 0 0 6.54 13.44" +
+  // пляж — наклонный зонтик на песке, сёрфинг — кайтер; оба ярко-жёлтые (Грегори): воздушный змей, стропы, райдер на доске
+  beach: { color: BRIGHT_YELLOW, path: "M1.53 16.1A8.5 8.5 0 0 1 16.55 8.12A2.83 2.83 0 0 0 11.54 10.78A2.83 2.83 0 0 0 6.54 13.44" +
     "A2.83 2.83 0 0 0 1.53 16.1z M8.29 12.51L9.79 11.71L14.25 20.1L12.75 20.9z M2 20h20v2.5H2z" },
-  kitesurfing: { color: "#0097a7", path: "M11.5 4.2Q17.5 -0.4 23.5 5.2L21.8 6.9Q17.5 3.1 12.7 6z M11.83 5.20L11.93 12.60L12.47 12.60L12.37 5.20z M22.45 " +
+  kitesurfing: { color: BRIGHT_YELLOW, path: "M11.5 4.2Q17.5 -0.4 23.5 5.2L21.8 6.9Q17.5 3.1 12.7 6z M11.83 5.20L11.93 12.60L12.47 12.60L12.37 5.20z M22.45 " +
     "5.87L12.05 12.37L12.35 12.83L22.75 6.33z M7.60 7.65a1.75 1.75 0 1 1 0 3.50a1.75 1.75 0 1 1 0 -3.50z M7.22 " +
     "11.26L5.22 15.66L7.58 16.74L9.58 12.34z M8.27 12.44L12.07 13.24L12.33 11.96L8.53 11.16z M6.10 17.10L9.10 " +
     "18.10L9.70 16.30L6.70 15.30z M8.79 17.79L10.99 20.09L12.21 18.91L10.01 16.61z M5.50 16.51L6.90 20.51L8.70 " +
@@ -567,9 +568,9 @@ SELECT ?osm ?c ?kind ${select} WHERE {
   FILTER (geof:latitude(?c) > ${s} && geof:latitude(?c) < ${n} && geof:longitude(?c) > ${w} && geof:longitude(?c) < ${e})
 }`;
 
-// точки квадрата TRAIL_POI_CELL: [{ osm: "node/123", coordinates, b — вся строка ответа }]
-async function loadQleverCell(cx, cy, select, body) {
-  const [w, s, e, n] = [cx, cy, cx + 1, cy + 1].map((v) => (v * TRAIL_POI_CELL).toFixed(2));
+// точки квадрата со стороной cell градусов: [{ osm: "node/123", coordinates, b — вся строка ответа }]
+async function loadQleverCell(cx, cy, select, body, cell = TRAIL_POI_CELL) {
+  const [w, s, e, n] = [cx, cy, cx + 1, cy + 1].map((v) => (v * cell).toFixed(2));
   const res = await fetch(QLEVER_URL, { method: "POST", headers: { Accept: "application/sparql-results+json" },
     body: new URLSearchParams({ query: qleverQuery(select, body, w, s, e, n) }), signal: AbortSignal.timeout(40000) });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -578,17 +579,17 @@ async function loadQleverCell(cx, cy, select, body) {
     coordinates: b.c.value.match(/-?[\d.]+/g).map(Number) }));
 }
 
-// квадраты TRAIL_POI_CELL в кадре (не дальше полуградуса от центра), ближние первыми
-function qleverCells() {
+// квадраты со стороной cell в кадре (не дальше reach градусов от центра), ближние первыми
+function qleverCells(cell = TRAIL_POI_CELL, reach = 0.5) {
   const center = map.getCenter();
   const bounds = map.getBounds();
-  const range = (min, max, c) => [Math.floor(Math.max(min, c - 0.5) / TRAIL_POI_CELL), Math.floor(Math.min(max, c + 0.5) / TRAIL_POI_CELL)];
+  const range = (min, max, c) => [Math.floor(Math.max(min, c - reach) / cell), Math.floor(Math.min(max, c + reach) / cell)];
   const [x0, x1] = range(bounds.getWest(), bounds.getEast(), center.lng);
   const [y0, y1] = range(bounds.getSouth(), bounds.getNorth(), center.lat);
   const cells = [];
   for (let cx = x0; cx <= x1; cx++) {
     for (let cy = y0; cy <= y1; cy++) {
-      cells.push([cx, cy, Math.hypot((cx + 0.5) * TRAIL_POI_CELL - center.lng, (cy + 0.5) * TRAIL_POI_CELL - center.lat)]);
+      cells.push([cx, cy, Math.hypot((cx + 0.5) * cell - center.lng, (cy + 0.5) * cell - center.lat)]);
     }
   }
   return cells.sort((a, b) => a[2] - b[2]);
@@ -723,9 +724,14 @@ map.on("idle", updateTrails);
 
 // ---------- пляжи ----------
 
-// Пляжи (natural=beach, leisure=beach_resort) — значками в центре объекта, со шкалы 3 км,
-// как вышки у троп. В тайлах OpenFreeMap их нет (пляж там — только песок без названия),
-// поэтому всё из QLever, своей очередью
+// Пляжи (natural=beach, leisure=beach_resort) — значками в центре объекта, со шкалы 10 км
+// (до 20 км в 100 px; Грегори: «подними видимость повыше» — 3 км было мало). В тайлах
+// OpenFreeMap их нет (пляж там — только песок без названия), поэтому всё из QLever, своей
+// очередью. Кадр на «10 км» — пара градусов, поэтому квадраты по 2° (QLever отвечает за то
+// же время, на побережье ~400 пляжей в квадрате) и до 1,5° от центра
+const BEACH_MAX_METERS_PER_100PX = 20000;
+const BEACH_CELL = 2;
+const beachMinZoom = () => zoomForScale(BEACH_MAX_METERS_PER_100PX);
 const BEACH_SPARQL = `{ ?osm osmkey:natural "beach" . BIND("beach" AS ?kind) }
   UNION { ?osm osmkey:leisure "beach_resort" . BIND("beach_resort" AS ?kind) }`;
 const BEACH_LAYERS = ["ov-beaches"];
@@ -737,15 +743,15 @@ const beachData = () => ({ type: "FeatureCollection", features: [...beachFeature
 function addBeaches(before) {
   trailPoiImage("beach");
   map.addSource("ov-beaches", { type: "geojson", data: beachData() });
-  map.addLayer({ id: "ov-beaches", type: "symbol", source: "ov-beaches", minzoom: trailPoiMinZoom(),
-    layout: { "icon-image": "trail-poi-beach", "icon-size": ["interpolate", ["linear"], ["zoom"], 11, 0.8, 14, 1, 16, 1.2] } }, before);
+  map.addLayer({ id: "ov-beaches", type: "symbol", source: "ov-beaches", minzoom: beachMinZoom(),
+    layout: { "icon-image": "trail-poi-beach", "icon-size": ["interpolate", ["linear"], ["zoom"], 9, 0.75, 14, 1, 16, 1.2] } }, before);
   raiseTrailPoi();
 }
 
 async function loadBeachCell(cx, cy) {
   const key = `${cx}:${cy}`;
   try {
-    for (const { osm, coordinates, b } of await loadQleverCell(cx, cy, "", BEACH_SPARQL)) {
+    for (const { osm, coordinates, b } of await loadQleverCell(cx, cy, "", BEACH_SPARQL, BEACH_CELL)) {
       beachFeatures.set(osm, { type: "Feature", geometry: { type: "Point", coordinates }, properties: { kind: b.kind.value, osm } });
     }
     beachCells.set(key, true);
@@ -757,8 +763,8 @@ async function loadBeachCell(cx, cy) {
 }
 
 function updateBeaches() {
-  if (!activeOverlays.has("beaches") || map.getZoom() < trailPoiMinZoom()) return;
-  for (const [cx, cy] of qleverCells()) {
+  if (!activeOverlays.has("beaches") || map.getZoom() < beachMinZoom()) return;
+  for (const [cx, cy] of qleverCells(BEACH_CELL, 1.5)) {
     const key = `${cx}:${cy}`;
     const state = beachCells.get(key);
     if (state === true || state === "loading" || state > Date.now()) continue;
@@ -1217,7 +1223,7 @@ function updateScaleZooms() {
     map.setLayerZoomRange("ov-trail-poi-near-far", trailPoiNearZoom(), TRAIL_POI_ZOOM);
     map.setLayerZoomRange("ov-trail-poi-extra-near", trailPoiNearZoom(), 24);
   }
-  for (const id of BEACH_LAYERS) if (map.getLayer(id)) map.setLayerZoomRange(id, trailPoiMinZoom(), 24);
+  for (const id of BEACH_LAYERS) if (map.getLayer(id)) map.setLayerZoomRange(id, beachMinZoom(), 24);
   if (!map.getLayer("poi-air")) return;
   map.setLayerZoomRange("poi-air", airportMinZoom(), 24);
   map.setLayerZoomRange("poi-stops", zoomForScale(STOP_MAX_METERS_PER_100PX), 24);
