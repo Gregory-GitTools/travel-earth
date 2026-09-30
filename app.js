@@ -2069,7 +2069,9 @@ function renderTourPanel(id) {
   const edit = Object.assign(document.createElement("button"), { className: "tour-edit", title: "Править файл экскурсии", innerHTML: EDIT_ICON });
   edit.addEventListener("click", () => editTour(id));
   const head = h("div", "tour-head");
-  head.append(h("h2", "", t.title), edit, close);
+  const title = h("h2", "", t.title);
+  title.title = t.title;
+  head.append(title, tourHelpButton(), edit, close);
   const nodes = [head];
   const meta = [t.region, t.tags].filter(Boolean).join(" · ");
   if (meta) nodes.push(h("div", "tour-meta", meta));
@@ -2136,6 +2138,45 @@ function renderTourPanel(id) {
 // файл выбранной папки (File System Access API) — при первом сохранении Chrome спросит
 // разрешение на изменение файлов. Ctrl+S — сохранить, Esc — отмена. Сохраняется в UTF-8
 const EDIT_ICON = `<svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>`;
+// «Информация» — как писать файл экскурсии (Грегори: «кнопка Информация с синтаксисом файла»);
+// раскрывается под шапкой, в просмотре и в правке, повторное нажатие — прячет
+const INFO_ICON = `<svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M11 7h2v2h-2zm0 4h2v6h-2zm1-9C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z"/></svg>`;
+const TOUR_HELP = [
+  ["# Название", "название поездки — первая строка"],
+  ["Регион: Мадейра, Португалия", "точка поездки на глобусе (достаточно названия)"],
+  ["Теги: пешком, водопады", "строкой под названием"],
+  ["Маршрут: A → B → C", "поездка по порядку — пунктир между остановками; нет поля — остановки просто варианты"],
+  ["Источники:\n- Статья — https://…\n- Видео — https://youtu.be/…", "ссылки внизу панели; YouTube — со значком ▶"],
+  ["Просто текст в шапке", "идея поездки"],
+  ["## Остановка", "раздел; с полем «Место:» — номер на карте"],
+  ["Место: Rabaçal, Madeira", "название места или «32.76, -16.91»"],
+  ["Тропа: PR 6\nДлина: 11 км\nВремя: 4 ч\nСложность: средняя\nСезон: весна", "факты одной строкой"],
+  ["Точки: Старт → Водопад", "основные точки"],
+  ["Особенности:\n- взять фонарик", "список"],
+  ["Справка: текст…", "историческая справка — можно послушать"],
+  ["> выдержка", "цитата из источника — можно послушать"],
+  ["## Советы", "раздел без «Место:» — без номера на карте"],
+  ["_Черновик.md", "файлы с «_» в начале имени карта не читает"],
+];
+function tourHelpButton() {
+  const b = Object.assign(document.createElement("button"), { className: "tour-edit", title: "Как писать файл экскурсии", innerHTML: INFO_ICON });
+  b.addEventListener("click", () => {
+    const open = tourPanel.querySelector(".tour-help");
+    if (open) { open.remove(); b.classList.remove("on"); return; }
+    const box = Object.assign(document.createElement("div"), { className: "tour-help" });
+    box.append(Object.assign(document.createElement("div"), { className: "tour-help-title", textContent: "Как писать файл экскурсии (.md или .txt, Блокнот)" }));
+    for (const [code, note] of TOUR_HELP) {
+      const row = Object.assign(document.createElement("div"), { className: "tour-help-row" });
+      row.append(Object.assign(document.createElement("pre"), { textContent: code }),
+        Object.assign(document.createElement("span"), { textContent: note }));
+      box.append(row);
+    }
+    b.closest(".tour-head").after(box);
+    b.classList.add("on");
+  });
+  return b;
+}
+
 async function editTour(id) {
   const t = tours.get(id);
   if (!t?.handle) return;
@@ -2169,10 +2210,10 @@ async function editTour(id) {
     else if (e.key === "Escape") renderTourPanel(id);
   });
   const head = h("div", "tour-head");
-  head.append(h("h2", "", `Правка: ${t.file}`));
+  head.append(h("h2", "", `Правка: ${t.file}`), tourHelpButton());
   const bar = h("div", "tour-edit-bar");
   bar.append(save, cancel, status);
-  tourPanel.replaceChildren(head, area, bar, h("div", "tour-file", "Ctrl+S — сохранить, Esc — отмена. Образец формата — _Шаблон экскурсии.md"));
+  tourPanel.replaceChildren(head, area, bar, h("div", "tour-file", "Ctrl+S — сохранить, Esc — отмена. Как писать файл — кнопка «i» вверху"));
   tourPanel.classList.add("editing");
   area.focus();
   area.setSelectionRange(0, 0);
