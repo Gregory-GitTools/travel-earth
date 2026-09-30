@@ -335,8 +335,9 @@ const OVERLAYS = [
     layers: ["ov-cycling", "ov-cycling-line", "ov-cycling-label"] },
   { id: "mtb", name: "Маунтинбайк", icon: "🚵", hint: "Маршруты для горного велосипеда — видны с масштаба около 10 км, вблизи — с номерами", trails: "mtb",
     layers: ["ov-mtb", "ov-mtb-line", "ov-mtb-label"] },
-  { id: "beaches", name: "Пляжи и сёрфинг", icon: "🏖️", hint: "Пляжи и места для сёрфинга, кайта и виндсёрфинга — видны с масштаба 3 км",
-    layers: ["ov-beaches", "ov-beaches-surf"] },
+  { id: "beaches", name: "Пляжи", icon: "🏖️", hint: "Пляжи — видны с масштаба 3 км", layers: ["ov-beaches"] },
+  { id: "surf", name: "Сёрфинг", icon: "🏄", hint: "Места для сёрфинга, кайта и виндсёрфинга по всему миру — видны на любом масштабе",
+    layers: ["ov-surf"] },
   { id: "railways", name: "Железные дороги", icon: "🚆", hint: "Поезда, метро, трамваи и фуникулёры — каждый своим цветом",
     layers: ["ov-rail-tunnel", "ov-rail"] },
 ];
@@ -409,7 +410,7 @@ function addTrailLines(id, before) {
 // остальными значками. Верхний слой и расставляется первым: при тесноте уступают нижние
 // (Грегори: «наши приоритеты должны быть сверху»)
 const TRAIL_POI_ORDER = ["ov-trail-poi-near", "ov-trail-poi-near-far", "ov-trail-poi-extra-near", "ov-beaches",
-  "ov-trail-poi", "ov-trail-poi-extra", "ov-trail-poi-far", "ov-beaches-surf"];
+  "ov-trail-poi", "ov-trail-poi-extra", "ov-trail-poi-far", "ov-surf"];
 function raiseTrailPoi() {
   for (const id of TRAIL_POI_ORDER) if (map.getLayer(id)) map.moveLayer(id, firstPoiLayer());
 }
@@ -462,8 +463,9 @@ const TRAIL_POI_ICONS = {
   // вода и туалет — голубые
   drinking_water: { color: "#0288d1", path: "M12 2.5S5 10.5 5 15a7 7 0 0 0 14 0c0-4.5-7-12.5-7-12.5z" },
   toilets: { color: "#0288d1", text: "WC" },
-  // пляж — зонтик на песке, сёрфинг — доска над волной
-  beach: { color: "#f59f00", path: "M12 3.5c-5 0-9 3.6-9 8h18c0-4.4-4-8-9-8z M11.2 11.5h1.6V20h-1.6z M3 19.5h18V22H3z" },
+  // пляж — наклонный зонтик на песке, ярко-оранжевый; сёрфинг — доска над волной
+  beach: { color: "#ff6d00", path: "M1.53 16.1A8.5 8.5 0 0 1 16.55 8.12A2.83 2.83 0 0 0 11.54 10.78A2.83 2.83 0 0 0 6.54 13.44" +
+    "A2.83 2.83 0 0 0 1.53 16.1z M8.29 12.51L9.79 11.71L14.25 20.1L12.75 20.9z M2 20h20v2.5H2z" },
   surfing: { color: "#0097a7", path: "M4.63 14.16A9 2.6 -35 1 1 19.37 3.84A9 2.6 -35 1 1 4.63 14.16z " +
     "M2 18.5c1.8 0 2.2-1.5 4-1.5s2.2 1.5 4 1.5 2.2-1.5 4-1.5 2.2 1.5 4 1.5 2.2-1.5 4-1.5v2.4" +
     "c-1.8 0-2.2 1.5-4 1.5s-2.2-1.5-4-1.5-2.2 1.5-4 1.5-2.2-1.5-4-1.5-2.2 1.5-4 1.5z" },
@@ -713,32 +715,24 @@ function updateTrails() {
 }
 map.on("idle", updateTrails);
 
-// ---------- пляжи и сёрфинг ----------
+// ---------- пляжи ----------
 
-// Пляжи (natural=beach, leisure=beach_resort) и места для сёрфинга, кайта и виндсёрфинга
-// (sport=…) — значками в центре объекта, со шкалы 3 км, как вышки у троп. В тайлах
-// OpenFreeMap их нет (пляж там — только песок без названия), поэтому всё из QLever, своей
-// очередью. Сёрф-споты — поверх пляжей и не прячутся при тесноте: их мало; пляж с
-// sport=surfing показывается как сёрф-спот
-const SURF_KINDS = ["surfing", "kitesurfing", "windsurfing"];
+// Пляжи (natural=beach, leisure=beach_resort) — значками в центре объекта, со шкалы 3 км,
+// как вышки у троп. В тайлах OpenFreeMap их нет (пляж там — только песок без названия),
+// поэтому всё из QLever, своей очередью
 const BEACH_SPARQL = `{ ?osm osmkey:natural "beach" . BIND("beach" AS ?kind) }
-  UNION { ?osm osmkey:leisure "beach_resort" . BIND("beach_resort" AS ?kind) }
-  UNION { ?osm osmkey:sport ?kind . FILTER (?kind IN (${SURF_KINDS.map((k) => `"${k}"`).join(", ")})) }`;
-const BEACH_LAYERS = ["ov-beaches", "ov-beaches-surf"];
+  UNION { ?osm osmkey:leisure "beach_resort" . BIND("beach_resort" AS ?kind) }`;
+const BEACH_LAYERS = ["ov-beaches"];
 const beachCells = new Map(); // "3:83" → true | "loading" | когда можно повторить
 const beachFeatures = new Map(); // "way/123" → feature
 let beachQueue = Promise.resolve();
 const beachData = () => ({ type: "FeatureCollection", features: [...beachFeatures.values()] });
 
 function addBeaches(before) {
-  for (const kind of ["beach", "surfing"]) trailPoiImage(kind);
+  trailPoiImage("beach");
   map.addSource("ov-beaches", { type: "geojson", data: beachData() });
-  const surf = ["in", ["get", "kind"], ["literal", SURF_KINDS]];
-  const size = ["interpolate", ["linear"], ["zoom"], 11, 0.8, 14, 1, 16, 1.2];
-  map.addLayer({ id: "ov-beaches", type: "symbol", source: "ov-beaches", minzoom: trailPoiMinZoom(), filter: ["!", surf],
-    layout: { "icon-image": "trail-poi-beach", "icon-size": size } }, before);
-  map.addLayer({ id: "ov-beaches-surf", type: "symbol", source: "ov-beaches", minzoom: trailPoiMinZoom(), filter: surf,
-    layout: { "icon-image": "trail-poi-surfing", "icon-size": size, "icon-allow-overlap": true } }, before);
+  map.addLayer({ id: "ov-beaches", type: "symbol", source: "ov-beaches", minzoom: trailPoiMinZoom(),
+    layout: { "icon-image": "trail-poi-beach", "icon-size": ["interpolate", ["linear"], ["zoom"], 11, 0.8, 14, 1, 16, 1.2] } }, before);
   raiseTrailPoi();
 }
 
@@ -746,9 +740,7 @@ async function loadBeachCell(cx, cy) {
   const key = `${cx}:${cy}`;
   try {
     for (const { osm, coordinates, b } of await loadQleverCell(cx, cy, "", BEACH_SPARQL)) {
-      const kind = b.kind.value;
-      if (!SURF_KINDS.includes(kind) && SURF_KINDS.includes(beachFeatures.get(osm)?.properties.kind)) continue;
-      beachFeatures.set(osm, { type: "Feature", geometry: { type: "Point", coordinates }, properties: { kind, osm } });
+      beachFeatures.set(osm, { type: "Feature", geometry: { type: "Point", coordinates }, properties: { kind: b.kind.value, osm } });
     }
     beachCells.set(key, true);
     map.getSource("ov-beaches")?.setData(beachData());
@@ -769,6 +761,64 @@ function updateBeaches() {
   }
 }
 map.on("idle", updateBeaches);
+
+// ---------- сёрфинг ----------
+
+// Места для сёрфинга, кайта и виндсёрфинга (sport=…) — по всему миру и на любом масштабе
+// (Грегори: «неограниченная видимость»). В OSM их всего ~1900, QLever отдаёт весь мир
+// одним запросом за 1–2 с — грузим один раз при включении. К ним — кайт-споты Эстонии из
+// списка Грегори в Google Картах (surf-spots.json, «Kite spots Estoni»): точка OSM ближе
+// 300 м к точке списка не рисуется, чтобы не было двух значков. Вблизи друг друга значки
+// прореживаются, точки списка остаются первыми
+const SURF_KINDS = ["surfing", "kitesurfing", "windsurfing"];
+const SURF_SPARQL = `?osm osmkey:sport ?kind . FILTER (?kind IN (${SURF_KINDS.map((k) => `"${k}"`).join(", ")}))`;
+let surfOsm = null; // точки OSM, когда загружены
+let surfList = null; // точки списка
+let surfLoading = false;
+
+function surfData() {
+  const list = surfList || [];
+  const near = ([lon, lat]) => list.some((f) => {
+    const [lon2, lat2] = f.geometry.coordinates;
+    return Math.hypot((lon - lon2) * Math.cos(lat * Math.PI / 180), lat - lat2) < 0.0027;
+  });
+  return { type: "FeatureCollection", features: [...list, ...(surfOsm || []).filter((f) => !near(f.geometry.coordinates))] };
+}
+
+async function loadSurf() {
+  if (surfLoading) return;
+  surfLoading = true;
+  if (!surfList) {
+    try {
+      const spots = await (await fetch("surf-spots.json")).json();
+      surfList = spots.map(({ name, note, lon, lat }, i) => ({ type: "Feature", geometry: { type: "Point", coordinates: [lon, lat] },
+        properties: { kind: "kitesurfing", osm: `list/${i}`, name, note, rank: 0 } }));
+      map.getSource("ov-surf")?.setData(surfData());
+    } catch { /* без списка — только OSM */ }
+  }
+  try {
+    const res = await fetch(QLEVER_URL, { method: "POST", headers: { Accept: "application/sparql-results+json" },
+      body: new URLSearchParams({ query: qleverQuery("", SURF_SPARQL, -180, -90, 180, 90) }), signal: AbortSignal.timeout(40000) });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    surfOsm = (await res.json()).results.bindings.map((b) => ({ type: "Feature",
+      geometry: { type: "Point", coordinates: b.c.value.match(/-?[\d.]+/g).map(Number) },
+      properties: { kind: b.kind.value, osm: b.osm.value.replace(/^.*\/(node|way|relation)\/(\d+)$/, "$1/$2"), rank: 1 } }));
+    map.getSource("ov-surf")?.setData(surfData());
+  } catch {
+    setTimeout(() => activeOverlays.has("surf") && loadSurf(), TRAIL_POI_RETRY_MS);
+  }
+  surfLoading = false;
+}
+
+function addSurf(before) {
+  trailPoiImage("surfing");
+  map.addSource("ov-surf", { type: "geojson", data: surfData() });
+  map.addLayer({ id: "ov-surf", type: "symbol", source: "ov-surf",
+    layout: { "icon-image": "trail-poi-surfing", "symbol-sort-key": ["get", "rank"],
+      "icon-size": ["interpolate", ["linear"], ["zoom"], 2, 0.6, 8, 0.9, 14, 1, 16, 1.2] } }, before);
+  raiseTrailPoi();
+  if (!surfOsm) loadSurf();
+}
 
 
 function addOverlay(id) {
@@ -811,6 +861,8 @@ function addOverlay(id) {
     addTrailLines(id, before);
   } else if (id === "beaches") {
     addBeaches(firstPoiLayer());
+  } else if (id === "surf") {
+    addSurf(firstPoiLayer());
   } else if (id === "railways") {
     // цвет пути по виду транспорта — те же цвета, что у флажков станций
     const color = ["match", ["get", "subclass"],
@@ -1450,7 +1502,7 @@ const BEACH_SURFACE_NAMES = { sand: "песок", fine_gravel: "мелкая г�
 const beachFacts = (tags) => [BEACH_SURFACE_NAMES[tags.surface],
   (tags.supervised === "yes" || tags.lifeguard === "yes") && "спасатели"].filter(Boolean).join(", ");
 // значки со своей подсказкой при наведении
-const HOVER_POI_LAYERS = [...TRAIL_POI_LAYERS, ...BEACH_LAYERS];
+const HOVER_POI_LAYERS = [...TRAIL_POI_LAYERS, ...BEACH_LAYERS, "ov-surf"];
 let trailPoiPopup = null;
 let trailPoiHover = null;
 
@@ -1458,7 +1510,8 @@ async function showTrailPoiInfo(f) {
   const key = f.source === "te-poi" ? f.id : f.properties.osm;
   if (trailPoiHover === key && trailPoiPopup?.isOpen()) return;
   trailPoiHover = key;
-  let tags = trailPoiTags.get(key);
+  // точки из списка Google — без OSM, название и заметка в самой точке
+  let tags = String(key).startsWith("list/") ? { name: f.properties.name, description: f.properties.note } : trailPoiTags.get(key);
   if (!tags) {
     tags = await withTimeout((f.source === "te-poi" ? loadPoiTags(f.id) : loadOsmTags(key)).catch(() => null), 1000, null);
     if (tags) trailPoiTags.set(key, tags);
