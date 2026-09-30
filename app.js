@@ -336,7 +336,7 @@ const OVERLAYS = [
   { id: "mtb", name: "Маунтинбайк", icon: "🚵", hint: "Маршруты для горного велосипеда — видны с масштаба около 10 км, вблизи — с номерами", trails: "mtb",
     layers: ["ov-mtb", "ov-mtb-line", "ov-mtb-label"] },
   { id: "beaches", name: "Пляжи", icon: "🏖️", hint: "Пляжи — видны с масштаба 3 км", layers: ["ov-beaches"] },
-  { id: "surf", name: "Сёрфинг", icon: "🏄", hint: "Места для сёрфинга, кайта и виндсёрфинга по всему миру — видны на любом масштабе",
+  { id: "surf", name: "Сёрфинг", icon: "", hint: "Места для сёрфинга, кайта и виндсёрфинга по всему миру — видны на любом масштабе",
     layers: ["ov-surf"] },
   { id: "railways", name: "Железные дороги", icon: "🚆", hint: "Поезда, метро, трамваи и фуникулёры — каждый своим цветом",
     layers: ["ov-rail-tunnel", "ov-rail"] },
@@ -463,17 +463,23 @@ const TRAIL_POI_ICONS = {
   // вода и туалет — голубые
   drinking_water: { color: "#0288d1", path: "M12 2.5S5 10.5 5 15a7 7 0 0 0 14 0c0-4.5-7-12.5-7-12.5z" },
   toilets: { color: "#0288d1", text: "WC" },
-  // пляж — наклонный зонтик на песке, ярко-оранжевый; сёрфинг — доска над волной
+  // пляж — наклонный зонтик на песке, ярко-оранжевый; сёрфинг — кайтер: воздушный змей, стропы, райдер на доске
   beach: { color: "#ff6d00", path: "M1.53 16.1A8.5 8.5 0 0 1 16.55 8.12A2.83 2.83 0 0 0 11.54 10.78A2.83 2.83 0 0 0 6.54 13.44" +
     "A2.83 2.83 0 0 0 1.53 16.1z M8.29 12.51L9.79 11.71L14.25 20.1L12.75 20.9z M2 20h20v2.5H2z" },
-  surfing: { color: "#0097a7", path: "M4.63 14.16A9 2.6 -35 1 1 19.37 3.84A9 2.6 -35 1 1 4.63 14.16z " +
-    "M2 18.5c1.8 0 2.2-1.5 4-1.5s2.2 1.5 4 1.5 2.2-1.5 4-1.5 2.2 1.5 4 1.5 2.2-1.5 4-1.5v2.4" +
-    "c-1.8 0-2.2 1.5-4 1.5s-2.2-1.5-4-1.5-2.2 1.5-4 1.5-2.2-1.5-4-1.5-2.2 1.5-4 1.5z" },
+  kitesurfing: { color: "#0097a7", path: "M11.5 4.2Q17.5 -0.4 23.5 5.2L21.8 6.9Q17.5 3.1 12.7 6z M11.83 5.20L11.93 12.60L12.47 12.60L12.37 5.20z M22.45 " +
+    "5.87L12.05 12.37L12.35 12.83L22.75 6.33z M7.60 7.65a1.75 1.75 0 1 1 0 3.50a1.75 1.75 0 1 1 0 -3.50z M7.22 " +
+    "11.26L5.22 15.66L7.58 16.74L9.58 12.34z M8.27 12.44L12.07 13.24L12.33 11.96L8.53 11.16z M6.10 17.10L9.10 " +
+    "18.10L9.70 16.30L6.70 15.30z M8.79 17.79L10.99 20.09L12.21 18.91L10.01 16.61z M5.50 16.51L6.90 20.51L8.70 " +
+    "19.89L7.30 15.89z M1.98 21.13L15.77 18.70L16.48 19.28L16.02 20.07L2.23 22.50L1.52 21.92z" },
   // маяк — чёрно-белый: купол, фонарь с лучами, башня; окошко и полосы — white
   lighthouse: { color: "#222", path: "M9 5a3 3 0 0 1 6 0z M9.5 5h5v3h-5z M8 8h8v1.5H8z M9.2 9.5h5.6l1.5 10.5H7.7z " +
     "M6 20h12v2H6z M9 6.5L3 3.5v6z M15 6.5l6-3v6z",
     white: "M10.7 5.8h2.6v1.5h-2.6z M9 12.5h6v1.8H9z M8.6 16.3h6.8v1.8H8.6z" },
 };
+// на кнопках «Пляжи» и «Сёрфинг» — те же значки, что на карте
+const glyphSvg = (kind) => `<svg viewBox="0 0 24 24" width="18" height="18"><path fill="${TRAIL_POI_ICONS[kind].color}" d="${TRAIL_POI_ICONS[kind].path}"/></svg>`;
+OVERLAYS.find((o) => o.id === "beaches").icon = glyphSvg("beach");
+OVERLAYS.find((o) => o.id === "surf").icon = glyphSvg("kitesurfing");
 // вид точки из тайла: class, а у информации и достопримечательностей — ещё и subclass
 const TRAIL_POI_KIND = ["match", ["get", "class"],
   "information", ["match", ["get", "subclass"], ["guidepost", "board", "map"], ["get", "subclass"], "info"],
@@ -811,10 +817,10 @@ async function loadSurf() {
 }
 
 function addSurf(before) {
-  trailPoiImage("surfing");
+  trailPoiImage("kitesurfing");
   map.addSource("ov-surf", { type: "geojson", data: surfData() });
   map.addLayer({ id: "ov-surf", type: "symbol", source: "ov-surf",
-    layout: { "icon-image": "trail-poi-surfing", "symbol-sort-key": ["get", "rank"],
+    layout: { "icon-image": "trail-poi-kitesurfing", "symbol-sort-key": ["get", "rank"],
       "icon-size": ["interpolate", ["linear"], ["zoom"], 2, 0.6, 8, 0.9, 14, 1, 16, 1.2] } }, before);
   raiseTrailPoi();
   if (!surfOsm) loadSurf();
