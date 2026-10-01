@@ -25,6 +25,9 @@
   <div class="search-wrap">
     <div class="search-box">
       <input id="search-input" type="search" placeholder="Поиск места" autocomplete="off" spellcheck="false">
+      <button id="search-tour-btn" title="Экскурсии: поиск и список по странам">
+        <svg viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M20.5 3l-.16.03L15 5.1 9 3 3.36 4.9c-.21.07-.36.25-.36.48V20.5c0 .28.22.5.5.5l.16-.03L9 18.9l6 2.1 5.64-1.9c.21-.07.36-.25.36-.48V3.5c0-.28-.22-.5-.5-.5zM15 19l-6-2.11V5l6 2.11V19z"/></svg>
+      </button>
       <button id="search-btn" title="Найти">
         <svg viewBox="0 0 24 24" width="20" height="20"><circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M15.5 15.5 21 21" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
       </button>
@@ -33,13 +36,6 @@
       </button>
     </div>
     <div id="search-results" class="search-results" hidden></div>
-    <div id="tour-finder" class="search-box tour-finder" hidden>
-      <svg class="tour-finder-icon" viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M20.5 3l-.16.03L15 5.1 9 3 3.36 4.9c-.21.07-.36.25-.36.48V20.5c0 .28.22.5.5.5l.16-.03L9 18.9l6 2.1 5.64-1.9c.21-.07.36-.25.36-.48V3.5c0-.28-.22-.5-.5-.5zM15 19l-6-2.11V5l6 2.11V19z"/></svg>
-      <input id="tour-input" type="search" placeholder="Найти экскурсию" autocomplete="off" spellcheck="false">
-      <button id="tour-list-btn" title="Все экскурсии по странам">
-        <svg viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M7 10l5 5 5-5z"/></svg>
-      </button>
-    </div>
     <div id="tour-list" class="search-results tour-list" hidden></div>
   </div>
   <div class="lang-wrap">

@@ -364,7 +364,9 @@ const OVERLAYS = [
     layers: ["ov-my-selected", "ov-my-photos", "ov-my-dots", "ov-my-albums"], available: () => "showDirectoryPicker" in window },
   { id: "tours", name: "Экскурсии", icon: CHIP_ICONS.tours,
     hint: "Наброски будущих путешествий из текстовых файлов в своей папке (выбирается в ⚙ настройках) — маршрут, точки, справки",
-    layers: ["ov-tour-labels", "ov-tour-marks", "ov-tour-sel", "ov-tour-stops", "ov-tour-route"], available: () => "showDirectoryPicker" in window },
+    layers: ["ov-tour-labels", "ov-tour-marks", "ov-tour-sel", "ov-tour-stops", "ov-tour-route"], available: () => "showDirectoryPicker" in window,
+    // кнопки в «Слоях» нет (Грегори): экскурсии видны всегда, вход к ним — значок карты в строке поиска
+    hidden: true },
   { id: "mapillary", name: "Снимки улиц", icon: CHIP_ICONS.streets,
     hint: "Снимки и панорамы улиц и дорог из Mapillary — линии со шкалы 1 км, точки снимков со 100 м; двойной щелчок — просмотр",
     layers: ["ov-mly-pos", "ov-mly-images", "ov-mly-lines"] },
@@ -373,6 +375,7 @@ const OVERLAYS = [
 ];
 const OVERLAYS_STORAGE_KEY = "travel-earth.overlays";
 const activeOverlays = new Set(JSON.parse(localStorage.getItem(OVERLAYS_STORAGE_KEY) || "[]"));
+if ("showDirectoryPicker" in window) activeOverlays.add("tours");
 
 // шрифт подписей высот — тот же, что у подписей самой карты: у каждого стиля свой
 // сервер шрифтов, и чужого шрифта на нём может не быть
@@ -1930,79 +1933,150 @@ function tourStopImage(ring = "#fff") {
   return ctx.getImageData(0, 0, 44, 44);
 }
 
-// Поиск экскурсий (Грегори: «окно под окном поиска такой же формы и размера, с интерактивным
-// поиском и стрелкой выпадающего меню: экскурсии по странам, дальше по городам или другому
-// признаку из файла»). Видно, пока включён слой «Экскурсии». Ввод — фильтр по названию,
-// региону, стране, городу, типу и тегам; стрелка или фокус — весь список. Группы: страна
-// (поле «Страна:», иначе последняя часть «Региона»), внутри — город/остров («Город:»), без
-// него — «По стране»; тип («Тип:») — подписью у экскурсии. Щелчок — экскурсия на карте и панель
-const tourFinder = document.getElementById("tour-finder");
-const tourInput = document.getElementById("tour-input");
+// Поиск экскурсий — режим строки поиска (Грегори, 2026-10-01): значок карты рядом с лупой
+// переключает строку в «Найти экскурсию» и обратно. Ввод — фильтр по названию, региону,
+// стране, городу, типу и тегам. Список — страны (флаг, светло-синие); страна или город с
+// одной экскурсией — без группы, сама экскурсия; с несколькими — группа, свёрнута, пока не
+// раскрыть (города — светло-зелёные). При вводе группы с находками раскрываются сами.
+// Клавиатура: ↓/↑ — по строкам (текст в строке поиска остаётся), пробел или →/← — раскрыть/
+// свернуть группу, Enter — выбрать (без выделения — первая найденная), Esc — назад/закрыть.
+// После выбора текст стирается. Список до кнопки «Слои», фон полупрозрачный
+let tourMode = false;
 const tourList = document.getElementById("tour-list");
+const tourOpen = new Set(); // раскрытые группы: "c:Италия", "g:Италия/Сицилия"
+let tourCursor = null; // ключ выделенной строки
 const tourCountry = (t) => t.country || (t.region.includes(",") ? t.region.split(",").pop().trim() : t.region) || "Без страны";
+// флаги — картинками flagcdn: эмодзи-флагов в Windows нет (вместо флага две буквы)
+const COUNTRY_CODES = {
+  "австрия": "at", "албания": "al", "армения": "am", "бельгия": "be", "болгария": "bg", "босния и герцеговина": "ba",
+  "великобритания": "gb", "венгрия": "hu", "германия": "de", "греция": "gr", "грузия": "ge", "дания": "dk",
+  "египет": "eg", "израиль": "il", "индия": "in", "индонезия": "id", "иордания": "jo", "ирландия": "ie",
+  "исландия": "is", "испания": "es", "италия": "it", "кипр": "cy", "китай": "cn", "латвия": "lv", "литва": "lt",
+  "люксембург": "lu", "мальта": "mt", "марокко": "ma", "мексика": "mx", "нидерланды": "nl", "норвегия": "no",
+  "оаэ": "ae", "польша": "pl", "португалия": "pt", "румыния": "ro", "сербия": "rs", "словакия": "sk",
+  "словения": "si", "сша": "us", "таиланд": "th", "тунис": "tn", "турция": "tr", "финляндия": "fi",
+  "франция": "fr", "хорватия": "hr", "черногория": "me", "чехия": "cz", "швейцария": "ch", "швеция": "se",
+  "эстония": "ee", "япония": "jp", "вьетнам": "vn", "канада": "ca", "бразилия": "br", "аргентина": "ar",
+  "чили": "cl", "перу": "pe", "куба": "cu", "шри-ланка": "lk", "мальдивы": "mv", "казахстан": "kz",
+  "узбекистан": "uz", "азербайджан": "az", "сербия": "rs", "северная македония": "mk", "андорра": "ad", "монако": "mc",
+};
+const TOUR_PIN = `<svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5a2.5 2.5 0 0 1 0-5 2.5 2.5 0 0 1 0 5z"/></svg>`;
+
+function setTourMode(on) {
+  tourMode = on;
+  const input = el("search-input");
+  el("search-tour-btn").classList.toggle("on", on);
+  el("search-tour-btn").title = on ? "Вернуться к поиску мест" : "Экскурсии: поиск и список по странам";
+  input.placeholder = on ? "Найти экскурсию" : "Поиск места";
+  input.value = "";
+  el("search-clear-btn").hidden = true;
+  clearSearchResults();
+  tourCursor = null;
+  tourList.hidden = !on;
+  if (on) { renderTourList(); input.focus(); }
+}
+
+function chooseTour(t) {
+  tourList.hidden = true;
+  tourCursor = null;
+  el("search-input").value = "";
+  el("search-clear-btn").hidden = true;
+  el("search-input").blur();
+  openTour(t.id);
+}
 
 function renderTourList() {
-  const q = tourInput.value.trim().toLowerCase();
+  const q = el("search-input").value.trim().toLowerCase();
   const all = [...tours.values()].filter((t) => !q
     || [t.title, t.region, t.country, t.city, t.kind, t.tags].join(" ").toLowerCase().includes(q));
-  const byCountry = new Map();
+  const tree = new Map(); // страна → город → экскурсии
   for (const t of all) {
     const c = tourCountry(t);
-    if (!byCountry.has(c)) byCountry.set(c, new Map());
-    const group = t.city || "По стране";
-    const m = byCountry.get(c);
-    if (!m.has(group)) m.set(group, []);
-    m.get(group).push(t);
+    if (!tree.has(c)) tree.set(c, new Map());
+    const g = t.city || "";
+    if (!tree.get(c).has(g)) tree.get(c).set(g, []);
+    tree.get(c).get(g).push(t);
   }
-  const nodes = [];
-  const h = (tag, cls, text) => Object.assign(document.createElement(tag), { className: cls, textContent: text });
-  for (const country of [...byCountry.keys()].sort((a, b) => a.localeCompare(b, "ru"))) {
-    nodes.push(h("div", "tour-list-country", country));
-    const groups = byCountry.get(country);
-    // «По стране» — первой, остальные по алфавиту
-    const names = [...groups.keys()].sort((a, b) => (a === "По стране" ? -1 : b === "По стране" ? 1 : a.localeCompare(b, "ru")));
-    for (const g of names) {
-      if (names.length > 1 || g !== "По стране") nodes.push(h("div", "tour-list-group", g));
-      for (const t of groups.get(g).sort((a, b) => a.title.localeCompare(b.title, "ru"))) {
-        const item = h("button", "search-item tour-list-item", "");
-        item.append(h("span", "search-item-title", t.title),
-          h("span", "search-item-sub", [t.kind, t.region].filter(Boolean).join(" · ")));
-        item.addEventListener("click", () => {
-          tourList.hidden = true;
-          tourInput.value = "";
-          tourInput.blur();
-          openTour(t.id);
-        });
-        nodes.push(item);
-      }
+  const rows = [];
+  const row = (key, cls, html, onClick) => {
+    const r = Object.assign(document.createElement("button"), { className: `tour-row ${cls}`, innerHTML: html });
+    r.dataset.key = key;
+    r.addEventListener("click", onClick);
+    rows.push(r);
+    return r;
+  };
+  const flag = (c) => (COUNTRY_CODES[c.toLowerCase()] ? `<img class="tour-flag" alt="" src="https://flagcdn.com/w40/${COUNTRY_CODES[c.toLowerCase()]}.png">` : `<span class="tour-flag"></span>`);
+  const chevron = (open) => `<span class="tour-row-chevron${open ? " open" : ""}">${CHEVRON_ICON}</span>`;
+  const tourRow = (t, prefix = "", sub = "") => row(`t:${t.id}`, "tour-row-item",
+    `${prefix}<span class="tour-row-pin">${TOUR_PIN}</span><span class="tour-row-text"><span class="tour-row-title">${escapeHtml(t.title)}</span>`
+    + `<span class="tour-row-sub">${escapeHtml(sub || [t.kind, t.region].filter(Boolean).join(" · "))}</span></span>`, () => chooseTour(t));
+  const toggle = (key) => () => { tourOpen.has(key) ? tourOpen.delete(key) : tourOpen.add(key); tourCursor = key; renderTourList(); };
+  for (const country of [...tree.keys()].sort((a, b) => a.localeCompare(b, "ru"))) {
+    const cities = tree.get(country);
+    const list = [...cities.values()].flat();
+    if (list.length === 1) { tourRow(list[0], flag(country), [country, list[0].city, list[0].kind].filter(Boolean).join(" · ")); continue; }
+    const ck = `c:${country}`;
+    const cOpen = !!q || tourOpen.has(ck);
+    row(ck, "tour-row-country", `${flag(country)}<span class="tour-row-name">${escapeHtml(country)}</span>`
+      + `<span class="tour-row-count">${list.length}</span>${chevron(cOpen)}`, toggle(ck));
+    if (!cOpen) continue;
+    // «по стране» (без города) — первыми, дальше города по алфавиту
+    for (const city of [...cities.keys()].sort((a, b) => (a ? 1 : 0) - (b ? 1 : 0) || a.localeCompare(b, "ru"))) {
+      const ts = cities.get(city).sort((a, b) => a.title.localeCompare(b.title, "ru"));
+      if (!city || ts.length === 1) { for (const t of ts) tourRow(t).classList.add("in-country"); continue; }
+      const gk = `g:${country}/${city}`;
+      const gOpen = !!q || tourOpen.has(gk);
+      row(gk, "tour-row-group in-country", `<span class="tour-row-name">${escapeHtml(city)}</span>`
+        + `<span class="tour-row-count">${ts.length}</span>${chevron(gOpen)}`, toggle(gk));
+      if (gOpen) for (const t of ts) tourRow(t).classList.add("in-group");
     }
   }
-  if (!nodes.length) {
-    nodes.push(h("div", "tour-list-empty", tours.size ? "Ничего не нашлось"
-      : tourDir ? "В папке экскурсий нет файлов" : "Папка экскурсий не выбрана — ⚙ настройки"));
+  if (!rows.length) {
+    rows.push(Object.assign(document.createElement("div"), { className: "tour-list-empty", textContent: tours.size ? "Ничего не нашлось"
+      : tourDir ? "В папке экскурсий нет файлов" : "Папка экскурсий не выбрана — ⚙ настройки" }));
   }
-  tourList.replaceChildren(...nodes);
+  tourList.replaceChildren(...rows);
+  markTourCursor();
+}
+
+function markTourCursor() {
+  for (const r of tourList.querySelectorAll(".tour-row")) {
+    const on = r.dataset.key === tourCursor;
+    r.classList.toggle("active", on);
+    if (on) r.scrollIntoView({ block: "nearest" });
+  }
+}
+
+function tourKeydown(e) {
+  const rows = [...tourList.querySelectorAll(".tour-row")];
+  const i = rows.findIndex((r) => r.dataset.key === tourCursor);
+  const cur = rows[i];
+  const isGroup = cur && !cur.classList.contains("tour-row-item");
+  if (e.key === "ArrowDown") {
+    e.preventDefault();
+    tourList.hidden = false;
+    if (rows.length) tourCursor = rows[Math.min(rows.length - 1, i + 1)].dataset.key;
+    markTourCursor();
+  } else if (e.key === "ArrowUp") {
+    e.preventDefault();
+    tourCursor = i > 0 ? rows[i - 1].dataset.key : null;
+    markTourCursor();
+  } else if ((e.key === " " || e.key === "ArrowRight" || e.key === "ArrowLeft") && isGroup) {
+    e.preventDefault();
+    const open = tourOpen.has(tourCursor);
+    if (e.key === " " || (e.key === "ArrowRight") !== open) cur.click();
+  } else if (e.key === "Enter") {
+    e.preventDefault();
+    if (cur) cur.click();
+    else tourList.querySelector(".tour-row-item")?.click();
+  } else if (e.key === "Escape") {
+    if (tourCursor) { tourCursor = null; markTourCursor(); } else { tourList.hidden = true; el("search-input").blur(); }
+  }
 }
 
 function updateTourFinder() {
-  const on = activeOverlays.has("tours") && "showDirectoryPicker" in window;
-  tourFinder.hidden = !on;
-  if (!on) tourList.hidden = true;
-  else if (!tourList.hidden) renderTourList();
+  if (tourMode && !tourList.hidden) renderTourList();
 }
-
-tourInput.addEventListener("input", () => { renderTourList(); tourList.hidden = false; });
-tourInput.addEventListener("focus", () => { renderTourList(); tourList.hidden = false; });
-tourInput.addEventListener("keydown", (e) => {
-  if (e.key === "Escape") { tourList.hidden = true; tourInput.blur(); }
-  if (e.key === "Enter") tourList.querySelector(".tour-list-item")?.click();
-});
-document.getElementById("tour-list-btn").addEventListener("click", () => {
-  if (tourList.hidden) { renderTourList(); tourList.hidden = false; } else tourList.hidden = true;
-});
-document.addEventListener("pointerdown", (e) => {
-  if (!tourList.hidden && !tourFinder.contains(e.target) && !tourList.contains(e.target)) tourList.hidden = true;
-});
 
 function addTours(before) {
   map.addSource("ov-tours", { type: "geojson", data: tourData() });
@@ -2155,6 +2229,7 @@ const STOP_ICON = `<svg viewBox="0 0 24 24" width="18" height="18"><path fill="c
 const AUDIO_GUIDE_ICON = `<svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M12 1a9 9 0 0 0-9 9v7a3 3 0 0 0 3 3h3v-8H5v-2a7 7 0 0 1 14 0v2h-4v8h3a3 3 0 0 0 3-3v-7a9 9 0 0 0-9-9z"/></svg>`;
 const PLAY_BIG_ICON = `<svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M8 5v14l11-7z"/></svg>`;
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+const TOUR_SETTLE_MS = 5000;
 const tourSlides = Object.assign(document.createElement("div"), { className: "tour-slides", hidden: true });
 tourSlides.innerHTML = `<img alt=""><img alt=""><div class="tour-slides-caption"></div>`;
 document.body.append(tourSlides);
@@ -2201,20 +2276,25 @@ async function playTourStep() {
   renderTourPlayer();
   const t = tours.get(play.id);
   if (play.i < 0) {
-    // вступление: вся поездка в кадре
-    hideSlides();
+    // вступление: вся поездка в кадре, сразу пошли картинки, рассказ — через несколько секунд
+    // (Грегори: «все сели, устроились — пошли картинки, открыл второй экран, подвинул в сторону»)
     openTour(play.id);
+    const first = t.point || play.stops[0]?.point;
+    if (first) showSlides(first);
+    await wait(TOUR_SETTLE_MS);
+    if (!alive()) return;
     await speakText([t.title, ...t.idea].join(". "));
   } else {
     const sec = play.stops[play.i];
     selectTourStop(play.id, sec.n);
+    // картинки новой остановки — сразу, ещё во время перелёта
+    showSlides(sec.point);
     // точка — в свободной части кадра: справа панель, внизу слева слайд-шоу
     const narrow = matchMedia("(max-width: 600px)").matches;
     map.flyTo({ center: sec.point, zoom: Math.max(14, Math.min(map.getZoom(), 15)), duration: 3000,
       offset: narrow ? [0, 110] : [-200, -140] });
     await new Promise((r) => { map.once("moveend", r); setTimeout(r, 4000); });
     if (!alive()) return;
-    showSlides(sec.point);
     await speakText(stopNarration(sec));
   }
   if (!alive()) return;
@@ -2831,7 +2911,7 @@ function toggleOverlay(id) {
 // спокойно перещёлкать несколько слоёв; кнопка серая, пока столбик открыт или включён слой
 function renderOverlayMenu() {
   el("layers-btn").classList.toggle("active", activeOverlays.size > 0 || !el("layers-chips").hidden);
-  el("layers-chips").replaceChildren(...OVERLAYS.filter((o) => o.available?.() ?? true).map((o) => {
+  el("layers-chips").replaceChildren(...OVERLAYS.filter((o) => !o.hidden && (o.available?.() ?? true)).map((o) => {
     const chip = document.createElement("button");
     chip.className = "chip" + (activeOverlays.has(o.id) ? " active" : "");
     chip.title = o.hint;
@@ -3954,21 +4034,40 @@ function showSearchResult(r, title) {
 }
 
 el("search-input").addEventListener("keydown", (evt) => {
+  if (tourMode) { tourKeydown(evt); return; }
   if (evt.key === "Enter") runSearch();
   if (evt.key === "Escape") clearSearchResults();
 });
 el("search-input").addEventListener("input", () => {
   el("search-clear-btn").hidden = !el("search-input").value;
+  if (tourMode) { tourCursor = null; tourList.hidden = false; renderTourList(); return; }
   // стёрли запрос — снова видна история, начали печатать — она прячется
   showSearchHistory();
 });
-el("search-input").addEventListener("focus", showSearchHistory);
+el("search-input").addEventListener("focus", () => {
+  if (tourMode) { tourList.hidden = false; renderTourList(); } else showSearchHistory();
+});
 // клик мимо поиска закрывает список
 document.addEventListener("click", (evt) => {
-  if (!evt.target.closest(".search-wrap")) clearSearchResults();
+  // строка списка экскурсий, по которой щёлкнули, к этому моменту уже перерисована (вне DOM)
+  if (!evt.target.isConnected) return;
+  if (!evt.target.closest(".search-wrap")) { clearSearchResults(); tourList.hidden = true; }
 });
-el("search-btn").addEventListener("click", runSearch);
+el("search-btn").addEventListener("click", () => {
+  if (!tourMode) { runSearch(); return; }
+  const cur = tourList.querySelector(".tour-row.active") || tourList.querySelector(".tour-row-item");
+  if (tourList.hidden) { tourList.hidden = false; renderTourList(); } else cur?.click();
+});
+el("search-tour-btn").addEventListener("click", () => setTourMode(!tourMode));
 el("search-clear-btn").addEventListener("click", () => {
+  if (tourMode) {
+    el("search-input").value = "";
+    el("search-clear-btn").hidden = true;
+    tourCursor = null;
+    renderTourList();
+    el("search-input").focus();
+    return;
+  }
   el("search-input").value = "";
   el("search-clear-btn").hidden = true;
   clearSearchResults();
