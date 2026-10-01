@@ -2842,7 +2842,10 @@ async function editTour(id) {
   });
   const head = h("div", "tour-head");
   const editTitle = h("div", "tour-title-row");
-  editTitle.append(h("h2", "", `Правка: ${t.file}`), tourHelpButton());
+  // крестик — закрыть окно, как в просмотре (несохранённая правка отменяется)
+  const closeEdit = Object.assign(document.createElement("button"), { className: "tour-close", title: "Закрыть", textContent: "×" });
+  closeEdit.addEventListener("click", closeTourPanel);
+  editTitle.append(h("h2", "", `Правка: ${t.file}`), tourHelpButton(), closeEdit);
   head.append(editTitle);
   // путь к файлу — ссылкой: открывает файл в программе Windows по умолчанию (Блокнот, VS Code…).
   // Сама страница программу запустить не может и полного пути на диске не знает — поэтому
