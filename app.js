@@ -375,7 +375,7 @@ const OVERLAYS = [
 ];
 const OVERLAYS_STORAGE_KEY = "travel-earth.overlays";
 const activeOverlays = new Set(JSON.parse(localStorage.getItem(OVERLAYS_STORAGE_KEY) || "[]"));
-if ("showDirectoryPicker" in window) activeOverlays.add("tours");
+if (!("showDirectoryPicker" in window)) activeOverlays.delete("tours");
 
 // шрифт подписей высот — тот же, что у подписей самой карты: у каждого стиля свой
 // сервер шрифтов, и чужого шрифта на нём может не быть
@@ -1778,7 +1778,7 @@ function selectTourStop(tour, n) {
 }
 const TOUR_KEYS = { "место": "place", "регион": "region", "тропа": "trail", "длина": "length", "время": "time",
   "сложность": "difficulty", "сезон": "season", "точки": "points", "особенности": "features", "справка": "history",
-  "выдержка": "quote", "выдержки": "quote", "источник": "sources", "источники": "sources", "теги": "tags", "идея": "idea", "маршрут": "route", "страна": "country", "город": "city", "тип": "kind" };
+  "выдержка": "quote", "выдержки": "quote", "источник": "sources", "источники": "sources", "теги": "tags", "идея": "idea", "маршрут": "route", "страна": "country", "город": "city", "тип": "kind", "значок": "icon" };
 const TOUR_LIST_KEYS = new Set(["features", "sources", "quote", "history", "points"]);
 let tourDir = null;
 const tours = new Map(); // путь файла → { id, file, mtime, title, region, tags, sources, sections, point }
@@ -1803,7 +1803,7 @@ function tourFields(line) {
 // разбор файла: «# Название», поля «Ключ: значение», «## Раздел» (остановка, если есть «Место:»),
 // списки «- …» к последнему полю-списку (по умолчанию — особенности), остальное — абзацы
 function parseTour(text, file) {
-  const tour = { title: "", region: "", country: "", city: "", kind: "", tags: "", sources: [], idea: [], sections: [] };
+  const tour = { title: "", region: "", country: "", city: "", kind: "", icon: "", tags: "", sources: [], idea: [], sections: [] };
   let target = tour, key = null;
   const add = (k, v) => {
     if (!v) return;
@@ -1962,17 +1962,45 @@ const COUNTRY_CODES = {
 };
 const TOUR_PIN = `<svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5a2.5 2.5 0 0 1 0-5 2.5 2.5 0 0 1 0 5z"/></svg>`;
 
+// Значок экскурсии (поле «Значок:», иначе по «Тип:») — монохромный, в оранжевом кружке, в
+// списке и в шапке панели. Любой другой короткий текст (эмодзи, буква) — как есть
+function tourIcon(t) {
+  const city = placeIcon("M15 11V5l-3-3-3 3v2H3v14h18V11h-6zm-8 8H5v-2h2v2zm0-4H5v-2h2v2zm0-4H5V9h2v2zm6 8h-2v-2h2v2zm0-4h-2v-2h2v2zm0-4h-2V9h2v2zm0-4h-2V5h2v2zm6 12h-2v-2h2v2zm0-4h-2v-2h2v2z");
+  const beach = placeIcon("M13.13 14.56l1.43-1.43 6.44 6.44L19.57 21zm4.29-5.73l2.86-2.86c-3.95-3.95-10.35-3.96-14.3-.02 3.93-1.3 8.31-.25 11.44 2.88zM5.95 5.98c-3.94 3.95-3.93 10.35.02 14.3l2.86-2.86C5.7 14.29 4.65 9.91 5.95 5.98zm.02-.02l-.01.01c-.38 3.01 1.17 6.88 4.3 10.02l5.73-5.73c-3.13-3.13-7.01-4.68-10.02-4.3z");
+  const castle = placeIcon("M2 5h3v2h2V5h3v2h4V5h3v2h2V5h3v5h-2v11h-7v-4a2 2 0 0 0-4 0v4H4V10H2V5z");
+  const wine = placeIcon("M6 3v6c0 2.97 2.16 5.43 5 5.91V19H8v2h8v-2h-3v-4.09c2.84-.48 5-2.94 5-5.91V3H6zm10 5H8V5h8v3z");
+  const church = placeIcon("M18 12.22V9l-5-2.5V5h2V3h-2V1h-2v2H9v2h2v1.5L6 9v3.22L2 14v8h8v-4a2 2 0 0 1 4 0v4h8v-8l-4-1.78z");
+  const park = placeIcon("M17 12h2L12 2 5.05 12H7l-3.9 6h6.92v4h3.96v-4H21z");
+  const food = placeIcon("M11 9H9V2H7v7H5V2H3v7c0 2.12 1.66 3.84 3.75 3.97V22h2.5v-9.03C11.34 12.84 13 11.12 13 9V2h-2v7zm5-3v8h2.5v8H21V2c-2.76 0-5 2.24-5 4z");
+  const museum = placeIcon("M4 10v7h3v-7H4zm6 0v7h3v-7h-3zM2 22h19v-3H2v3zm14-12v7h3v-7h-3zm-4.5-9L2 6v2h19V6l-9.5-5z");
+  const map = {
+    "город": city, "города": city, "по стране": CHIP_ICONS.tours, "страна": CHIP_ICONS.tours, "по региону": CHIP_ICONS.tours,
+    "горы": CHIP_ICONS.hillshade, "вулкан": CHIP_ICONS.hillshade, "вулканы": CHIP_ICONS.hillshade,
+    "море": beach, "пляж": beach, "пляжи": beach, "поход": CHIP_ICONS.hiking, "пешком": CHIP_ICONS.hiking,
+    "тропы": CHIP_ICONS.hiking, "пешие тропы": CHIP_ICONS.hiking, "замок": castle, "крепость": castle, "крепости": castle,
+    "музей": museum, "музеи": museum, "история": museum, "исторические": museum, "гастро": food, "еда": food,
+    "вино": wine, "храм": church, "церковь": church, "храмы": church, "природа": park, "лес": park,
+    "поезд": CHIP_ICONS.railways, "лодка": PIN_GLYPHS.boat && placeIcon(PIN_GLYPHS.boat), "остров": beach, "фото": CHIP_ICONS.photos,
+  };
+  const key = (t.icon || t.kind || "").trim().toLowerCase();
+  if (map[key]) return map[key];
+  if (t.icon && [...t.icon.trim()].length <= 2) return `<span class="tour-icon-text">${escapeHtml(t.icon.trim())}</span>`;
+  return TOUR_PIN;
+}
+
 function setTourMode(on) {
   tourMode = on;
   const input = el("search-input");
   el("search-tour-btn").classList.toggle("on", on);
-  el("search-tour-btn").title = on ? "Вернуться к поиску мест" : "Экскурсии: поиск и список по странам";
+  el("search-tour-btn").title = on ? "Скрыть экскурсии и вернуться к поиску мест" : "Экскурсии: показать на карте, найти, список по странам";
   input.placeholder = on ? "Найти экскурсию" : "Поиск места";
   input.value = "";
   el("search-clear-btn").hidden = true;
   clearSearchResults();
   tourCursor = null;
   tourList.hidden = !on;
+  // экскурсии на карте — только пока кнопка нажата (Грегори)
+  if (on !== activeOverlays.has("tours") && "showDirectoryPicker" in window) toggleOverlay("tours");
   if (on) { renderTourList(); input.focus(); }
 }
 
@@ -1997,6 +2025,12 @@ function renderTourList() {
     if (!tree.get(c).has(g)) tree.get(c).set(g, []);
     tree.get(c).get(g).push(t);
   }
+  // все сворачиваемые группы: страны всегда, города — если в них больше одной экскурсии
+  const groupKeys = [];
+  for (const [country, cities] of tree) {
+    groupKeys.push(`c:${country}`);
+    for (const [city, ts] of cities) if (city && ts.length > 1) groupKeys.push(`g:${country}/${city}`);
+  }
   const rows = [];
   const row = (key, cls, html, onClick) => {
     const r = Object.assign(document.createElement("button"), { className: `tour-row ${cls}`, innerHTML: html });
@@ -2007,18 +2041,28 @@ function renderTourList() {
   };
   const flag = (c) => (COUNTRY_CODES[c.toLowerCase()] ? `<img class="tour-flag" alt="" src="https://flagcdn.com/w40/${COUNTRY_CODES[c.toLowerCase()]}.png">` : `<span class="tour-flag"></span>`);
   const chevron = (open) => `<span class="tour-row-chevron${open ? " open" : ""}">${CHEVRON_ICON}</span>`;
-  const tourRow = (t, prefix = "", sub = "") => row(`t:${t.id}`, "tour-row-item",
-    `${prefix}<span class="tour-row-pin">${TOUR_PIN}</span><span class="tour-row-text"><span class="tour-row-title">${escapeHtml(t.title)}</span>`
-    + `<span class="tour-row-sub">${escapeHtml(sub || [t.kind, t.region].filter(Boolean).join(" · "))}</span></span>`, () => chooseTour(t));
+  const tourRow = (t) => row(`t:${t.id}`, "tour-row-item",
+    `<span class="tour-row-pin">${tourIcon(t)}</span><span class="tour-row-text"><span class="tour-row-title">${escapeHtml(t.title)}</span>`
+    + `<span class="tour-row-sub">${escapeHtml([t.kind, t.region].filter(Boolean).join(" · "))}</span></span>`, () => chooseTour(t));
   const toggle = (key) => () => { tourOpen.has(key) ? tourOpen.delete(key) : tourOpen.add(key); tourCursor = key; renderTourList(); };
+  // свернуть/развернуть все — первой строкой
+  if (groupKeys.length && !q) {
+    const allOpen = groupKeys.every((k) => tourOpen.has(k));
+    row("all", "tour-row-all", `<span class="tour-row-name">${allOpen ? "Свернуть все" : "Развернуть все"}</span>`
+      + `<span class="tour-row-chevron${allOpen ? " open" : ""}">${allOpen ? UNFOLD_ICON : FOLD_ICON}</span>`, () => {
+      if (allOpen) for (const k of groupKeys) tourOpen.delete(k); else for (const k of groupKeys) tourOpen.add(k);
+      tourCursor = "all";
+      renderTourList();
+    });
+  }
   for (const country of [...tree.keys()].sort((a, b) => a.localeCompare(b, "ru"))) {
     const cities = tree.get(country);
-    const list = [...cities.values()].flat();
-    if (list.length === 1) { tourRow(list[0], flag(country), [country, list[0].city, list[0].kind].filter(Boolean).join(" · ")); continue; }
+    const count = [...cities.values()].flat().length;
+    // страна — всегда отдельной строкой-группой, даже с одной экскурсией (Грегори)
     const ck = `c:${country}`;
     const cOpen = !!q || tourOpen.has(ck);
     row(ck, "tour-row-country", `${flag(country)}<span class="tour-row-name">${escapeHtml(country)}</span>`
-      + `<span class="tour-row-count">${list.length}</span>${chevron(cOpen)}`, toggle(ck));
+      + `<span class="tour-row-count">${count}</span>${chevron(cOpen)}`, toggle(ck));
     if (!cOpen) continue;
     // «по стране» (без города) — первыми, дальше города по алфавиту
     for (const city of [...cities.keys()].sort((a, b) => (a ? 1 : 0) - (b ? 1 : 0) || a.localeCompare(b, "ru"))) {
@@ -2103,7 +2147,9 @@ function addTours(before) {
   map.addLayer({ id: "ov-tour-labels", type: "symbol", source: "ov-tours", maxzoom: 9, filter: kind("tour"),
     layout: { "text-field": ["get", "title"], "text-font": styleFont(), "text-size": 12, "text-anchor": "left",
       "text-offset": [0.9, 0], "text-optional": true },
-    paint: { "text-color": "#8a3c00", "text-halo-color": "rgba(255,255,255,0.9)", "text-halo-width": 1.5 } }, before);
+    // на тёмной карте и спутнике — светлые с тёмной обводкой (Грегори: «в инверсию в зависимости от фона»)
+    paint: darkBasemap() ? { "text-color": "#ffe0b2", "text-halo-color": "rgba(0,0,0,0.85)", "text-halo-width": 1.5 }
+      : { "text-color": "#8a3c00", "text-halo-color": "rgba(255,255,255,0.9)", "text-halo-width": 1.5 } }, before);
   raiseTrailPoi();
   initTours();
   updateTourFinder();
@@ -2225,11 +2271,8 @@ const PAUSE_ICON = `<svg viewBox="0 0 24 24" width="18" height="18"><path fill="
 const PREV_ICON = `<svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M6 6h2v12H6zm3.5 6 8.5 6V6z"/></svg>`;
 const NEXT_ICON = `<svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="m6 18 8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg>`;
 const STOP_ICON = `<svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M6 6h12v12H6z"/></svg>`;
-// значок аудиогида — наушники: треугольник «плей» путал с кнопкой продолжения в плеере (Грегори)
-const AUDIO_GUIDE_ICON = `<svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M12 1a9 9 0 0 0-9 9v7a3 3 0 0 0 3 3h3v-8H5v-2a7 7 0 0 1 14 0v2h-4v8h3a3 3 0 0 0 3-3v-7a9 9 0 0 0-9-9z"/></svg>`;
 const PLAY_BIG_ICON = `<svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M8 5v14l11-7z"/></svg>`;
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-const TOUR_SETTLE_MS = 5000;
 const tourSlides = Object.assign(document.createElement("div"), { className: "tour-slides", hidden: true });
 tourSlides.innerHTML = `<img alt=""><img alt=""><div class="tour-slides-caption"></div>`;
 document.body.append(tourSlides);
@@ -2276,13 +2319,10 @@ async function playTourStep() {
   renderTourPlayer();
   const t = tours.get(play.id);
   if (play.i < 0) {
-    // вступление: вся поездка в кадре, сразу пошли картинки, рассказ — через несколько секунд
-    // (Грегори: «все сели, устроились — пошли картинки, открыл второй экран, подвинул в сторону»)
+    // вступление: вся поездка в кадре и сразу картинки — пока они грузятся, начинается рассказ
     openTour(play.id);
     const first = t.point || play.stops[0]?.point;
     if (first) showSlides(first);
-    await wait(TOUR_SETTLE_MS);
-    if (!alive()) return;
     await speakText([t.title, ...t.idea].join(". "));
   } else {
     const sec = play.stops[play.i];
@@ -2335,28 +2375,29 @@ function tourPlayPause() {
 }
 
 // полоска плеера под шапкой панели
+// плеер аудиогида — всегда в строке кнопок шапки: «плей» запускает аудиогид, остальные
+// кнопки работают, пока он идёт; под названием — «3 / 7 · остановка» (Грегори: отдельная
+// кнопка-наушники убрана, плеер сверху всегда — больше места названию)
 function renderTourPlayer() {
-  tourPanel.querySelector(".tour-player")?.remove();
-  const play = tourPlay;
-  const btn = tourPanel.querySelector(".tour-play");
-  if (btn) {
-    btn.innerHTML = AUDIO_GUIDE_ICON;
-    btn.classList.toggle("on", !!play && play.id === tourPanelId);
-  }
-  if (!play || play.id !== tourPanelId) return;
-  const bar = Object.assign(document.createElement("div"), { className: "tour-player" });
-  const b = (icon, title, fn) => {
-    const x = Object.assign(document.createElement("button"), { className: "tour-edit", title, innerHTML: icon });
+  const bar = tourPanel.querySelector(".tour-player");
+  if (!bar) return;
+  const id = tourPanelId;
+  const play = tourPlay?.id === id ? tourPlay : null;
+  const b = (icon, title, fn, off) => {
+    const x = Object.assign(document.createElement("button"), { className: "tour-edit", title, innerHTML: icon, disabled: !!off });
     x.addEventListener("click", fn);
     return x;
   };
-  const sec = play.stops[play.i];
-  const label = Object.assign(document.createElement("span"), { className: "tour-player-label",
-    textContent: play.i < 0 ? "Вступление" : `${play.i + 1} / ${play.stops.length} · ${sec.title || sec.place}` });
-  bar.append(b(PREV_ICON, "Назад", () => tourPlayGo(-1)),
-    b(play.paused ? PLAY_BIG_ICON : PAUSE_ICON, play.paused ? "Продолжить" : "Пауза", tourPlayPause),
-    b(NEXT_ICON, "Дальше", () => tourPlayGo(1)), b(STOP_ICON, "Стоп", stopTourPlay), label);
-  tourPanel.querySelector(".tour-head").after(bar);
+  const main = b(play && !play.paused ? PAUSE_ICON : PLAY_BIG_ICON,
+    !play ? "Аудиогид: рассказ с переходами по точкам и слайд-шоу" : play.paused ? "Продолжить" : "Пауза",
+    () => (play ? tourPlayPause() : startTourPlay(id, -1)));
+  main.classList.toggle("on", !!play);
+  bar.replaceChildren(b(PREV_ICON, "Назад", () => tourPlayGo(-1), !play), main,
+    b(NEXT_ICON, "Дальше", () => tourPlayGo(1), !play), b(STOP_ICON, "Стоп", stopTourPlay, !play));
+  const label = tourPanel.querySelector(".tour-player-label");
+  const sec = play?.stops[play.i];
+  label.hidden = !play;
+  label.textContent = !play ? "" : play.i < 0 ? "Вступление" : `${play.i + 1} / ${play.stops.length} · ${sec.title || sec.place}`;
 }
 
 // слайд-шоу: свои снимки ближе 1 км, потом Commons вокруг точки; смена раз в 5 с с растворением
@@ -2591,10 +2632,13 @@ function renderTourPanel(id) {
   tourPanel.classList.toggle("min", localStorage.getItem(TOUR_MIN_KEY) === "1");
   setTextBtn();
   setMinBtn();
-  const playBtn = Object.assign(document.createElement("button"), { className: "tour-edit tour-play",
-    title: "Аудиогид: рассказ с переходами по точкам и слайд-шоу", innerHTML: AUDIO_GUIDE_ICON });
-  playBtn.addEventListener("click", () => (tourPlay?.id === id ? stopTourPlay() : startTourPlay(id, -1)));
-  head.append(title, playBtn, textBtn, tourHelpButton(), edit, minBtn, close);
+  const bar = h("div", "tour-bar");
+  bar.append(h("div", "tour-player"), h("span", "tour-bar-gap"), textBtn, tourHelpButton(), edit, minBtn, close);
+  const titleRow = h("div", "tour-title-row");
+  const icon = h("span", "tour-row-pin tour-title-icon");
+  icon.innerHTML = tourIcon(t);
+  titleRow.append(icon, title);
+  head.append(bar, titleRow, h("div", "tour-player-label"));
   const nodes = [head];
   // шапка экскурсии (регион, маршрут, идея) — тоже пункт, сворачивается как остальные
   const about = h("section", "tour-section tour-about");
@@ -2695,6 +2739,8 @@ const TOUR_HELP = [
   ["# Название", "название поездки — первая строка"],
   ["Регион: Мадейра, Португалия", "точка поездки на глобусе (достаточно названия)"],
   ["Теги: пешком, водопады", "строкой под названием"],
+  ["Страна: Италия\nГород: Рим\nТип: город", "группы в списке экскурсий: страна → город; тип — подписью"],
+  ["Значок: замок", "значок в списке и в панели: город, горы, море, поход, замок, музей, гастро, вино, храм, природа, поезд, лодка, фото — или эмодзи; нет поля — по «Тип:»"],
   ["Маршрут: A → B → C", "поездка по порядку — пунктир между остановками; нет поля — остановки просто варианты"],
   ["Источники:\n- Статья — https://…\n- Видео — https://youtu.be/…", "ссылки внизу панели; YouTube — со значком ▶"],
   ["Просто текст в шапке", "идея поездки"],
@@ -4059,6 +4105,12 @@ el("search-btn").addEventListener("click", () => {
   if (tourList.hidden) { tourList.hidden = false; renderTourList(); } else cur?.click();
 });
 el("search-tour-btn").addEventListener("click", () => setTourMode(!tourMode));
+// после перезапуска кнопка — как была (слой «Экскурсии» помнится в списке включённых слоёв)
+if (activeOverlays.has("tours")) {
+  tourMode = true;
+  el("search-tour-btn").classList.add("on");
+  el("search-input").placeholder = "Найти экскурсию";
+}
 el("search-clear-btn").addEventListener("click", () => {
   if (tourMode) {
     el("search-input").value = "";
