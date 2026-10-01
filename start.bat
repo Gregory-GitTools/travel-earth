@@ -14,6 +14,12 @@ if errorlevel 1 (
 
 set CHROME=C:\Program Files\Google\Chrome\Application\chrome.exe
 set EDGE=C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe
+rem "start.bat edge" (or start-edge.bat) opens the app in Edge: its natural online voices
+rem read excursions much better than Chrome on Windows 10
+if /i "%~1"=="edge" if exist "%EDGE%" (
+    start "" "%EDGE%" --app=%URL%
+    goto :eof
+)
 if exist "%CHROME%" (
     start "" "%CHROME%" --profile-directory="Profile 1" --app=%URL%
 ) else if exist "%EDGE%" (
