@@ -62,14 +62,23 @@ html, body {
   object-fit: contain;
 }
 
-/* внизу справа в одну строку: шкала, ⓘ, шестерёнка (собирает app.js) */
+/* строка слева от плитки карт, в её высоту: шкала и ⓘ (собирает app.js); панель карт,
+   раскрываясь влево, ложится поверх */
 .bottom-row {
-  clear: both; /* кнопки масштаба MapLibre "плавают" справа — строка встаёт под ними */
+  position: absolute;
+  right: 96px;
+  bottom: 24px;
+  z-index: 2;
   display: flex;
   align-items: center;
   justify-content: flex-end;
   gap: 8px;
-  margin: 0 10px 10px 0;
+  height: 76px;
+}
+
+/* столбик кнопок MapLibre — над плиткой карт */
+.maplibregl-ctrl-bottom-right {
+  bottom: 102px;
 }
 
 .bottom-row .maplibregl-ctrl {
@@ -99,7 +108,7 @@ html, body {
   bottom: 0;
   z-index: 1;
   width: max-content;
-  max-width: calc(100vw - 160px); /* не закрывает плитку карт внизу слева */
+  max-width: calc(100vw - 120px);
 }
 
 /* ⓘ крупная и без подложки; белая подложка — только у раскрытой строки */
@@ -257,7 +266,7 @@ html, body {
 .tour-list {
   top: 50px;
   z-index: 1;
-  max-height: calc(100vh - 230px);
+  max-height: calc(100vh - 180px);
   background: rgba(255, 255, 255, 0.5);
   backdrop-filter: blur(10px);
   scrollbar-width: thin;
@@ -630,6 +639,12 @@ span.tour-flag {
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
 }
 
+.places-btn {
+  width: 44px;
+  padding: 0;
+  justify-content: center;
+}
+
 .places-btn:hover {
   background: var(--light-hover);
 }
@@ -639,29 +654,43 @@ span.tour-flag {
   color: #fff;
 }
 
-.category-chips {
+/* панель «Места и слои»: две колонки чипов под кнопкой — слои слева, места справа; длинная
+   колонка прокручивается, не уходя под кнопки внизу */
+.menu-panel {
   position: absolute;
-  top: 44px;
+  top: 48px;
   right: 0;
   display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 8px;
-  padding-top: 4px;
+  align-items: flex-start;
+  gap: 10px;
   pointer-events: none; /* промежутки между кнопками не мешают тащить карту */
+}
+
+.menu-panel[hidden] {
+  display: none;
+}
+
+.category-chips,
+.layers-chips {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: calc(100vh - 190px);
+  overflow-y: auto;
+  padding: 2px 4px 6px;
+  scrollbar-width: none;
+}
+
+.category-chips {
+  align-items: flex-end;
+}
+
+.layers-chips {
+  align-items: flex-end;
 }
 
 .category-chips > * {
   pointer-events: auto;
-}
-
-@media (max-width: 520px) {
-  .places-label {
-    display: none;
-  }
-  .places-btn {
-    padding: 0 12px;
-  }
 }
 
 .chip {
@@ -974,14 +1003,14 @@ span.tour-flag {
 /* панель экскурсии справа: дайджест — маршрут, точки, особенности, справки, источники */
 .tour-panel {
   position: fixed;
-  top: 64px;
-  right: 10px;
-  max-height: calc(100vh - 64px - 200px);
-  z-index: 11;
-  width: 380px;
+  top: 62px;
+  left: 10px;
+  max-height: calc(100vh - 62px - 120px);
+  z-index: 9; /* под строкой поиска: открытый список экскурсий ложится поверх */
+  width: 340px;
   max-width: calc(100vw - 20px);
   overflow-y: auto;
-  padding: 14px 16px 18px;
+  padding: 0 16px 18px; /* сверху без отступа — шапка прилегает к краю, щели над ней нет */
   background: rgba(255, 255, 255, 0.5);
   backdrop-filter: blur(10px);
   color: #222;
@@ -995,14 +1024,15 @@ span.tour-flag {
 /* шапка панели — одной строкой и не прокручивается (Грегори) */
 .tour-head {
   position: sticky;
-  top: -14px;
+  top: 0;
   z-index: 1;
   display: flex;
   flex-direction: column;
   gap: 2px;
-  margin: -14px -16px 0;
+  margin: 0 -16px;
   padding: 10px 10px 10px 16px;
-  background: rgba(255, 255, 255, 0.6);
+  /* почти непрозрачная: прокрученный под шапку текст не просвечивает */
+  background: rgba(255, 255, 255, 0.94);
   backdrop-filter: blur(10px);
   border-bottom: 1px solid #eee;
 }
@@ -1080,7 +1110,7 @@ span.tour-flag {
 .tour-panel.editing {
   display: flex;
   flex-direction: column;
-  height: calc(100vh - 264px); /* правке — вся высота до кнопок навигации */
+  height: calc(100vh - 182px); /* правке — вся высота до ленты внизу */
 }
 
 .tour-editor {
@@ -1180,10 +1210,10 @@ span.tour-flag {
 
 .tour-slides {
   position: fixed;
-  left: 110px;
+  right: 64px;
   bottom: 110px;
   z-index: 11;
-  width: min(320px, calc(100vw - 530px));
+  width: min(320px, calc(100vw - 440px));
   aspect-ratio: 4 / 3;
   border: 2px solid #fff;
   border-radius: 12px;
@@ -1563,15 +1593,15 @@ button.tour-sec-title:hover {
    углов MapLibre), поэтому справа запас прокрутки, чтобы последние снимки из-под них выезжали */
 .photo-strip {
   position: fixed;
-  left: 96px;
-  right: 10px;
+  left: 10px;
+  right: 250px;
   bottom: 24px;
   z-index: 1;
   box-sizing: border-box;
   display: flex;
   gap: 2px;
   width: max-content;
-  max-width: calc(100vw - 106px);
+  max-width: calc(100vw - 260px);
   height: 76px;
   margin: 0 auto;
   padding: 2px;
@@ -1587,6 +1617,20 @@ button.tour-sec-title:hover {
   content: "";
   flex: none;
   width: 150px;
+}
+
+/* узкий экран: лента — над нижней строкой (шкала, ⓘ, плитка карт), до столбика кнопок справа;
+   карточка снимка — над лентой */
+@media (max-width: 600px) {
+  .photo-strip {
+    right: 60px;
+    bottom: 108px;
+    max-width: calc(100vw - 70px);
+  }
+
+  body.has-photo-strip .maplibregl-popup.photo-sheet {
+    bottom: 192px;
+  }
 }
 
 .photo-strip[hidden] {
@@ -1672,55 +1716,6 @@ body.has-photo-strip .map-status {
   color: #999;
 }
 
-/* "Слои" — над переключателем карт, по образцу кнопки "Места": столбик чипов над ней */
-.layers-wrap {
-  position: fixed;
-  left: 10px;
-  bottom: 110px;
-  z-index: 10;
-}
-
-.layers-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 44px;
-  padding: 0 14px;
-  border: none;
-  border-radius: 22px;
-  background: var(--light-panel);
-  color: var(--light-text);
-  font: inherit;
-  font-size: 0.9rem;
-  cursor: pointer;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
-}
-
-.layers-btn:hover {
-  background: var(--light-hover);
-}
-
-/* столбик открыт или включён хоть один слой — негативом, как "Места" */
-.layers-btn.active {
-  background: #9aa0a6;
-  color: #fff;
-}
-
-.layers-btn.active:hover {
-  background: #8a9096;
-}
-
-.layers-chips {
-  position: absolute;
-  left: 0;
-  bottom: 52px;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 8px;
-  pointer-events: none; /* промежутки между кнопками не мешают тащить карту */
-}
-
 .layers-chips > * {
   pointer-events: auto;
   white-space: nowrap;
@@ -1730,9 +1725,10 @@ body.has-photo-strip .map-status {
    ряд всех вариантов, раскрывающийся при наведении */
 .basemap-switcher {
   position: fixed;
-  left: 10px;
+  right: 10px;
   bottom: 24px;
   display: flex;
+  flex-direction: row-reverse; /* ряд карт раскрывается влево — поверх шкалы и ⓘ */
   align-items: flex-end;
   gap: 8px;
   z-index: 10;

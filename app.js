@@ -2395,7 +2395,7 @@ async function playTourStep() {
     // точка — в свободной части кадра: справа панель, внизу слева слайд-шоу
     const narrow = matchMedia("(max-width: 600px)").matches;
     map.flyTo({ center: sec.point, zoom: Math.max(14, Math.min(map.getZoom(), 15)), duration: 3000,
-      offset: narrow ? [0, 110] : [-200, -140] });
+      offset: narrow ? [0, 110] : [190, -100] });
     await new Promise((r) => { map.once("moveend", r); setTimeout(r, 4000); });
     if (!alive()) return;
     await speakText(stopNarration(sec));
@@ -2954,7 +2954,7 @@ function openTour(id) {
   if (pts.length > 1) {
     const lons = pts.map((c) => c[0]), lats = pts.map((c) => c[1]);
     map.fitBounds([[Math.min(...lons), Math.min(...lats)], [Math.max(...lons), Math.max(...lats)]],
-      { padding: { top: 90, bottom: 130, left: 90, right: 420 }, maxZoom: 13, duration: 2500 });
+      { padding: { top: 90, bottom: 130, left: 400, right: 90 }, maxZoom: 13, duration: 2500 });
   } else if (pts.length || tours.get(id)?.point) map.flyTo({ center: pts[0] || tours.get(id).point, zoom: 10, duration: 2500 });
 }
 
@@ -3087,7 +3087,8 @@ function toggleOverlay(id) {
 // по логике кнопки "Места": столбик чипов открыт, пока снова не нажать "Слои" — можно
 // спокойно перещёлкать несколько слоёв; кнопка серая, пока столбик открыт или включён слой
 function renderOverlayMenu() {
-  el("layers-btn").classList.toggle("active", activeOverlays.size > 0 || !el("layers-chips").hidden);
+  // при первом вызове категории мест ещё не объявлены — кнопку обновить после загрузки скрипта
+  queueMicrotask(updatePlacesBtn);
   el("layers-chips").replaceChildren(...OVERLAYS.filter((o) => !o.hidden && (o.available?.() ?? true)).map((o) => {
     const chip = document.createElement("button");
     chip.className = "chip" + (activeOverlays.has(o.id) ? " active" : "");
@@ -3098,10 +3099,6 @@ function renderOverlayMenu() {
   }));
 }
 
-el("layers-btn").addEventListener("click", () => {
-  el("layers-chips").hidden = !el("layers-chips").hidden;
-  renderOverlayMenu();
-});
 renderOverlayMenu();
 
 // ---------- категории мест (как чипы "Рестораны", "Гостиницы"… в Google Maps) ----------
@@ -3294,8 +3291,12 @@ function setActivePoi(chipId, poi) {
 
 // кнопка "Места" серая, пока открыт столбик категорий или включён фильтр —
 // так включённый фильтр не забудется и при свёрнутом столбике
+// Места и слои — одна панель с двумя колонками под одной кнопкой справа вверху (Грегори,
+// 2026-10-01: «слои и места сольются в одну панель, кнопка-бутерброд со значком слоёв — на
+// телефоне всё поместится»). Кнопка серая, пока панель открыта, выбрана категория или включён слой
 function updatePlacesBtn() {
-  el("places-btn").classList.toggle("active", !!activePoi || !el("category-chips").hidden);
+  const overlays = [...activeOverlays].some((id) => !OVERLAYS.find((o) => o.id === id)?.hidden);
+  el("places-btn").classList.toggle("active", !!activePoi || overlays || !el("menu-panel").hidden);
 }
 
 function chipLabel(button, icon, text) {
@@ -3364,8 +3365,8 @@ document.addEventListener("click", (evt) => {
 
 // кнопка "Места" в правом верхнем углу показывает и прячет столбик категорий
 el("places-btn").addEventListener("click", () => {
-  const open = el("category-chips").hidden;
-  el("category-chips").hidden = !open;
+  const open = el("menu-panel").hidden;
+  el("menu-panel").hidden = !open;
   updatePlacesBtn();
   if (!open) el("shop-menu").hidden = true;
 });
@@ -4352,9 +4353,12 @@ class RuScaleControl extends maplibregl.ScaleControl {
     return container;
   }
 }
+// Справа внизу (Грегори, 2026-10-01): плитка карт в углу, слева от неё масштаб и ⓘ (их
+// перекрывает раскрытая влево панель карт), над плиткой столбиком снизу вверх: «+ −», компас,
+// местоположение, настройки. MapLibre ставит каждый следующий контрол угла выше предыдущих
 map.addControl(new RuScaleControl({ unit: "metric" }), "bottom-right");
-map.addControl(new SettingsControl(), "bottom-right");
-map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), "bottom-right");
+map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "bottom-right");
+map.addControl(new maplibregl.NavigationControl({ showZoom: false, visualizePitch: true }), "bottom-right");
 
 // ---------- моё местоположение ----------
 
@@ -4452,12 +4456,12 @@ map.on("dragstart", () => {
 });
 
 map.addControl(new GeolocateControl(), "bottom-right");
+map.addControl(new SettingsControl(), "bottom-right");
 if (localStorage.getItem(GEO_STORAGE_KEY) === "on") startGeo();
 
 
-// Внизу справа в одну строку: шкала, кнопка ⓘ источников, шестерёнка; кнопки масштаба
-// остаются над ними. ⓘ стоит в ячейке своего размера, а раскрытая строка источников
-// ложится поверх шкалы влево — шкала не сдвигается (на телефоне ей некуда)
+// Шкала и ⓘ — строкой слева от плитки карт, в её высоту. ⓘ стоит в ячейке своего размера,
+// раскрытая строка источников ложится поверх шкалы влево — шкала не сдвигается
 {
   const corner = document.querySelector(".maplibregl-ctrl-bottom-right");
   const row = document.createElement("div");
@@ -4465,8 +4469,8 @@ if (localStorage.getItem(GEO_STORAGE_KEY) === "on") startGeo();
   const attribSlot = document.createElement("div");
   attribSlot.className = "attrib-slot";
   attribSlot.append(corner.querySelector(".maplibregl-ctrl-attrib"));
-  row.append(corner.querySelector(".maplibregl-ctrl-scale"), attribSlot, el("settings-btn").parentElement);
-  corner.append(row);
+  row.append(corner.querySelector(".maplibregl-ctrl-scale"), attribSlot);
+  map.getContainer().append(row);
 }
 
 // Пока глобус виден целиком на звёздном небе, наклон и поворот только сбивают с толку —
