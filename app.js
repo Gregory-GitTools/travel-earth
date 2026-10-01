@@ -2799,6 +2799,14 @@ function tourHelpButton() {
   return b;
 }
 
+// полный путь к файлу на диске: путь к папке из ⚙ (localStorage этой машины) + путь внутри неё
+const TOURS_PATH_KEY = "travel-earth.tours-path";
+function tourFilePath(t) {
+  const base = (localStorage.getItem(TOURS_PATH_KEY) || "").trim().replace(/[\\/]+$/, "");
+  if (!base) return "";
+  return `${base}\\${t.id.slice(t.id.indexOf("/") + 1).replace(/\//g, "\\")}`;
+}
+
 async function editTour(id) {
   const t = tours.get(id);
   if (!t?.handle) return;
@@ -2836,12 +2844,26 @@ async function editTour(id) {
   const editTitle = h("div", "tour-title-row");
   editTitle.append(h("h2", "", `Правка: ${t.file}`), tourHelpButton());
   head.append(editTitle);
-  // путь к файлу — ссылкой: открывает файл в новой вкладке. Запустить Блокнот или другую
-  // программу страница не может, полного пути на диске не знает — только путь в выбранной папке
-  const link = Object.assign(document.createElement("a"), { className: "tour-file-link", href: "#", textContent: t.id,
-    title: "Открыть файл в новой вкладке. Сам файл — в выбранной папке экскурсий на этом компьютере" });
+  // путь к файлу — ссылкой: открывает файл в программе Windows по умолчанию (Блокнот, VS Code…).
+  // Сама страница программу запустить не может и полного пути на диске не знает — поэтому
+  // путь к папке экскурсий указывается в ⚙ (на каждой машине свой), а открывает файл локальный
+  // сервер start.bat (tools/server.py, POST /open-file). Нет пути или сервера (GitHub Pages,
+  // старый http.server) — файл открывается в новой вкладке только для чтения и объясняется почему
+  const fullPath = tourFilePath(t);
+  const link = Object.assign(document.createElement("a"), { className: "tour-file-link", href: "#",
+    textContent: fullPath || t.id, title: fullPath ? "Открыть в программе по умолчанию" : "Открыть в новой вкладке (только чтение)" });
   link.addEventListener("click", async (e) => {
     e.preventDefault();
+    if (fullPath) {
+      const res = await fetch("/open-file", { method: "POST", headers: { "Content-Type": "application/json", "X-Travel-Earth": "1" },
+        body: JSON.stringify({ path: fullPath }) }).catch(() => null);
+      if (res?.ok) { status.textContent = ""; return; }
+      status.textContent = res?.status === 404 && res.headers.get("Content-Type")?.includes("html")
+        ? "Файл не найден по этому пути — проверьте путь к папке в ⚙"
+        : "Открыть в редакторе может только карта, запущенная через start.bat (сервер tools/server.py). Пока — в новой вкладке, только чтение";
+    } else {
+      status.textContent = "Чтобы открывать в редакторе, укажите путь к папке экскурсий в ⚙. Пока — в новой вкладке, только чтение";
+    }
     const file = await t.handle.getFile();
     const url = URL.createObjectURL(new Blob([await file.arrayBuffer()], { type: "text/plain;charset=utf-8" }));
     window.open(url, "_blank");
@@ -4420,6 +4442,8 @@ el("about-close-btn").addEventListener("click", closeAboutModal);
 el("my-photos-pick").addEventListener("click", pickMyFolder);
 el("tours-pick").addEventListener("click", pickTourFolder);
 el("tours-forget").addEventListener("click", forgetTourFolder);
+el("tours-path").value = localStorage.getItem(TOURS_PATH_KEY) || "";
+el("tours-path").addEventListener("change", (e) => localStorage.setItem(TOURS_PATH_KEY, e.target.value.trim()));
 el("voice-select").addEventListener("change", (e) => localStorage.setItem(VOICE_KEY, e.target.value));
 el("voice-rate").addEventListener("change", (e) => localStorage.setItem(VOICE_RATE_KEY, e.target.value));
 el("voice-test").addEventListener("click", (e) => speak("Левады строили с пятнадцатого века, чтобы уводить воду с дождливого севера острова на солнечный юг.", e.currentTarget));

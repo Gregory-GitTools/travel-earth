@@ -7,7 +7,8 @@ set URL=http://localhost:%PORT%/
 
 netstat -ano | findstr ":%PORT% " | findstr LISTENING >nul
 if errorlevel 1 (
-    start "Travel Earth server" /min python -m http.server %PORT% --bind 127.0.0.1
+    rem own server: like http.server, plus opening an excursion file in its default editor
+    start "Travel Earth server" /min python tools\server.py %PORT%
     timeout /t 1 /nobreak >nul
 )
 

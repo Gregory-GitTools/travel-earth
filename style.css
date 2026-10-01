@@ -1250,6 +1250,27 @@ span.tour-flag {
   background: #e91e63;
 }
 
+.tours-path-row {
+  display: block;
+  margin: 4px 0 10px;
+  font-size: 0.78rem;
+  color: var(--muted, #aaa);
+}
+
+.tours-path-row input {
+  display: block;
+  width: 100%;
+  margin-top: 4px;
+  padding: 6px 8px;
+  box-sizing: border-box;
+  border: 1px solid #555;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 0.85rem;
+}
+
 .voice-row span {
   font-size: 0.85rem;
 }
