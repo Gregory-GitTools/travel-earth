@@ -275,6 +275,14 @@ function tellMap(msg) {
   try { window.opener?.postMessage(msg, location.origin); } catch { /* главное окно закрыто */ }
 }
 addEventListener("pagehide", () => tellMap({ gallery: "closed" }));
+// галерея слайд-шоу аудиогида: новая остановка — новый список (перезагрузка), смена слайда —
+// тот же снимок здесь (galleryShow)
+addEventListener("message", (e) => {
+  if (e.origin !== location.origin) return;
+  if (e.data?.galleryReload) location.reload();
+  else if (Number.isInteger(e.data?.galleryShow) && e.data.galleryShow !== index) show(e.data.galleryShow);
+});
+if (data.stop) document.title = `${data.stop} — Travel Earth`;
 
 $(".prev").addEventListener("click", () => show(index - 1));
 $(".next").addEventListener("click", () => show(index + 1));

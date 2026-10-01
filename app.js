@@ -994,6 +994,11 @@ map.on("moveend", updatePhotoStrip);
 let galleryFocus = null;
 window.addEventListener("message", (e) => {
   if (e.origin !== location.origin || !e.data?.gallery) return;
+  // снимок выбран в галерее слайд-шоу — показать его в слайд-шоу
+  if (e.data.gallery === "photo" && tourSlides.slides && !tourSlides.hidden) {
+    const i = tourSlides.slides.findIndex((sl) => slideId(sl) === e.data.photo);
+    if (i >= 0) { if (i !== tourSlides.current) tourSlides.showAt?.(i); return; }
+  }
   const f = e.data.photo && photoById(e.data.photo);
   if (e.data.gallery === "closed" || !f) {
     if (galleryFocus && selectedPhoto === galleryFocus) selectPhoto(null);
@@ -1040,7 +1045,9 @@ function openPhotoGallery(f) {
 // отдельное окно по центру экрана, 80 % × 85 %; с тем же именем — то же окно, перезагружается
 function openSideWindow(url, name) {
   const w = Math.round(screen.availWidth * 0.8), h = Math.round(screen.availHeight * 0.85);
-  window.open(url, name, `popup,width=${w},height=${h},left=${Math.round((screen.availWidth - w) / 2)},top=${Math.round((screen.availHeight - h) / 2)}`)?.focus();
+  const win = window.open(url, name, `popup,width=${w},height=${h},left=${Math.round((screen.availWidth - w) / 2)},top=${Math.round((screen.availHeight - h) / 2)}`);
+  win?.focus();
+  return win;
 }
 
 // миниатюра — квадрат из середины снимка в тонкой (1,5 px) белой скруглённой рамке, вдвое
@@ -1768,7 +1775,7 @@ function selectTourStop(tour, n) {
 }
 const TOUR_KEYS = { "место": "place", "регион": "region", "тропа": "trail", "длина": "length", "время": "time",
   "сложность": "difficulty", "сезон": "season", "точки": "points", "особенности": "features", "справка": "history",
-  "выдержка": "quote", "выдержки": "quote", "источник": "sources", "источники": "sources", "теги": "tags", "идея": "idea", "маршрут": "route" };
+  "выдержка": "quote", "выдержки": "quote", "источник": "sources", "источники": "sources", "теги": "tags", "идея": "idea", "маршрут": "route", "страна": "country", "город": "city", "тип": "kind" };
 const TOUR_LIST_KEYS = new Set(["features", "sources", "quote", "history", "points"]);
 let tourDir = null;
 const tours = new Map(); // путь файла → { id, file, mtime, title, region, tags, sources, sections, point }
@@ -1793,7 +1800,7 @@ function tourFields(line) {
 // разбор файла: «# Название», поля «Ключ: значение», «## Раздел» (остановка, если есть «Место:»),
 // списки «- …» к последнему полю-списку (по умолчанию — особенности), остальное — абзацы
 function parseTour(text, file) {
-  const tour = { title: "", region: "", tags: "", sources: [], idea: [], sections: [] };
+  const tour = { title: "", region: "", country: "", city: "", kind: "", tags: "", sources: [], idea: [], sections: [] };
   let target = tour, key = null;
   const add = (k, v) => {
     if (!v) return;
@@ -1923,6 +1930,80 @@ function tourStopImage(ring = "#fff") {
   return ctx.getImageData(0, 0, 44, 44);
 }
 
+// Поиск экскурсий (Грегори: «окно под окном поиска такой же формы и размера, с интерактивным
+// поиском и стрелкой выпадающего меню: экскурсии по странам, дальше по городам или другому
+// признаку из файла»). Видно, пока включён слой «Экскурсии». Ввод — фильтр по названию,
+// региону, стране, городу, типу и тегам; стрелка или фокус — весь список. Группы: страна
+// (поле «Страна:», иначе последняя часть «Региона»), внутри — город/остров («Город:»), без
+// него — «По стране»; тип («Тип:») — подписью у экскурсии. Щелчок — экскурсия на карте и панель
+const tourFinder = document.getElementById("tour-finder");
+const tourInput = document.getElementById("tour-input");
+const tourList = document.getElementById("tour-list");
+const tourCountry = (t) => t.country || (t.region.includes(",") ? t.region.split(",").pop().trim() : t.region) || "Без страны";
+
+function renderTourList() {
+  const q = tourInput.value.trim().toLowerCase();
+  const all = [...tours.values()].filter((t) => !q
+    || [t.title, t.region, t.country, t.city, t.kind, t.tags].join(" ").toLowerCase().includes(q));
+  const byCountry = new Map();
+  for (const t of all) {
+    const c = tourCountry(t);
+    if (!byCountry.has(c)) byCountry.set(c, new Map());
+    const group = t.city || "По стране";
+    const m = byCountry.get(c);
+    if (!m.has(group)) m.set(group, []);
+    m.get(group).push(t);
+  }
+  const nodes = [];
+  const h = (tag, cls, text) => Object.assign(document.createElement(tag), { className: cls, textContent: text });
+  for (const country of [...byCountry.keys()].sort((a, b) => a.localeCompare(b, "ru"))) {
+    nodes.push(h("div", "tour-list-country", country));
+    const groups = byCountry.get(country);
+    // «По стране» — первой, остальные по алфавиту
+    const names = [...groups.keys()].sort((a, b) => (a === "По стране" ? -1 : b === "По стране" ? 1 : a.localeCompare(b, "ru")));
+    for (const g of names) {
+      if (names.length > 1 || g !== "По стране") nodes.push(h("div", "tour-list-group", g));
+      for (const t of groups.get(g).sort((a, b) => a.title.localeCompare(b.title, "ru"))) {
+        const item = h("button", "search-item tour-list-item", "");
+        item.append(h("span", "search-item-title", t.title),
+          h("span", "search-item-sub", [t.kind, t.region].filter(Boolean).join(" · ")));
+        item.addEventListener("click", () => {
+          tourList.hidden = true;
+          tourInput.value = "";
+          tourInput.blur();
+          openTour(t.id);
+        });
+        nodes.push(item);
+      }
+    }
+  }
+  if (!nodes.length) {
+    nodes.push(h("div", "tour-list-empty", tours.size ? "Ничего не нашлось"
+      : tourDir ? "В папке экскурсий нет файлов" : "Папка экскурсий не выбрана — ⚙ настройки"));
+  }
+  tourList.replaceChildren(...nodes);
+}
+
+function updateTourFinder() {
+  const on = activeOverlays.has("tours") && "showDirectoryPicker" in window;
+  tourFinder.hidden = !on;
+  if (!on) tourList.hidden = true;
+  else if (!tourList.hidden) renderTourList();
+}
+
+tourInput.addEventListener("input", () => { renderTourList(); tourList.hidden = false; });
+tourInput.addEventListener("focus", () => { renderTourList(); tourList.hidden = false; });
+tourInput.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") { tourList.hidden = true; tourInput.blur(); }
+  if (e.key === "Enter") tourList.querySelector(".tour-list-item")?.click();
+});
+document.getElementById("tour-list-btn").addEventListener("click", () => {
+  if (tourList.hidden) { renderTourList(); tourList.hidden = false; } else tourList.hidden = true;
+});
+document.addEventListener("pointerdown", (e) => {
+  if (!tourList.hidden && !tourFinder.contains(e.target) && !tourList.contains(e.target)) tourList.hidden = true;
+});
+
 function addTours(before) {
   map.addSource("ov-tours", { type: "geojson", data: tourData() });
   const kind = (k) => ["==", ["get", "kind"], k];
@@ -1951,6 +2032,7 @@ function addTours(before) {
     paint: { "text-color": "#8a3c00", "text-halo-color": "rgba(255,255,255,0.9)", "text-halo-width": 1.5 } }, before);
   raiseTrailPoi();
   initTours();
+  updateTourFinder();
 }
 
 async function initTours() {
@@ -2002,6 +2084,7 @@ async function readTours(handle) {
     if (tourPanelId === t.id && !tourEditing) renderTourPanel(t.id);
   }
   const lost = list.flatMap((t) => t.sections.filter((sec) => sec.place && !sec.point).map((sec) => sec.place));
+  updateTourFinder();
   setTourStatus(`Экскурсий: ${list.length}${lost.length ? `; не нашлись места: ${lost.join(", ")}` : ""}`);
 }
 addEventListener("focus", () => { if (tourDir && activeOverlays.has("tours")) readTours(tourDir); });
@@ -2068,6 +2151,8 @@ const PAUSE_ICON = `<svg viewBox="0 0 24 24" width="18" height="18"><path fill="
 const PREV_ICON = `<svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M6 6h2v12H6zm3.5 6 8.5 6V6z"/></svg>`;
 const NEXT_ICON = `<svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="m6 18 8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg>`;
 const STOP_ICON = `<svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M6 6h12v12H6z"/></svg>`;
+// значок аудиогида — наушники: треугольник «плей» путал с кнопкой продолжения в плеере (Грегори)
+const AUDIO_GUIDE_ICON = `<svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M12 1a9 9 0 0 0-9 9v7a3 3 0 0 0 3 3h3v-8H5v-2a7 7 0 0 1 14 0v2h-4v8h3a3 3 0 0 0 3-3v-7a9 9 0 0 0-9-9z"/></svg>`;
 const PLAY_BIG_ICON = `<svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M8 5v14l11-7z"/></svg>`;
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const tourSlides = Object.assign(document.createElement("div"), { className: "tour-slides", hidden: true });
@@ -2140,6 +2225,20 @@ async function playTourStep() {
   playTourStep();
 }
 
+// выбранная рукой остановка (на карте или в панели) во время аудиогида — рассказ переходит
+// к ней и дальше идёт по порядку от неё (Грегори: «после выбора точки продолжать с учётом
+// нового порядка»; раньше аудиогид выбора не замечал и шёл своим порядком)
+function jumpTourPlay(tour, n) {
+  if (!tourPlay || tourPlay.id !== tour) return false;
+  const i = tourPlay.stops.findIndex((sec) => sec.n === n);
+  if (i < 0) return false;
+  tourPlay.i = i;
+  tourPlay.paused = false;
+  speechSynthesis.cancel();
+  playTourStep();
+  return true;
+}
+
 function tourPlayGo(delta) {
   if (!tourPlay) return;
   tourPlay.i = Math.max(-1, Math.min(tourPlay.stops.length - 1, tourPlay.i + delta));
@@ -2161,7 +2260,7 @@ function renderTourPlayer() {
   const play = tourPlay;
   const btn = tourPanel.querySelector(".tour-play");
   if (btn) {
-    btn.innerHTML = PLAY_BIG_ICON;
+    btn.innerHTML = AUDIO_GUIDE_ICON;
     btn.classList.toggle("on", !!play && play.id === tourPanelId);
   }
   if (!play || play.id !== tourPanelId) return;
@@ -2223,6 +2322,8 @@ async function showSlides(point) {
   if (tourPlay !== play || !slides.length) { if (!slides.length) hideSlides(); return; }
   let k = 0, front = 0;
   tourSlides.slides = slides;
+  // открытая галерея слайд-шоу — получает фото новой остановки
+  if (slideGallery && !slideGallery.closed) sendSlidesToGallery(0, true);
   const imgs = tourSlides.querySelectorAll("img");
   const show = async () => {
     const sl = slides[k++ % slides.length];
@@ -2232,6 +2333,7 @@ async function showSlides(point) {
     const index = (k - 1) % slides.length;
     next.onload = () => {
       tourSlides.current = index;
+      if (slideGallery && !slideGallery.closed) slideGallery.postMessage({ galleryShow: index }, location.origin);
       next.classList.add("on");
       imgs[front].classList.remove("on");
       front = 1 - front;
@@ -2240,6 +2342,13 @@ async function showSlides(point) {
     next.src = url;
   };
   tourSlides.hidden = false;
+  // выбор снимка в галерее — его же в слайд-шоу, отсчёт смены заново
+  tourSlides.showAt = (i) => {
+    clearInterval(slideTimer);
+    k = i;
+    show();
+    if (slides.length > 1) slideTimer = setInterval(show, 5000);
+  };
   await show();
   if (slides.length > 1) slideTimer = setInterval(show, 5000);
 }
@@ -2247,14 +2356,27 @@ async function showSlides(point) {
 // двойной щелчок по слайд-шоу — эти же фото в окне галереи, с текущего (Грегори: «фотки в новое
 // окно; на полный экран не надо»). Свои снимки галерея читает через главное окно, как альбом
 tourSlides.title = "Двойной щелчок — фото в отдельном окне";
-tourSlides.addEventListener("dblclick", () => {
+// Галерея слайд-шоу живая (Грегори: «альбом, открытый во время экскурсии, интерактивным, и
+// фотографии сменялись по ходу экскурсии»): на новой остановке в неё приходят новые фото,
+// смена слайда — переход к тому же снимку в галерее, а выбор снимка в галерее — его же в
+// слайд-шоу (сообщения galleryShow / gallery: "photo"; петли нет — текущий снимок не повторяется)
+let slideGallery = null;
+const slideId = (sl) => sl.mine || `photo/${sl.pageid}`;
+function sendSlidesToGallery(start, reload) {
   const slides = tourSlides.slides;
   if (!slides?.length) return;
+  const sec = tourPlay?.stops?.[tourPlay.i];
   const photos = slides.map((sl) => (sl.mine
     ? { photo: sl.mine, my: true, title: sl.title, date: sl.date, license: sl.album ? `Альбом «${sl.album}»` : "", thumb: myFiles.get(sl.mine)?.thumb || "" }
-    : { photo: `photo/${sl.pageid}`, title: sl.title, author: sl.author, license: sl.license, page: sl.page, thumb: sl.url, full: sl.full, fullWidth: sl.width }));
-  localStorage.setItem(PHOTO_GALLERY_KEY, JSON.stringify({ photos, start: tourSlides.current || 0 }));
-  openSideWindow(`gallery.html?t=${Date.now()}`, "travel-earth-gallery");
+    : { photo: slideId(sl), title: sl.title, author: sl.author, license: sl.license, page: sl.page, thumb: sl.url, full: sl.full, fullWidth: sl.width }));
+  localStorage.setItem(PHOTO_GALLERY_KEY, JSON.stringify({ photos, start, slides: true, stop: sec ? `${sec.n}. ${sec.title || sec.place}` : "" }));
+  if (reload) slideGallery.postMessage({ galleryReload: true }, location.origin);
+}
+tourSlides.addEventListener("dblclick", () => {
+  if (!tourSlides.slides?.length) return;
+  slideGallery = null;
+  sendSlidesToGallery(tourSlides.current || 0, false);
+  slideGallery = openSideWindow(`gallery.html?t=${Date.now()}`, "travel-earth-gallery");
 });
 
 function hideSlides() {
@@ -2390,7 +2512,7 @@ function renderTourPanel(id) {
   setTextBtn();
   setMinBtn();
   const playBtn = Object.assign(document.createElement("button"), { className: "tour-edit tour-play",
-    title: "Обзорная экскурсия: озвучка с переходами по точкам и слайд-шоу", innerHTML: PLAY_BIG_ICON });
+    title: "Аудиогид: рассказ с переходами по точкам и слайд-шоу", innerHTML: AUDIO_GUIDE_ICON });
   playBtn.addEventListener("click", () => (tourPlay?.id === id ? stopTourPlay() : startTourPlay(id, -1)));
   head.append(title, playBtn, textBtn, tourHelpButton(), edit, minBtn, close);
   const nodes = [head];
@@ -2414,6 +2536,7 @@ function renderTourPanel(id) {
     if (sec.point) {
       title.title = "Показать на карте";
       title.addEventListener("click", () => {
+        if (jumpTourPlay(id, sec.n)) return;
         selectTourStop(id, sec.n);
         map.flyTo({ center: sec.point, zoom: Math.max(map.getZoom(), 12), duration: 2000 });
       });
@@ -2599,7 +2722,7 @@ map.on("click", TOUR_LAYERS, (evt) => {
   trailPoiPopup?.remove();
   if (p.kind === "stop") {
     if (tourPanelId !== p.tour || tourEditing) renderTourPanel(p.tour);
-    selectTourStop(p.tour, p.n);
+    if (!jumpTourPlay(p.tour, p.n)) selectTourStop(p.tour, p.n);
   } else openTour(p.tour);
 });
 
@@ -2679,7 +2802,7 @@ function removeOverlay(id) {
   if (id === "photos") { selectPhoto(null); updatePhotoStrip(); }
   if (id === "mapillary" && map.getSource("ov-mly-pos")) map.removeSource("ov-mly-pos");
   if (id === "myphotos") { if (selectedPhoto?.startsWith("my/")) selectPhoto(null); updatePhotoStrip(); }
-  if (id === "tours") closeTourPanel();
+  if (id === "tours") { closeTourPanel(); updateTourFinder(); }
   for (const sourceId of [`ov-${id}`, `ov-${id}-vec`]) if (map.getSource(sourceId)) map.removeSource(sourceId);
   if (overlay.trails && !trailOverlayActive()) {
     for (const layerId of TRAIL_POI_LAYERS) if (map.getLayer(layerId)) map.removeLayer(layerId);

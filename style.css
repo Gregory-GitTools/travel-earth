@@ -241,6 +241,59 @@ html, body {
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
 }
 
+/* поиск экскурсий — под строкой поиска, той же формы (видно со слоем «Экскурсии») */
+.search-results {
+  z-index: 2;
+}
+
+.tour-finder {
+  margin-top: 8px;
+  padding-left: 12px;
+}
+
+.tour-finder[hidden] {
+  display: none;
+}
+
+.tour-finder-icon {
+  flex: none;
+  margin-right: 8px;
+  color: #ef6c00;
+}
+
+.tour-list {
+  top: 102px;
+  z-index: 1;
+  scrollbar-width: thin;
+  scrollbar-color: #c4c7c5 transparent;
+}
+
+.tour-list-country {
+  padding: 10px 10px 2px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #ef6c00;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.tour-list-group {
+  padding: 6px 10px 0;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--light-muted);
+}
+
+.tour-list-item {
+  padding-left: 18px;
+}
+
+.tour-list-empty {
+  padding: 10px;
+  color: var(--light-muted);
+  font-size: 0.85rem;
+}
+
 .search-item {
   display: flex;
   flex-direction: column;
