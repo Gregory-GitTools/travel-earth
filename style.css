@@ -1033,6 +1033,7 @@ span.tour-flag {
 .tour-panel.editing {
   display: flex;
   flex-direction: column;
+  height: calc(100vh - 264px); /* правке — вся высота до кнопок навигации */
 }
 
 .tour-editor {
@@ -1044,8 +1045,14 @@ span.tour-flag {
   border-radius: 8px;
   background: #fff;
   color: #222;
+  color-scheme: light; /* у страницы тёмная схема — иначе тёмные полоса прокрутки и рамка фокуса */
   font: 0.82rem/1.45 Consolas, "Cascadia Mono", monospace;
   resize: none;
+}
+
+.tour-editor:focus {
+  outline: 2px solid #ef6c00;
+  outline-offset: -1px;
 }
 
 .tour-edit-bar {
@@ -1225,7 +1232,12 @@ span.tour-flag {
 }
 
 .tour-file {
-  margin-top: 14px;
+  margin-top: 8px;
+}
+
+.tour-file-link {
+  color: #1a73e8;
+  word-break: break-all;
 }
 
 .tour-idea {

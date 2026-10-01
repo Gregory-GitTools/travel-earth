@@ -2721,7 +2721,6 @@ function renderTourPanel(id) {
     }
     nodes.push(box);
   }
-  nodes.push(h("div", "tour-file", `Файл: ${t.id}`));
   tourPanel.replaceChildren(...nodes);
   tourPanel.classList.remove("editing");
   tourPanel.hidden = false;
@@ -2807,10 +2806,25 @@ async function editTour(id) {
     else if (e.key === "Escape") renderTourPanel(id);
   });
   const head = h("div", "tour-head");
-  head.append(h("h2", "", `Правка: ${t.file}`), tourHelpButton());
+  const editTitle = h("div", "tour-title-row");
+  editTitle.append(h("h2", "", `Правка: ${t.file}`), tourHelpButton());
+  head.append(editTitle);
+  // путь к файлу — ссылкой: открывает файл в новой вкладке. Запустить Блокнот или другую
+  // программу страница не может, полного пути на диске не знает — только путь в выбранной папке
+  const link = Object.assign(document.createElement("a"), { className: "tour-file-link", href: "#", textContent: t.id,
+    title: "Открыть файл в новой вкладке. Сам файл — в выбранной папке экскурсий на этом компьютере" });
+  link.addEventListener("click", async (e) => {
+    e.preventDefault();
+    const file = await t.handle.getFile();
+    const url = URL.createObjectURL(new Blob([await file.arrayBuffer()], { type: "text/plain;charset=utf-8" }));
+    window.open(url, "_blank");
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  });
+  const fileRow = h("div", "tour-file");
+  fileRow.append("Файл: ", link);
   const bar = h("div", "tour-edit-bar");
   bar.append(save, cancel, status);
-  tourPanel.replaceChildren(head, area, bar, h("div", "tour-file", "Ctrl+S — сохранить, Esc — отмена. Как писать файл — кнопка «i» вверху"));
+  tourPanel.replaceChildren(head, fileRow, area, bar, h("div", "tour-file", "Ctrl+S — сохранить, Esc — отмена. Как писать файл — кнопка «i» вверху"));
   tourPanel.classList.add("editing");
   area.focus();
   area.setSelectionRange(0, 0);
