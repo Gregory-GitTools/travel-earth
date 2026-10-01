@@ -1843,14 +1843,34 @@ function tourSource(line) {
 }
 
 // место по названию: «32.76, -16.91» — как есть, иначе Nominatim (кэш в IndexedDB)
-async function tourGeocode(query) {
+// Остановка ищется рядом с точкой региона (near): короткое название вроде «Sorrento» или
+// «Vesuvio» без региона Nominatim находил в США (жалоба Грегори — точки «ушли на американский
+// континент»). Поэтому viewbox ±2,5° вокруг региона (bounded=0 — только предпочтение), а если
+// всё равно дальше TOUR_NEAR_KM — повтор с регионом в запросе; не помогло — места нет (null)
+const TOUR_NEAR_KM = 800;
+const kmBetween = ([lon1, lat1], [lon2, lat2]) => 6371 * Math.acos(Math.min(1,
+  Math.sin(lat1 * Math.PI / 180) * Math.sin(lat2 * Math.PI / 180)
+  + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.cos((lon2 - lon1) * Math.PI / 180)));
+
+async function tourGeocode(query, near = null, region = "") {
   const m = query.match(/^(-?\d+(?:\.\d+)?)\s*[,;]\s*(-?\d+(?:\.\d+)?)$/);
   if (m) return [Number(m[2]), Number(m[1])];
-  const key = query.toLowerCase();
+  let point = await tourGeocodeOnce(query, near);
+  if (point && near && kmBetween(point, near) > TOUR_NEAR_KM && region) {
+    point = await tourGeocodeOnce(`${query}, ${region}`, near);
+    if (point && kmBetween(point, near) > TOUR_NEAR_KM) point = null;
+  }
+  return point;
+}
+
+async function tourGeocodeOnce(query, near) {
+  // кэш — по запросу и окрестности: одно и то же название в разных поездках — разные места
+  const key = near ? `${query.toLowerCase()}@${near.map((v) => v.toFixed(1)).join(",")}` : query.toLowerCase();
   const hit = await idb("geo", "readonly", (st) => st.get(key)).catch(() => undefined);
   if (hit !== undefined) return hit;
   const run = tourGeoQueue.then(async () => {
-    const params = new URLSearchParams({ q: query, format: "jsonv2", limit: "1", "accept-language": uiLanguageCode() });
+    const params = new URLSearchParams({ q: query, format: "jsonv2", limit: "1", "accept-language": uiLanguageCode(),
+      ...(near && { viewbox: [near[0] - 2.5, near[1] + 2.5, near[0] + 2.5, near[1] - 2.5].join(","), bounded: "0" }) });
     const res = await fetch(`${NOMINATIM_URL}?${params}`).catch(() => null);
     const [found] = res?.ok ? await res.json() : [];
     const point = found ? [Number(found.lon), Number(found.lat)] : null;
@@ -1977,7 +1997,7 @@ async function readTours(handle) {
   setTourStatus(`Экскурсий: ${list.length}`);
   for (const t of list) {
     if (t.region && !t.point) t.point = await tourGeocode(t.region).catch(() => null);
-    for (const sec of t.sections) if (sec.place && !sec.point) sec.point = await tourGeocode(sec.place).catch(() => null);
+    for (const sec of t.sections) if (sec.place && !sec.point) sec.point = await tourGeocode(sec.place, t.point, t.region).catch(() => null);
     refreshTours();
     if (tourPanelId === t.id && !tourEditing) renderTourPanel(t.id);
   }
