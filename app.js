@@ -317,8 +317,10 @@ demSource?.setupMaplibre(maplibregl);
 
 // layers — id слоёв карты, из которых состоит пункт меню
 // Картинки троп на мелком масштабе — сплошные толстые размытые линии по всей стране,
-// поэтому тропы видны только с TRAILS_MIN_ZOOM (шкала около 10 км)
-const TRAILS_MIN_ZOOM = 9;
+// поэтому тропы видны только со шкалы «20 км» (2026-10-01, Грегори: «поднять видимость пеших
+// прогулок до 20 км — будет видно, где искать»; раньше — зум 9, ~10 км). Порог по широте
+const TRAILS_MAX_METERS_PER_100PX = 40000;
+const trailsMinZoom = () => zoomForScale(TRAILS_MAX_METERS_PER_100PX);
 // с этого зума (шкала около 2 км) вместо картинок — свои линии троп с номерами: на
 // ужатых вдвое картинках таблички с номерами нечитаемы — пустые квадратики или слипшиеся
 // овалы. С 12 было поздно: на юге шкала «1 км» — это ещё зум 11,5
@@ -347,11 +349,11 @@ const OVERLAYS = [
   { id: "contours", name: "Горизонтали", icon: CHIP_ICONS.contours, hint: "Линии равной высоты с подписями в метрах",
     layers: ["ov-contours", "ov-contour-labels"], available: () => !!demSource },
   { id: "terrain3d", name: "3D-рельеф", icon: CHIP_ICONS.terrain3d, hint: "Настоящий объёмный рельеф — наклоните карту (правая кнопка мыши или два пальца)", layers: [] },
-  { id: "hiking", name: "Пешие тропы", icon: CHIP_ICONS.hiking, hint: "Маркированные пешие маршруты — видны с масштаба около 10 км, вблизи — с номерами", trails: "hiking",
+  { id: "hiking", name: "Пешие тропы", icon: CHIP_ICONS.hiking, hint: "Маркированные пешие маршруты — видны с масштаба около 20 км, вблизи — с номерами", trails: "hiking",
     layers: ["ov-hiking", "ov-hiking-line", "ov-hiking-label"] },
-  { id: "cycling", name: "Велодорожки", icon: CHIP_ICONS.cycling, hint: "Веломаршруты — видны с масштаба около 10 км, вблизи — с номерами", trails: "cycling",
+  { id: "cycling", name: "Велодорожки", icon: CHIP_ICONS.cycling, hint: "Веломаршруты — видны с масштаба около 20 км, вблизи — с номерами", trails: "cycling",
     layers: ["ov-cycling", "ov-cycling-line", "ov-cycling-label"] },
-  { id: "mtb", name: "Маунтинбайк", icon: CHIP_ICONS.mtb, hint: "Маршруты для горного велосипеда — видны с масштаба около 10 км, вблизи — с номерами", trails: "mtb",
+  { id: "mtb", name: "Маунтинбайк", icon: CHIP_ICONS.mtb, hint: "Маршруты для горного велосипеда — видны с масштаба около 20 км, вблизи — с номерами", trails: "mtb",
     layers: ["ov-mtb", "ov-mtb-line", "ov-mtb-label"] },
   { id: "beaches", name: "Пляжи", icon: "", hint: "Пляжи — видны с масштаба 10 км", layers: ["ov-beaches"] },
   { id: "surf", name: "Сёрфинг", icon: "", hint: "Места для сёрфинга, кайта и виндсёрфинга по всему миру — видны на любом масштабе",
@@ -885,7 +887,12 @@ function addSurf(before) {
 // которых очередь не дошла, при сдвиге карты забываются
 const COMMONS_API = "https://commons.wikimedia.org/w/api.php";
 const PHOTO_MAX_METERS_PER_100PX = 2000;
-const PHOTO_DOT_MAX_METERS_PER_100PX = 5000;
+// точки снимков — со шкалы «20 км» (Грегори: «будет видно, где искать»), но там грузятся только
+// точки: редкая проба (PHOTO_PROBE_PX) и без миниатюр; миниатюры, лента и полная загрузка —
+// со «3 км» (PHOTO_LOAD_MAX_METERS_PER_100PX), как раньше
+const PHOTO_DOT_MAX_METERS_PER_100PX = 40000;
+const PHOTO_LOAD_MAX_METERS_PER_100PX = 5000;
+const PHOTO_PROBE_PX = 100;
 const PHOTO_COLOR = "#e91e63";
 const PHOTO_CELL_MIN_Z = 12;
 const PHOTO_GRID = 4;
@@ -893,6 +900,7 @@ const PHOTO_MAX_CELLS = 40;
 const PHOTO_SIZE = 44; // px на карте
 const photoMinZoom = () => zoomForScale(PHOTO_MAX_METERS_PER_100PX);
 const photoDotZoom = () => zoomForScale(PHOTO_DOT_MAX_METERS_PER_100PX);
+const photoLoadZoom = () => zoomForScale(PHOTO_LOAD_MAX_METERS_PER_100PX);
 let selectedPhoto = null;
 const photoCells = new Map(); // "13/4000/2000" → true | "loading" | когда можно повторить
 const photoDense = new Set(); // квадраты, где снимков больше 500
@@ -959,7 +967,7 @@ let photoStripFrame = 0;
 function updatePhotoStrip() {
   cancelAnimationFrame(photoStripFrame);
   photoStripFrame = requestAnimationFrame(() => {
-    const on = map.getZoom() >= photoDotZoom();
+    const on = map.getZoom() >= photoLoadZoom();
     const bounds = map.getBounds();
     const pool = [...(activeOverlays.has("photos") ? photoFeatures.values() : []), ...(activeOverlays.has("myphotos") ? myPhotoFeatures.values() : [])];
     const shown = on ? pool
@@ -1087,7 +1095,7 @@ async function addPhoto(page, z, co) {
       author: text("Artist"), license: text("LicenseShortName"), date: text("DateTimeOriginal").replace(/^Taken on\s*/, "") } });
 }
 
-async function loadPhotoCell(z, x, y) {
+async function loadPhotoCell(z, x, y, dotsOnly = false) {
   const n = 2 ** z;
   const lat = (t) => (Math.atan(Math.sinh(Math.PI * (1 - (2 * t) / n))) * 180) / Math.PI;
   const lon = (t) => (t / n) * 360 - 180;
@@ -1100,12 +1108,35 @@ async function loadPhotoCell(z, x, y) {
   };
   const key = `${z}/${x}/${y}`;
   try {
-    const found = (await query({ list: "geosearch", gsbbox: `${n2}|${w}|${s}|${e}`, gsnamespace: 6, gslimit: 500 })).geosearch || [];
-    if (found.length >= 500) photoDense.add(key);
+    // издалека проба — не квадрат, а круг 10 км (больше Commons не ищет) вокруг узла сетки:
+    // квадрат-тайл там всего ~15 px, а точки должны показать, где вообще есть снимки
+    const cx = (w + e) / 2, cy = (s + n2) / 2;
+    const found = (await query(dotsOnly
+      ? { list: "geosearch", gscoord: `${cy}|${cx}`, gsradius: 10000, gsnamespace: 6, gslimit: 200 }
+      : { list: "geosearch", gsbbox: `${n2}|${w}|${s}|${e}`, gsnamespace: 6, gslimit: 500 })).geosearch || [];
+    if (!dotsOnly && found.length >= 500) photoDense.add(key);
+    if (dotsOnly) {
+      // по точке на четверть круга — ближайшую к середине четверти
+      const r = 10000 / 111320, rx = r / Math.cos((cy * Math.PI) / 180);
+      const quarter = new Map();
+      for (const g of found) {
+        if (!/\.(jpe?g|webp)$/i.test(g.title)) continue;
+        const qx = g.lon >= cx ? 1 : -1, qy = g.lat >= cy ? 1 : -1;
+        const d = Math.hypot((g.lon - (cx + qx * rx / 2)) / rx, (g.lat - (cy + qy * r / 2)) / r);
+        const q = `${qx}:${qy}`;
+        if (!quarter.has(q) || d < quarter.get(q).d) quarter.set(q, { g, d });
+      }
+      for (const { g } of quarter.values()) {
+        if (!photoFeatures.has(g.pageid)) photoFeatures.set(g.pageid, { type: "Feature", geometry: { type: "Point", coordinates: [g.lon, g.lat] }, properties: { photo: `photo/${g.pageid}`, z } });
+      }
+      map.getSource("ov-photos")?.setData(photoData());
+      photoCells.set(key, "dots");
+      return;
+    }
     // по снимку на клетку — ближайший к её центру; только фото: png и svg на Commons — в основном карты и схемы
     const best = new Map();
     for (const g of found) {
-      if (!/\.(jpe?g|webp)$/i.test(g.title) || photoFeatures.has(g.pageid)) continue;
+      if (!/\.(jpe?g|webp)$/i.test(g.title) || photoFeatures.get(g.pageid)?.properties.img) continue;
       const fx = ((g.lon - w) / (e - w)) * PHOTO_GRID, fy = ((n2 - g.lat) / (n2 - s)) * PHOTO_GRID;
       const cell = `${Math.min(PHOTO_GRID - 1, Math.floor(fx))}:${Math.min(PHOTO_GRID - 1, Math.floor(fy))}`;
       const d = Math.hypot(fx % 1 - 0.5, fy % 1 - 0.5);
@@ -1114,7 +1145,7 @@ async function loadPhotoCell(z, x, y) {
     const picked = new Map([...best.values()].map(({ g }) => [g.pageid, [g.lon, g.lat]]));
     // сначала точки — снимки подгрузятся следом
     for (const [pageid, coordinates] of picked) {
-      photoFeatures.set(pageid, { type: "Feature", geometry: { type: "Point", coordinates }, properties: { photo: `photo/${pageid}`, z } });
+      if (!photoFeatures.has(pageid)) photoFeatures.set(pageid, { type: "Feature", geometry: { type: "Point", coordinates }, properties: { photo: `photo/${pageid}`, z } });
     }
     map.getSource("ov-photos")?.setData(photoData());
     if (picked.size) {
@@ -1134,15 +1165,18 @@ async function loadPhotoCell(z, x, y) {
 
 function pumpPhotos() {
   while (photoActive < 3 && photoQueue.length) {
-    const [z, x, y] = photoQueue.shift();
+    const [z, x, y, dotsOnly] = photoQueue.shift();
     photoActive++;
-    loadPhotoCell(z, x, y).finally(() => { photoActive--; pumpPhotos(); });
+    loadPhotoCell(z, x, y, dotsOnly).finally(() => { photoActive--; pumpPhotos(); });
   }
 }
 
-// квадраты тайлов в кадре (переполненные — вместе с четвертинками), ближние к центру первыми
-function photoCellsInView() {
+// квадраты тайлов в кадре (переполненные — вместе с четвертинками), ближние к центру первыми;
+// издалека (sparse) — редкая проба: один квадрат примерно на PHOTO_PROBE_PX экрана
+function photoCellsInView(sparse = false) {
   const z = Math.min(16, Math.max(PHOTO_CELL_MIN_Z, Math.floor(map.getZoom())));
+  const tilePx = 512 * 2 ** (map.getZoom() - z);
+  const step = sparse ? Math.max(1, Math.ceil(PHOTO_PROBE_PX / tilePx)) : 1;
   const maxZ = Math.floor(map.getZoom()) + 1;
   // координаты в долях мира: 0…1 слева направо и сверху вниз
   const tx = (lon) => (lon + 180) / 360;
@@ -1152,13 +1186,14 @@ function photoCellsInView() {
   const visit = (cz, x, y) => {
     const n = 2 ** cz;
     cells.push([cz, x, y, Math.hypot((x + 0.5) / n - tx(c.lng), (y + 0.5) / n - ty(c.lat))]);
-    if (cz < maxZ && photoDense.has(`${cz}/${x}/${y}`)) {
+    if (!sparse && cz < maxZ && photoDense.has(`${cz}/${x}/${y}`)) {
       for (const [dx, dy] of [[0, 0], [1, 0], [0, 1], [1, 1]]) visit(cz + 1, 2 * x + dx, 2 * y + dy);
     }
   };
   const n = 2 ** z;
-  for (let x = Math.max(0, Math.floor(tx(b.getWest()) * n)); x <= Math.min(n - 1, Math.floor(tx(b.getEast()) * n)); x++) {
-    for (let y = Math.max(0, Math.floor(ty(b.getNorth()) * n)); y <= Math.min(n - 1, Math.floor(ty(b.getSouth()) * n)); y++) visit(z, x, y);
+  const from = (v) => Math.ceil(v / step) * step; // сетка пробы — одна и та же при сдвиге карты
+  for (let x = from(Math.max(0, Math.floor(tx(b.getWest()) * n))); x <= Math.min(n - 1, Math.floor(tx(b.getEast()) * n)); x += step) {
+    for (let y = from(Math.max(0, Math.floor(ty(b.getNorth()) * n))); y <= Math.min(n - 1, Math.floor(ty(b.getSouth()) * n)); y += step) visit(z, x, y);
   }
   return cells.sort((a, b2) => a[3] - b2[3]);
 }
@@ -1166,12 +1201,13 @@ function photoCellsInView() {
 function updatePhotos() {
   for (const [z, x, y] of photoQueue.splice(0)) photoCells.delete(`${z}/${x}/${y}`);
   if (!activeOverlays.has("photos") || map.getZoom() < photoDotZoom()) return;
-  for (const [z, x, y] of photoCellsInView()) {
+  const dotsOnly = map.getZoom() < photoLoadZoom();
+  for (const [z, x, y] of photoCellsInView(dotsOnly)) {
     const key = `${z}/${x}/${y}`;
     const state = photoCells.get(key);
-    if (state === true || state === "loading" || state > Date.now()) continue;
+    if (state === true || state === "loading" || state > Date.now() || (dotsOnly && state === "dots")) continue;
     photoCells.set(key, "loading");
-    if (photoQueue.push([z, x, y]) >= PHOTO_MAX_CELLS) break;
+    if (photoQueue.push([z, x, y, dotsOnly]) >= PHOTO_MAX_CELLS) break;
   }
   pumpPhotos();
 }
@@ -1600,7 +1636,7 @@ const myThumbQueue = [];
 const myThumbBusy = new Map(); // id → Promise url
 let myThumbActive = 0;
 function updateMyThumbs() {
-  if (!activeOverlays.has("myphotos") || map.getZoom() < photoDotZoom()) return;
+  if (!activeOverlays.has("myphotos") || map.getZoom() < photoLoadZoom()) return;
   const b = map.getBounds(), c = map.getCenter();
   myThumbQueue.length = 0;
   myThumbQueue.push(...[...myPhotoFeatures.values()]
@@ -2983,7 +3019,7 @@ function addOverlay(id) {
     // тоньше и чётче — растянутые 256-е тайлы давали широкую мутную полосу
     map.addSource(`ov-${id}`, { type: "raster", tileSize: 128, maxzoom: 18, attribution: TRAILS_ATTRIBUTION,
       tiles: [`https://tile.waymarkedtrails.org/${overlay.trails}/{z}/{x}/{y}.png`] });
-    map.addLayer({ id: `ov-${id}`, type: "raster", source: `ov-${id}`, minzoom: TRAILS_MIN_ZOOM, maxzoom: TRAILS_VECTOR_ZOOM }, before);
+    map.addLayer({ id: `ov-${id}`, type: "raster", source: `ov-${id}`, minzoom: Math.min(trailsMinZoom(), TRAILS_VECTOR_ZOOM), maxzoom: TRAILS_VECTOR_ZOOM }, before);
     addTrailLines(id, before);
   } else if (id === "beaches") {
     addBeaches(firstPoiLayer());
@@ -3352,6 +3388,9 @@ function updateScaleZooms() {
     map.setLayerZoomRange("ov-trail-poi-extra-near", trailPoiNearZoom(), 24);
   }
   for (const id of BEACH_LAYERS) if (map.getLayer(id)) map.setLayerZoomRange(id, beachMinZoom(), 24);
+  for (const id of ["ov-hiking", "ov-cycling", "ov-mtb"]) {
+    if (map.getLayer(id)) map.setLayerZoomRange(id, Math.min(trailsMinZoom(), TRAILS_VECTOR_ZOOM), TRAILS_VECTOR_ZOOM);
+  }
   if (map.getLayer("ov-my-albums")) {
     map.setLayerZoomRange("ov-my-albums", 0, photoDotZoom());
     map.setLayerZoomRange("ov-my-dots", photoDotZoom(), 24);
