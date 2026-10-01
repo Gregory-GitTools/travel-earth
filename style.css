@@ -369,16 +369,63 @@ span.tour-flag {
   line-height: 1;
 }
 
-.tour-row-all {
-  justify-content: flex-end;
-  gap: 4px;
-  font-size: 0.78rem;
-  font-weight: 600;
-  color: var(--light-muted);
+/* верхняя строка списка: «Справка» слева, «Свернуть/Развернуть все» справа */
+.tour-list-top {
+  display: flex;
+  justify-content: space-between;
+  padding: 0 2px 2px;
 }
 
-.tour-row-all .tour-row-name {
-  flex: none;
+.tour-list-tool {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border: none;
+  border-radius: 14px;
+  background: transparent;
+  color: var(--light-muted);
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.tour-list-tool:hover,
+.tour-list-tool.on {
+  background: rgba(255, 255, 255, 0.75);
+  color: var(--light-text);
+}
+
+.tour-list-help {
+  margin: 0 4px 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.8);
+  font-size: 0.78rem;
+  color: var(--light-text);
+}
+
+.tour-list-help p {
+  margin: 0 0 6px;
+}
+
+.tour-list-help pre {
+  margin: 0 0 6px;
+  font: 0.76rem/1.4 Consolas, "Cascadia Mono", monospace;
+  color: #8a3c00;
+}
+
+.tour-icon-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+  gap: 6px 4px;
+}
+
+.tour-icon-cell {
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .tour-row-text {

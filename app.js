@@ -2013,6 +2013,24 @@ function chooseTour(t) {
   openTour(t.id);
 }
 
+// справка списка: группы и значки задаются полями в файле экскурсии; все значки с подписями
+let tourListHelp = false;
+const TOUR_ICON_WORDS = ["город", "горы", "море", "поход", "замок", "музей", "гастро", "вино", "храм", "природа", "поезд", "лодка", "фото"];
+function tourListHelpBox() {
+  const box = Object.assign(document.createElement("div"), { className: "tour-list-help" });
+  box.innerHTML = `<p>Список строится из полей в шапке файла экскурсии — поменять можно самому, карандашом в панели или в любом редакторе:</p>`
+    + `<pre>Страна: Италия\nГород: Рим\nТип: город\nЗначок: замок</pre>`
+    + `<p>Страна — группа (с флагом), город — подгруппа, если в нём несколько экскурсий, тип — подпись. Нет «Город:» — экскурсия «по стране». Значок — одно из слов (или любой эмодзи; нет поля — по «Тип:»):</p>`;
+  const grid = Object.assign(document.createElement("div"), { className: "tour-icon-grid" });
+  for (const w of TOUR_ICON_WORDS) {
+    const cell = Object.assign(document.createElement("div"), { className: "tour-icon-cell" });
+    cell.innerHTML = `<span class="tour-row-pin">${tourIcon({ icon: w })}</span><span>${w}</span>`;
+    grid.append(cell);
+  }
+  box.append(grid);
+  return box;
+}
+
 function renderTourList() {
   const q = el("search-input").value.trim().toLowerCase();
   const all = [...tours.values()].filter((t) => !q
@@ -2045,16 +2063,25 @@ function renderTourList() {
     `<span class="tour-row-pin">${tourIcon(t)}</span><span class="tour-row-text"><span class="tour-row-title">${escapeHtml(t.title)}</span>`
     + `<span class="tour-row-sub">${escapeHtml([t.kind, t.region].filter(Boolean).join(" · "))}</span></span>`, () => chooseTour(t));
   const toggle = (key) => () => { tourOpen.has(key) ? tourOpen.delete(key) : tourOpen.add(key); tourCursor = key; renderTourList(); };
-  // свернуть/развернуть все — первой строкой
+  // верхняя строка: «?» — подсказка, справа — свернуть/развернуть все. Это не строки списка:
+  // стрелками по ним не ходят и рамкой не выделяются (Грегори: «область стрелки выделять не надо»)
+  const top = Object.assign(document.createElement("div"), { className: "tour-list-top" });
+  const helpBtn = Object.assign(document.createElement("button"), { className: `tour-list-tool${tourListHelp ? " on" : ""}`,
+    title: "Как задать группы и значки", innerHTML: `${INFO_ICON}<span>Справка</span>` });
+  helpBtn.addEventListener("click", () => { tourListHelp = !tourListHelp; renderTourList(); });
+  top.append(helpBtn);
   if (groupKeys.length && !q) {
     const allOpen = groupKeys.every((k) => tourOpen.has(k));
-    row("all", "tour-row-all", `<span class="tour-row-name">${allOpen ? "Свернуть все" : "Развернуть все"}</span>`
-      + `<span class="tour-row-chevron${allOpen ? " open" : ""}">${allOpen ? UNFOLD_ICON : FOLD_ICON}</span>`, () => {
+    const allBtn = Object.assign(document.createElement("button"), { className: "tour-list-tool",
+      innerHTML: `<span>${allOpen ? "Свернуть все" : "Развернуть все"}</span>${allOpen ? UNFOLD_ICON : FOLD_ICON}` });
+    allBtn.addEventListener("click", () => {
       if (allOpen) for (const k of groupKeys) tourOpen.delete(k); else for (const k of groupKeys) tourOpen.add(k);
-      tourCursor = "all";
       renderTourList();
     });
+    top.append(allBtn);
   }
+  rows.push(top);
+  if (tourListHelp) rows.push(tourListHelpBox());
   for (const country of [...tree.keys()].sort((a, b) => a.localeCompare(b, "ru"))) {
     const cities = tree.get(country);
     const count = [...cities.values()].flat().length;
