@@ -2849,21 +2849,50 @@ async function editTour(id) {
   // путь к папке экскурсий указывается в ⚙ (на каждой машине свой), а открывает файл локальный
   // сервер start.bat (tools/server.py, POST /open-file). Нет пути или сервера (GitHub Pages,
   // старый http.server) — файл открывается в новой вкладке только для чтения и объясняется почему
-  const fullPath = tourFilePath(t);
-  const link = Object.assign(document.createElement("a"), { className: "tour-file-link", href: "#",
-    textContent: fullPath || t.id, title: fullPath ? "Открыть в программе по умолчанию" : "Открыть в новой вкладке (только чтение)" });
+  const link = Object.assign(document.createElement("a"), { className: "tour-file-link", href: "#" });
+  const setLink = () => {
+    link.textContent = tourFilePath(t) || t.id;
+    link.title = tourFilePath(t) ? "Открыть в программе по умолчанию" : "Указать, где на диске лежит папка экскурсий";
+  };
+  setLink();
+  // путь к папке не задан — спросить прямо здесь, одним полем (в ⚙ то же самое поле)
+  const askPath = () => {
+    if (fileRow.querySelector(".tour-path-ask")) return;
+    const box = h("div", "tour-path-ask");
+    const input = Object.assign(document.createElement("input"), { type: "text", spellcheck: false,
+      placeholder: `например, E:\\MyFotos\\${t.id.slice(0, t.id.indexOf("/"))}` });
+    const ok = h("button", "text-btn", "Запомнить");
+    const done = () => {
+      if (!input.value.trim()) return;
+      localStorage.setItem(TOURS_PATH_KEY, input.value.trim());
+      if (el("tours-path")) el("tours-path").value = input.value.trim();
+      box.remove();
+      setLink();
+      status.textContent = "";
+      link.click();
+    };
+    ok.addEventListener("click", done);
+    input.addEventListener("keydown", (ev) => { if (ev.key === "Enter") { ev.preventDefault(); done(); } });
+    box.append(h("span", "", `Где на диске лежит папка «${t.id.slice(0, t.id.indexOf("/"))}»? Браузер знает только её имя — полный путь нужен, чтобы открыть файл в редакторе:`), input, ok);
+    fileRow.append(box);
+    input.focus();
+  };
   link.addEventListener("click", async (e) => {
     e.preventDefault();
-    if (fullPath) {
-      const res = await fetch("/open-file", { method: "POST", headers: { "Content-Type": "application/json", "X-Travel-Earth": "1" },
-        body: JSON.stringify({ path: fullPath }) }).catch(() => null);
-      if (res?.ok) { status.textContent = ""; return; }
-      status.textContent = res?.status === 404 && res.headers.get("Content-Type")?.includes("html")
-        ? "Файл не найден по этому пути — проверьте путь к папке в ⚙"
-        : "Открыть в редакторе может только карта, запущенная через start.bat (сервер tools/server.py). Пока — в новой вкладке, только чтение";
-    } else {
-      status.textContent = "Чтобы открывать в редакторе, укажите путь к папке экскурсий в ⚙. Пока — в новой вкладке, только чтение";
+    const fullPath = tourFilePath(t);
+    if (!fullPath) { askPath(); return; }
+    const res = await fetch("/open-file", { method: "POST", headers: { "Content-Type": "application/json", "X-Travel-Earth": "1" },
+      body: JSON.stringify({ path: fullPath }) }).catch(() => null);
+    if (res?.ok) { status.textContent = ""; return; }
+    if (res?.status === 404 && res.headers.get("Content-Type")?.includes("html")) {
+      // сервер есть, но файла по этому пути нет — путь к папке неверный: спросить заново
+      status.textContent = `Файл не найден: ${fullPath} — проверьте путь к папке`;
+      localStorage.removeItem(TOURS_PATH_KEY);
+      setLink();
+      askPath();
+      return;
     }
+    status.textContent = "Открыть в редакторе может только карта, запущенная через start.bat (сервер tools/server.py). Пока — в новой вкладке, только чтение";
     const file = await t.handle.getFile();
     const url = URL.createObjectURL(new Blob([await file.arrayBuffer()], { type: "text/plain;charset=utf-8" }));
     window.open(url, "_blank");
