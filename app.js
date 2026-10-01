@@ -3121,6 +3121,50 @@ const POI_FULL_ZOOM = 14;
 // зависит от широты, поэтому пересчитывается после каждого движения
 const AIRPORT_MAX_METERS_PER_100PX = 10000;
 const AIRPORT_CLASSES = ["international", "public", "regional"];
+// у многих настоящих аэропортов в OSM не указан тип — в тайлах класс "other" (Нуук, Гренландия:
+// Грегори — «самолёты нет»). Код IATA есть только у аэропортов с пассажирскими рейсами — такие
+// тоже аэропорты; лётные поля без кода (аэроклубы, частные полосы) по-прежнему не показываются
+const AIRPORT_FILTER = ["any", ["in", ["get", "class"], ["literal", AIRPORT_CLASSES]], ["has", "iata"]];
+// Но в тайлах такие аэропорты (класс "other") есть только с 10-го зума — раньше их нет вовсе,
+// а аэропорты видны с «5 км» (зум ~8,5). Поэтому их список берётся один раз из QLever: все
+// aeroway=aerodrome с кодом IATA, у которых тип не international/public/regional (~9000 по
+// миру, 4–5 с) — GeoJSON `te-air`, слой `poi-air-far` до AIRPORT_TILE_OTHER_ZOOM, дальше их
+// показывают сами тайлы. id — как в тайлах (osm_id·10 + тип), чтобы окно брало теги из OSM API
+const AIRPORT_TILE_OTHER_ZOOM = 10;
+let farAirports = null; // features, когда загружены
+let farAirportsLoading = false;
+const farAirportData = () => ({ type: "FeatureCollection", features: farAirports || [] });
+async function loadFarAirports() {
+  if (farAirports || farAirportsLoading) return;
+  farAirportsLoading = true;
+  const query = `PREFIX osmkey: <https://www.openstreetmap.org/wiki/Key:>
+PREFIX geo: <http://www.opengis.net/ont/geosparql#>
+PREFIX geof: <http://www.opengis.net/def/function/geosparql/>
+SELECT ?osm ?iata ?name ?nameRu (geof:centroid(?g) AS ?c) WHERE {
+  ?osm osmkey:aeroway "aerodrome" ; osmkey:iata ?iata ; geo:hasGeometry/geo:asWKT ?g .
+  OPTIONAL { ?osm osmkey:aerodrome ?type }
+  FILTER (!BOUND(?type) || !(?type IN ("international", "public", "regional")))
+  OPTIONAL { ?osm osmkey:name ?name }
+  OPTIONAL { ?osm <https://www.openstreetmap.org/wiki/Key:name:ru> ?nameRu }
+}`;
+  try {
+    const res = await fetch(QLEVER_URL, { method: "POST", headers: { Accept: "application/sparql-results+json" },
+      body: new URLSearchParams({ query }), signal: AbortSignal.timeout(60000) });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const types = { node: 1, way: 2, relation: 3 };
+    farAirports = (await res.json()).results.bindings.flatMap((b) => {
+      const m = b.osm.value.match(/(node|way|relation)\/(\d+)$/);
+      const c = b.c?.value.match(/-?[\d.]+/g)?.map(Number);
+      if (!m || !c) return [];
+      return [{ type: "Feature", id: Number(m[2]) * 10 + types[m[1]], geometry: { type: "Point", coordinates: c },
+        properties: { class: "other", iata: b.iata.value, name: b.name?.value || b.iata.value, ...(b.nameRu && { "name:ru": b.nameRu.value }) } }];
+    });
+    map.getSource("te-air")?.setData(farAirportData());
+  } catch {
+    setTimeout(() => activePoi?.airports && loadFarAirports(), TRAIL_POI_RETRY_MS);
+  }
+  farAirportsLoading = false;
+}
 
 // остановки автобусов и трамваев — только когда шкала показывает 100 м и меньше,
 // иначе они засыпают город флажками
@@ -3336,7 +3380,7 @@ function showStatus(text) {
 }
 
 // станции и места, остановки, станции фуникулёров и канатных дорог, аэропорты
-const POI_LAYERS = ["poi", "poi-stops", "poi-funicular", "poi-cable", "poi-air"];
+const POI_LAYERS = ["poi", "poi-stops", "poi-funicular", "poi-cable", "poi-air", "poi-air-far"];
 const AIRPORT_PIN = { glyph: "plane", color: "#546e7a" };
 // ядовито-зелёный с чёрным значком — фуникулёры трудно найти, пусть бросаются в глаза
 const FUNICULAR_PIN = { glyph: "funicular", color: "#39ff14", ink: "#000" };
@@ -3352,6 +3396,7 @@ function applyPoiLayer() {
     "poi-cable": !!activePoi?.lifts,
     "poi-lift-line": !!activePoi?.lifts,
     "poi-air": !!activePoi?.airports,
+    "poi-air-far": !!activePoi?.airports,
   };
   for (const [id, on] of Object.entries(show)) map.setLayoutProperty(id, "visibility", on ? "visible" : "none");
   if (!activePoi) return;
@@ -3361,6 +3406,8 @@ function applyPoiLayer() {
   map.setLayoutProperty("poi-funicular", "icon-image", pinImage(FUNICULAR_PIN.color, FUNICULAR_PIN.glyph, FUNICULAR_PIN.ink));
   map.setLayoutProperty("poi-cable", "icon-image", pinImage(CABLE_PIN.color, CABLE_PIN.glyph, CABLE_PIN.ink));
   map.setLayoutProperty("poi-air", "icon-image", pinImage(AIRPORT_PIN.color, AIRPORT_PIN.glyph));
+  map.setLayoutProperty("poi-air-far", "icon-image", pinImage(AIRPORT_PIN.color, AIRPORT_PIN.glyph));
+  if (activePoi.airports) loadFarAirports();
   applyPoiFilters();
   updateScaleZooms();
 }
@@ -3404,6 +3451,7 @@ function updateScaleZooms() {
   }
   if (!map.getLayer("poi-air")) return;
   map.setLayerZoomRange("poi-air", airportMinZoom(), 24);
+  map.setLayerZoomRange("poi-air-far", Math.min(airportMinZoom(), AIRPORT_TILE_OTHER_ZOOM), AIRPORT_TILE_OTHER_ZOOM);
   map.setLayerZoomRange("poi-stops", zoomForScale(STOP_MAX_METERS_PER_100PX), 24);
 }
 map.on("moveend", updateScaleZooms);
@@ -3636,7 +3684,7 @@ map.on("click", POI_LAYERS, async (evt) => {
   const f = evt.features[0];
   const p = f.properties;
   const name = p[`name:${uiLanguageCode()}`] || p.name;
-  const kind = f.layer.id === "poi-air"
+  const kind = f.layer.id.startsWith("poi-air")
     ? [AIRPORT_KIND_NAMES[p.class] || "Аэропорт", p.iata].filter(Boolean).join(" · ")
     : f.layer.id === "poi-funicular" ? "Станция фуникулёра"
     : POI_CLASS_KIND_NAMES[p.class] || POI_KIND_NAMES[p.subclass] || p.subclass;
@@ -4050,7 +4098,9 @@ map.on("style.load", () => {
   map.addSource("te-cable", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
   pinLayer("poi-cable", undefined, { source: "te-cable", maxzoom: POI_FULL_ZOOM });
   showCableStations();
-  pinLayer("poi-air", "aerodrome_label", { minzoom: 0, filter: ["in", ["get", "class"], ["literal", AIRPORT_CLASSES]] });
+  pinLayer("poi-air", "aerodrome_label", { minzoom: 0, filter: AIRPORT_FILTER });
+  map.addSource("te-air", { type: "geojson", data: farAirportData() });
+  pinLayer("poi-air-far", undefined, { source: "te-air", minzoom: 0, maxzoom: AIRPORT_TILE_OTHER_ZOOM });
   applyPoiLayer();
   applyOverlays();
 });
