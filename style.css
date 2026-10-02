@@ -1,5 +1,6 @@
 :root {
   color-scheme: dark;
+  --top-inset: 0px; /* высота полоски заголовка окна установленного приложения, см. window-controls-overlay */
   --light-panel: #fff;
   --light-hover: #f1f3f4;
   --light-text: #3c4043;
@@ -145,7 +146,7 @@ html, body {
    белая, как кнопки MapLibre справа внизу */
 .top-bar {
   position: fixed;
-  top: 10px;
+  top: calc(var(--top-inset) + 10px);
   left: 10px;
   right: 10px;
   display: flex;
@@ -178,8 +179,9 @@ html, body {
     -webkit-app-region: drag;
     z-index: 20;
   }
-  .top-bar {
-    top: calc(env(titlebar-area-height, 0px) + 10px);
+  /* всё, что привязано к верху окна, опускается вместе с верхней панелью (--top-inset) */
+  :root {
+    --top-inset: env(titlebar-area-height, 0px);
   }
 }
 
@@ -360,13 +362,15 @@ span.tour-flag {
   width: 26px;
   height: 26px;
   border-radius: 50%;
-  background: #ef6c00;
-  color: #fff;
+  /* как точка экскурсии на карте (Грегори): синий значок в тёмно-зелёном кольце */
+  background: #fff;
+  box-shadow: inset 0 0 0 2.5px #1b5e20;
+  color: #1e88e5;
 }
 
 .tour-row-pin svg {
-  width: 20px;
-  height: 20px;
+  width: 16px;
+  height: 16px;
 }
 
 .tour-icon-text {
@@ -979,7 +983,7 @@ span.tour-flag {
    нужно дать щелчком; кнопки столбиком вверху по центру */
 .access-bar {
   position: fixed;
-  top: 64px;
+  top: calc(var(--top-inset) + 64px);
   left: 50%;
   transform: translateX(-50%);
   z-index: 12;
@@ -1008,9 +1012,9 @@ span.tour-flag {
 /* панель экскурсии справа: дайджест — маршрут, точки, особенности, справки, источники */
 .tour-panel {
   position: fixed;
-  top: 62px;
+  top: calc(var(--top-inset) + 62px);
   left: 10px;
-  max-height: calc(100vh - 62px - 120px);
+  max-height: calc(100vh - var(--top-inset) - 62px - 120px);
   z-index: 9; /* под строкой поиска: открытый список экскурсий ложится поверх */
   width: 340px;
   max-width: calc(100vw - 20px);
@@ -1268,7 +1272,7 @@ span.tour-flag {
     left: 10px;
     right: 10px;
     bottom: auto;
-    top: 64px;
+    top: calc(var(--top-inset) + 64px);
     width: auto;
     aspect-ratio: 16 / 9;
   }
@@ -1596,7 +1600,7 @@ button.tour-sec-title:hover {
   }
 
   .tour-panel.editing {
-    top: 64px;
+    top: calc(var(--top-inset) + 64px);
     height: auto;
     max-height: none;
   }
