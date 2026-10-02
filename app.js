@@ -1790,6 +1790,7 @@ map.on("dblclick", (evt) => {
 // щелчок по остановке в панели — карта перелетает к ней. Файлы перечитываются, когда окно
 // снова в фокусе — правка в Блокноте видна сразу после переключения
 const TOUR_COLOR = "#ef6c00";
+const TOUR_ICON_COLOR = "#e53935"; // значки экскурсий на карте, в списке и в панели
 const TOUR_TEXT_RE = /\.(md|txt)$/i;
 const TOUR_LAYERS = ["ov-tour-marks", "ov-tour-labels", "ov-tour-stops", "ov-tour-sel"];
 let tourSel = null; // { tour, n } — выделенная остановка
@@ -1982,24 +1983,25 @@ function tourGroup(t) {
   return t.city ? "city" : "";
 }
 
-// значок точки экскурсии: белый значок группы на кружке цвета остановок в белой обводке
-// (Грегори: «в тон номерам»), 26 px; стоит над точкой, чтобы не закрывать первую остановку
+// значок точки экскурсии: красный значок группы на белом кружке без каёмки, вместо неё —
+// мягкая тень (Грегори: «как у кайтера в Windy»), 26 px; стоит над точкой, чтобы не
+// закрывать первую остановку. Холст с запасом под тень, кружок чуть выше середины
 function tourHomeImage(d) {
-  const ctx = new OffscreenCanvas(52, 52).getContext("2d");
+  const ctx = new OffscreenCanvas(64, 64).getContext("2d");
+  ctx.shadowColor = "rgba(0, 0, 0, 0.5)";
+  ctx.shadowBlur = 8;
+  ctx.shadowOffsetY = 2;
   ctx.beginPath();
-  ctx.arc(26, 26, 25, 0, 2 * Math.PI);
+  ctx.arc(32, 30, 26, 0, 2 * Math.PI);
   ctx.fillStyle = "#fff";
   ctx.fill();
-  ctx.beginPath();
-  ctx.arc(26, 26, 21, 0, 2 * Math.PI);
-  ctx.fillStyle = TOUR_COLOR;
-  ctx.fill();
-  // значок 24×24 → 26 px по центру
-  ctx.translate(13, 13);
-  ctx.scale(26 / 24, 26 / 24);
-  ctx.fillStyle = "#fff";
+  ctx.shadowColor = "transparent";
+  // значок 24×24 → 32 px по центру кружка
+  ctx.translate(16, 14);
+  ctx.scale(32 / 24, 32 / 24);
+  ctx.fillStyle = TOUR_ICON_COLOR;
   ctx.fill(new Path2D(d));
-  return ctx.getImageData(0, 0, 52, 52);
+  return ctx.getImageData(0, 0, 64, 64);
 }
 
 // кружок остановки: оранжевый в белой (у выделенной — розовой) обводке, 22 px; номер — текстом поверх
@@ -2261,7 +2263,7 @@ function addTours(before) {
     if (!map.hasImage(`tour-home-${id}`)) map.addImage(`tour-home-${id}`, tourHomeImage(d), { pixelRatio: 2 });
   }
   map.addLayer({ id: "ov-tour-marks", type: "symbol", source: "ov-tours", maxzoom: 9, filter: kind("tour"),
-    layout: { "icon-image": ["concat", "tour-home-", ["get", "group"]], "icon-anchor": "bottom", "icon-offset": [0, -10],
+    layout: { "icon-image": ["concat", "tour-home-", ["get", "group"]], "icon-anchor": "bottom", "icon-offset": [0, -6],
       "icon-allow-overlap": true, "icon-ignore-placement": true } }, before);
   map.addLayer({ id: "ov-tour-labels", type: "symbol", source: "ov-tours", maxzoom: 9, filter: kind("tour"),
     layout: { "text-field": ["get", "title"], "text-font": styleFont(), "text-size": 12, "text-anchor": "left",
@@ -3039,7 +3041,8 @@ onHover(TOUR_LAYERS, (evt) => {
   if (trailPoiHover === p.hover && trailPoiPopup?.isOpen()) return;
   trailPoiHover = p.hover;
   const t = tours.get(p.tour);
-  openMediaPopup(evt.features[0].geometry.coordinates, 12, "260px",
+  // подсказка точки экскурсии — над значком, который стоит над точкой (Грегори: «перекрывает значок»)
+  openMediaPopup(evt.features[0].geometry.coordinates, p.kind === "stop" ? 12 : 40, "260px",
     `<div class="popup-title">${escapeHtml(p.kind === "stop" ? `${p.n}. ${p.title}` : p.title)}</div>`
     + `<div class="popup-kind">${escapeHtml(p.kind === "stop" ? `Экскурсия «${t?.title || ""}»` : [t?.region, TOUR_GROUPS[p.group]?.name || "экскурсия"].filter(Boolean).join(" · "))}</div>`
     + `<div class="popup-row popup-muted">Щелчок — открыть экскурсию</div>`);

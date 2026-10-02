@@ -362,9 +362,10 @@ span.tour-flag {
   width: 26px;
   height: 26px;
   border-radius: 50%;
-  /* как точка экскурсии на карте (Грегори): белый значок группы на кружке цвета остановок */
-  background: #ef6c00;
-  color: #fff;
+  /* как точка экскурсии на карте (Грегори): красный значок на белом кружке, тень вместо каёмки */
+  background: #fff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+  color: #e53935;
 }
 
 .tour-row-pin svg {
