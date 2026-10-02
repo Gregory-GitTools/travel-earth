@@ -505,9 +505,9 @@ const TRAIL_POI_ICONS = {
   drinking_water: { color: "#0288d1", path: "M12 2.5S5 10.5 5 15a7 7 0 0 0 14 0c0-4.5-7-12.5-7-12.5z" },
   toilets: { color: "#0288d1", text: "WC" },
   // пляж — наклонный зонтик на песке, сёрфинг — кайтер; оба ярко-жёлтые (Грегори): воздушный змей, стропы, райдер на доске
-  beach: { color: BRIGHT_YELLOW, path: "M1.53 16.1A8.5 8.5 0 0 1 16.55 8.12A2.83 2.83 0 0 0 11.54 10.78A2.83 2.83 0 0 0 6.54 13.44" +
+  beach: { color: BRIGHT_YELLOW, shadow: true, path: "M1.53 16.1A8.5 8.5 0 0 1 16.55 8.12A2.83 2.83 0 0 0 11.54 10.78A2.83 2.83 0 0 0 6.54 13.44" +
     "A2.83 2.83 0 0 0 1.53 16.1z M8.29 12.51L9.79 11.71L14.25 20.1L12.75 20.9z M2 20h20v2.5H2z" },
-  kitesurfing: { color: BRIGHT_YELLOW, path: "M11.5 4.2Q17.5 -0.4 23.5 5.2L21.8 6.9Q17.5 3.1 12.7 6z M11.83 5.20L11.93 12.60L12.47 12.60L12.37 5.20z M22.45 " +
+  kitesurfing: { color: BRIGHT_YELLOW, shadow: true, path: "M11.5 4.2Q17.5 -0.4 23.5 5.2L21.8 6.9Q17.5 3.1 12.7 6z M11.83 5.20L11.93 12.60L12.47 12.60L12.37 5.20z M22.45 " +
     "5.87L12.05 12.37L12.35 12.83L22.75 6.33z M7.60 7.65a1.75 1.75 0 1 1 0 3.50a1.75 1.75 0 1 1 0 -3.50z M7.22 " +
     "11.26L5.22 15.66L7.58 16.74L9.58 12.34z M8.27 12.44L12.07 13.24L12.33 11.96L8.53 11.16z M6.10 17.10L9.10 " +
     "18.10L9.70 16.30L6.70 15.30z M8.79 17.79L10.99 20.09L12.21 18.91L10.01 16.61z M5.50 16.51L6.90 20.51L8.70 " +
@@ -566,11 +566,14 @@ function addTrailPoi() {
 
 function trailPoiImage(kind) {
   if (map.hasImage(`trail-poi-${kind}`)) return;
-  const { color, path, text, evenodd, white } = TRAIL_POI_ICONS[kind];
+  const { color, path, text, evenodd, white, shadow } = TRAIL_POI_ICONS[kind];
   // без белой обводки — с ней значки выглядели размытыми (Грегори)
   const size = 56; // pixelRatio 2: символ 24 px и поле по краям
   const ctx = Object.assign(document.createElement("canvas"), { width: size, height: size }).getContext("2d");
   ctx.fillStyle = color;
+  // ярко-жёлтые (пляж, кайтер) — в мягкой тёмной тени, как кайтер в Windy (Грегори): без неё
+  // жёлтый теряется на светлой карте и на 3D-домах
+  if (shadow) Object.assign(ctx, { shadowColor: "rgba(0, 0, 0, 0.85)", shadowBlur: 6, shadowOffsetY: 2 });
   if (text) {
     ctx.font = "bold 26px Arial, sans-serif";
     ctx.textAlign = "center";
@@ -583,6 +586,7 @@ function trailPoiImage(kind) {
     const shape = new Path2D(path);
     ctx.fill(shape, evenodd ? "evenodd" : "nonzero");
     if (white) {
+      ctx.shadowColor = "transparent";
       ctx.fillStyle = "#fff";
       ctx.fill(new Path2D(white));
     }
