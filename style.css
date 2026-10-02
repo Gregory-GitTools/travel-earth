@@ -1577,13 +1577,23 @@ button.tour-sec-title:hover {
   color: #1a73e8;
 }
 
+/* телефон: панель экскурсии — шторкой снизу, над плиткой карт (сверху её закрывали строка
+   поиска и слайд-шоу); слайд-шоу — сверху под поиском, между ними — карта с остановкой */
 @media (max-width: 600px) {
   .tour-panel {
     top: auto;
+    bottom: 108px;
     left: 10px;
     right: 10px;
     width: auto;
-    height: 55vh;
+    max-height: 38vh;
+    z-index: 11;
+  }
+
+  .tour-panel.editing {
+    top: 64px;
+    height: auto;
+    max-height: none;
   }
 }
 

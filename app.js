@@ -2315,7 +2315,7 @@ function closeTourPanel() {
   tourPanel.hidden = true;
   tourPanelId = null;
   tourEditing = false;
-  speechSynthesis?.cancel();
+  stopSpeech();
   selectTourStop(null);
 }
 
@@ -2357,7 +2357,7 @@ function stopNarration(sec) {
 function startTourPlay(id, from = 0) {
   const t = tours.get(id);
   if (!t) return;
-  speechSynthesis?.cancel();
+  stopSpeech();
   for (const b of document.querySelectorAll(".speaking")) b.classList.remove("speaking");
   const stops = t.sections.filter((sec) => sec.n && sec.point);
   tourPlay = { id, stops, i: from, paused: false, run: {} };
@@ -2369,7 +2369,7 @@ function stopTourPlay() {
   if (!tourPlay) return;
   tourPlay.run = null;
   tourPlay = null;
-  speechSynthesis?.cancel();
+  stopSpeech();
   hideSlides();
   renderTourPlayer();
 }
@@ -2395,7 +2395,7 @@ async function playTourStep() {
     // точка — в свободной части кадра: справа панель, внизу слева слайд-шоу
     const narrow = matchMedia("(max-width: 600px)").matches;
     map.flyTo({ center: sec.point, zoom: Math.max(14, Math.min(map.getZoom(), 15)), duration: 3000,
-      offset: narrow ? [0, 110] : [190, -100] });
+      offset: narrow ? [0, -70] : [190, -100] });
     await new Promise((r) => { map.once("moveend", r); setTimeout(r, 4000); });
     if (!alive()) return;
     await speakText(stopNarration(sec));
@@ -2417,7 +2417,7 @@ function jumpTourPlay(tour, n) {
   if (i < 0) return false;
   tourPlay.i = i;
   tourPlay.paused = false;
-  speechSynthesis.cancel();
+  stopSpeech();
   playTourStep();
   return true;
 }
@@ -2426,14 +2426,14 @@ function tourPlayGo(delta) {
   if (!tourPlay) return;
   tourPlay.i = Math.max(-1, Math.min(tourPlay.stops.length - 1, tourPlay.i + delta));
   tourPlay.paused = false;
-  speechSynthesis.cancel();
+  stopSpeech();
   playTourStep();
 }
 
 function tourPlayPause() {
   if (!tourPlay) return;
   tourPlay.paused = !tourPlay.paused;
-  if (tourPlay.paused) { tourPlay.run = null; speechSynthesis.cancel(); clearInterval(slideTimer); renderTourPlayer(); }
+  if (tourPlay.paused) { tourPlay.run = null; stopSpeech(); clearInterval(slideTimer); renderTourPlayer(); }
   else playTourStep();
 }
 
@@ -2586,17 +2586,24 @@ function speak(text, btn) {
   if (!("speechSynthesis" in window)) return;
   const was = btn?.classList.contains("speaking");
   stopTourPlay();
-  speechSynthesis.cancel();
+  stopSpeech();
   for (const b of document.querySelectorAll(".speaking")) b.classList.remove("speaking");
   if (was) return;
   btn?.classList.add("speaking");
   speakText(text).then(() => btn?.classList.remove("speaking"));
 }
 
+// остановить речь — только если она идёт: на Android Chrome cancel() вплотную перед speak()
+// глотает новую фразу (на телефоне Грегори не было звука)
+function stopSpeech() {
+  if ("speechSynthesis" in window && (speechSynthesis.speaking || speechSynthesis.pending)) speechSynthesis.cancel();
+}
+
 // прочитать текст выбранным голосом; промис — когда дочитано (или прервано cancel)
 function speakText(text) {
   return new Promise((resolve) => {
     if (!("speechSynthesis" in window) || !text) { resolve(); return; }
+    speechSynthesis.resume(); // Chrome иногда держит синтезатор на паузе
     const voice = pickVoice(), rate = Number(localStorage.getItem(VOICE_RATE_KEY)) || 1;
     const parts = text.match(/[^.!?…]+[.!?…]*\s*/g)?.map((x) => x.trim()).filter(Boolean) || [text];
     parts.forEach((part, i) => {
@@ -2605,7 +2612,16 @@ function speakText(text) {
       if (voice) u.voice = voice;
       u.rate = rate;
       if (i === parts.length - 1) u.onend = () => resolve();
-      u.onerror = () => resolve();
+      u.onerror = (e) => {
+        // прервали сами (стоп, переход) — не ошибка; остальное — показать, почему тишина
+        if (e.error !== "interrupted" && e.error !== "canceled") {
+          flashStatus(e.error === "not-allowed" ? "Озвучка: браузер не разрешил — нажмите «плей» ещё раз"
+            : e.error === "language-unavailable" || e.error === "voice-unavailable"
+              ? "Озвучка: на устройстве нет русского голоса — установите его в настройках синтеза речи"
+              : `Озвучка не работает: ${e.error}`);
+        }
+        resolve();
+      };
       speechSynthesis.speak(u);
     });
     // Chrome иногда не присылает onend — тогда «дочитано», когда синтезатор замолчал
@@ -2851,7 +2867,7 @@ async function editTour(id) {
   let text;
   try { text = new TextDecoder("utf-8", { fatal: true }).decode(bytes); } catch { text = new TextDecoder("windows-1251").decode(bytes); }
   tourEditing = true;
-  speechSynthesis?.cancel();
+  stopSpeech();
   const h = (tag, cls, txt) => Object.assign(document.createElement(tag), { className: cls || "", textContent: txt || "" });
   const area = Object.assign(document.createElement("textarea"), { className: "tour-editor", value: text, spellcheck: true });
   const status = h("span", "tour-edit-status");
