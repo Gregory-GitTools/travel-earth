@@ -1790,6 +1790,7 @@ map.on("dblclick", (evt) => {
 // щелчок по остановке в панели — карта перелетает к ней. Файлы перечитываются, когда окно
 // снова в фокусе — правка в Блокноте видна сразу после переключения
 const TOUR_COLOR = "#ef6c00";
+const TOUR_HOME_RING = "#1b5e20", TOUR_HOME_DROP = "#1e88e5";
 const TOUR_TEXT_RE = /\.(md|txt)$/i;
 const TOUR_LAYERS = ["ov-tour-marks", "ov-tour-labels", "ov-tour-stops", "ov-tour-sel"];
 let tourSel = null; // { tour, n } — выделенная остановка
@@ -1947,13 +1948,45 @@ const tourData = () => {
       features.push({ type: "Feature", geometry: { type: "Point", coordinates: sec.point },
         properties: { kind: "stop", tour: t.id, n: sec.n, title: sec.title, hover: `tour/${t.id}/${sec.n}`, off, textOff: off.map((v) => v / 11) } });
     });
-    const at = t.point || stops[0]?.point;
+    const at = tourHome(t);
     if (at) features.push({ type: "Feature", geometry: { type: "Point", coordinates: at },
       properties: { kind: "tour", tour: t.id, title: t.title, hover: `tour/${t.id}` } });
   }
   return { type: "FeatureCollection", features };
 };
 const refreshTours = () => map.getSource("ov-tours")?.setData(tourData());
+
+// точка экскурсии — регион, если он рядом с остановками (город); регион-страна («Египет» —
+// середина пустыни) далеко — тогда первая остановка (Грегори: «недалеко от первой точки»)
+function tourHome(t) {
+  const stop0 = t.sections.find((sec) => sec.n && sec.point)?.point;
+  return t.point && (!stop0 || kmBetween(t.point, stop0) < 50) ? t.point : stop0 || t.point;
+}
+
+// значок точки экскурсии: синяя капля в тёмно-зелёном кольце (Грегори), 26 px; стоит над точкой,
+// чтобы не закрывать кружок первой остановки
+function tourHomeImage() {
+  const ctx = new OffscreenCanvas(52, 52).getContext("2d");
+  ctx.beginPath();
+  ctx.arc(26, 26, 24, 0, 2 * Math.PI);
+  ctx.fillStyle = "#fff";
+  ctx.fill();
+  ctx.lineWidth = 5;
+  ctx.strokeStyle = TOUR_HOME_RING;
+  ctx.stroke();
+  // капля остриём вниз: окружность r=9 с центром (26,22) и касательные к острию (26,40)
+  ctx.beginPath();
+  ctx.arc(26, 22, 9, Math.PI - Math.asin(9 / 18), Math.asin(9 / 18));
+  ctx.lineTo(26, 40);
+  ctx.closePath();
+  ctx.fillStyle = TOUR_HOME_DROP;
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(26, 22, 3.5, 0, 2 * Math.PI);
+  ctx.fillStyle = "#fff";
+  ctx.fill();
+  return ctx.getImageData(0, 0, 52, 52);
+}
 
 // кружок остановки: оранжевый в белой (у выделенной — розовой) обводке, 22 px; номер — текстом поверх
 function tourStopImage(ring = "#fff") {
@@ -2205,11 +2238,13 @@ function addTours(before) {
       "text-offset": ["array", "number", 2, ["get", "textOff"]],
       "icon-allow-overlap": true, "text-allow-overlap": true, "icon-ignore-placement": true, "text-ignore-placement": true },
     paint: { "text-color": "#fff" } }, before);
-  map.addLayer({ id: "ov-tour-marks", type: "circle", source: "ov-tours", maxzoom: 9, filter: kind("tour"),
-    paint: { "circle-color": TOUR_COLOR, "circle-radius": 7, "circle-stroke-color": "#fff", "circle-stroke-width": 2 } }, before);
+  if (!map.hasImage("tour-home")) map.addImage("tour-home", tourHomeImage(), { pixelRatio: 2 });
+  map.addLayer({ id: "ov-tour-marks", type: "symbol", source: "ov-tours", maxzoom: 9, filter: kind("tour"),
+    layout: { "icon-image": "tour-home", "icon-anchor": "bottom", "icon-offset": [0, -10],
+      "icon-allow-overlap": true, "icon-ignore-placement": true } }, before);
   map.addLayer({ id: "ov-tour-labels", type: "symbol", source: "ov-tours", maxzoom: 9, filter: kind("tour"),
     layout: { "text-field": ["get", "title"], "text-font": styleFont(), "text-size": 12, "text-anchor": "left",
-      "text-offset": [0.9, 0], "text-optional": true },
+      "text-offset": [1.3, -1.9], "text-optional": true },
     // на тёмной карте и спутнике — светлые с тёмной обводкой (Грегори: «в инверсию в зависимости от фона»)
     paint: darkBasemap() ? { "text-color": "#ffe0b2", "text-halo-color": "rgba(0,0,0,0.85)", "text-halo-width": 1.5 }
       : { "text-color": "#8a3c00", "text-halo-color": "rgba(255,255,255,0.9)", "text-halo-width": 1.5 } }, before);
@@ -2384,11 +2419,7 @@ async function playTourStep() {
   if (play.i < 0) {
     // вступление: вся поездка в кадре и сразу картинки — пока они грузятся, начинается рассказ
     openTour(play.id);
-    // точка региона — если это город рядом с остановками; регион-страна («Египет» — середина
-    // пустыни) фото не даёт, тогда картинки первой остановки
-    const stop0 = play.stops[0]?.point;
-    const nearStops = t.point && stop0 && Math.hypot(t.point[0] - stop0[0], t.point[1] - stop0[1]) < 0.5;
-    const first = (nearStops || !stop0 ? t.point : stop0);
+    const first = tourHome(t);
     if (first) showSlides(first);
     await speakText([t.title, ...t.idea].join(". "));
   } else {
