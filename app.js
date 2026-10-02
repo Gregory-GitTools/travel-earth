@@ -2384,7 +2384,11 @@ async function playTourStep() {
   if (play.i < 0) {
     // вступление: вся поездка в кадре и сразу картинки — пока они грузятся, начинается рассказ
     openTour(play.id);
-    const first = t.point || play.stops[0]?.point;
+    // точка региона — если это город рядом с остановками; регион-страна («Египет» — середина
+    // пустыни) фото не даёт, тогда картинки первой остановки
+    const stop0 = play.stops[0]?.point;
+    const nearStops = t.point && stop0 && Math.hypot(t.point[0] - stop0[0], t.point[1] - stop0[1]) < 0.5;
+    const first = (nearStops || !stop0 ? t.point : stop0);
     if (first) showSlides(first);
     await speakText([t.title, ...t.idea].join(". "));
   } else {
