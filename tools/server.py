@@ -1,6 +1,8 @@
 """Локальный сервер Travel Earth для start.bat: раздаёт папку приложения, как
 `python -m http.server`, и умеет одно сверх того — открыть файл экскурсии в программе
-Windows по умолчанию (Блокнот, VS Code — что назначено для .md/.txt).
+Windows по умолчанию (Блокнот, VS Code — что назначено для .md/.txt) и создать ярлыки на
+рабочем столе (POST /install-shortcuts — запускает install_desktop_shortcut.vbs этой папки:
+кнопка «Установить на рабочий стол» в ⚙ локальной версии).
 
 Страница сама запустить программу не может, поэтому просит сервер: POST /open-file
 с телом {"path": "E:\\...\\Рим — три дня.md"} и заголовком X-Travel-Earth. Защита:
@@ -14,15 +16,23 @@ Windows по умолчанию (Блокнот, VS Code — что назнач
 import http.server
 import json
 import os
+import subprocess
 import sys
 
 ALLOWED = (".md", ".txt")
+APP_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 class Handler(http.server.SimpleHTTPRequestHandler):
     def do_POST(self):
-        if self.path != "/open-file" or self.headers.get("X-Travel-Earth") != "1":
+        if self.headers.get("X-Travel-Earth") != "1" or self.path not in ("/open-file", "/install-shortcuts"):
             self.send_error(404)
+            return
+        if self.path == "/install-shortcuts":
+            # установщик сам покажет окно «Готово» с тем, что создал
+            subprocess.Popen(["wscript", os.path.join(APP_DIR, "install_desktop_shortcut.vbs")], cwd=APP_DIR)
+            self.send_response(204)
+            self.end_headers()
             return
         try:
             length = int(self.headers.get("Content-Length") or 0)

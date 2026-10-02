@@ -4631,17 +4631,39 @@ document.addEventListener("keydown", (evt) => {
   if (evt.key === "Escape") closeAboutModal();
 });
 
-// "Установить на рабочий стол" — кнопка видна всегда, но включается только когда браузер
-// сам решил, что приложение устанавливаемо, и прислал beforeinstallprompt (так же, как в
-// photo-editor). Установленное приложение открывает localhost — сервер из start.bat
-// должен быть запущен
+// "Установить на рабочий стол". Версия с этого компьютера (localhost) — кнопка просит сервер
+// start.bat запустить install_desktop_shortcut.vbs: ярлыки на start.bat в Chrome и Edge (Грегори:
+// установка из браузера ставила веб-версию или была неактивна, а локальную не ставила — сама
+// страница ярлык к start.bat создать не может). Веб-версия (GitHub Pages) — обычная установка
+// браузера: кнопка включается, когда браузер прислал beforeinstallprompt; если приложение уже
+// установлено, браузер его не присылает — тогда подсказка, а не немая серая кнопка
+const isLocal = ["localhost", "127.0.0.1"].includes(location.hostname);
+const installHint = el("about-install-hint");
 let deferredInstallPrompt = null;
+if (isLocal) {
+  el("install-btn").disabled = false;
+  el("install-btn").title = "Ярлыки «Travel Earth» (Chrome) и «Travel Earth (Edge)» на рабочем столе — запускают start.bat";
+  installHint.innerHTML = "Ярлыки запускают <code>start.bat</code> этой папки — сервер поднимется сам.";
+} else if (matchMedia("(display-mode: standalone), (display-mode: window-controls-overlay)").matches) {
+  installHint.textContent = "Приложение уже установлено — это его окно.";
+} else {
+  installHint.innerHTML = "Если кнопка неактивна — веб-версия уже установлена: «Travel Earth» есть в меню Пуск. "
+    + "Версия с этого компьютера ставится из папки проекта: <code>install_desktop_shortcut.vbs</code>.";
+}
 window.addEventListener("beforeinstallprompt", (evt) => {
   evt.preventDefault();
+  if (isLocal) return;
   deferredInstallPrompt = evt;
   el("install-btn").disabled = false;
+  installHint.textContent = "";
 });
 el("install-btn").addEventListener("click", async () => {
+  if (isLocal) {
+    const res = await fetch("/install-shortcuts", { method: "POST", headers: { "X-Travel-Earth": "1" } }).catch(() => null);
+    installHint.innerHTML = res?.ok ? "Запущен установщик — окно «Готово» покажет, какие ярлыки созданы."
+      : "Сервер не ответил. Закройте окно «Travel Earth server» и запустите <code>start.bat</code> заново — или запустите <code>install_desktop_shortcut.vbs</code> из папки проекта.";
+    return;
+  }
   if (!deferredInstallPrompt) return;
   deferredInstallPrompt.prompt();
   await deferredInstallPrompt.userChoice;
@@ -4650,10 +4672,8 @@ el("install-btn").addEventListener("click", async () => {
 });
 window.addEventListener("appinstalled", () => {
   deferredInstallPrompt = null;
-  el("install-btn").disabled = true;
+  if (!isLocal) el("install-btn").disabled = true;
 });
-// подсказка про start.bat нужна только при запуске с локального сервера, не на GitHub Pages
-el("about-install-hint").hidden = !["localhost", "127.0.0.1"].includes(location.hostname);
 
 if ("serviceWorker" in navigator) {
   navigator.serviceWorker.register("sw.js").catch(() => {});
