@@ -1752,7 +1752,7 @@ function showAlbumInfo(f) {
   openMediaPopup(f.geometry.coordinates, 10, "260px", `<div class="popup-title">${escapeHtml(p.title)}</div>`
     + `<div class="popup-kind">${escapeHtml(`Альбом · ${p.count} фото`)}</div>`
     + (p.excursion ? `<div class="popup-row">${escapeHtml(`Экскурсия: ${p.excursion}`)}</div>` : "")
-    + `<div class="popup-row popup-muted">${escapeHtml(canOpenGallery() ? "Щелчок — к альбому, двойной — открыть" : "Нажмите — к альбому")}</div>`);
+    + `<div class="popup-row popup-muted">${escapeHtml(canOpenGallery() ? "Щелчок — к альбому, двойной — открыть фотогалерею" : "Нажмите — к альбому")}</div>`);
   trailPoiPopup.on("close", () => { if (trailPoiHover === p.album) trailPoiHover = null; });
   keepTrailPoiInfoOnHover();
 }
@@ -1790,7 +1790,6 @@ map.on("dblclick", (evt) => {
 // щелчок по остановке в панели — карта перелетает к ней. Файлы перечитываются, когда окно
 // снова в фокусе — правка в Блокноте видна сразу после переключения
 const TOUR_COLOR = "#ef6c00";
-const TOUR_HOME_RING = "#1b5e20", TOUR_HOME_DROP = "#1e88e5";
 const TOUR_TEXT_RE = /\.(md|txt)$/i;
 const TOUR_LAYERS = ["ov-tour-marks", "ov-tour-labels", "ov-tour-stops", "ov-tour-sel"];
 let tourSel = null; // { tour, n } — выделенная остановка
@@ -1950,7 +1949,7 @@ const tourData = () => {
     });
     const at = tourHome(t);
     if (at) features.push({ type: "Feature", geometry: { type: "Point", coordinates: at },
-      properties: { kind: "tour", tour: t.id, title: t.title, hover: `tour/${t.id}` } });
+      properties: { kind: "tour", tour: t.id, title: t.title, group: tourGroup(t) || "pin", hover: `tour/${t.id}` } });
   }
   return { type: "FeatureCollection", features };
 };
@@ -1963,28 +1962,43 @@ function tourHome(t) {
   return t.point && (!stop0 || kmBetween(t.point, stop0) < 50) ? t.point : stop0 || t.point;
 }
 
-// значок точки экскурсии: синяя капля в тёмно-зелёном кольце (Грегори), 26 px; стоит над точкой,
-// чтобы не закрывать кружок первой остановки
-function tourHomeImage() {
+// группы экскурсий (Грегори): по стране, город, гастро, развлечения — по «Тип:» или «Значок:»;
+// без них — «город», если в шапке есть «Город:», иначе капля. У группы свой белый значок —
+// на карте, в списке и в шапке панели, её название — в подсказке
+const TOUR_PIN_D = "M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5a2.5 2.5 0 0 1 0-5 2.5 2.5 0 0 1 0 5z";
+const TOUR_GROUPS = {
+  country: { name: "экскурсия по стране", words: ["по стране", "страна", "по региону", "регион"],
+    d: "M14.4 6L14 4H5v17h2v-7h5.6l.4 2h7V6z" },
+  city: { name: "экскурсия по городу", words: ["город", "города", "по городу"],
+    d: "M15 11V5l-3-3-3 3v2H3v14h18V11h-6zm-8 8H5v-2h2v2zm0-4H5v-2h2v2zm0-4H5V9h2v2zm6 8h-2v-2h2v2zm0-4h-2v-2h2v2zm0-4h-2V9h2v2zm0-4h-2V5h2v2zm6 12h-2v-2h2v2zm0-4h-2v-2h2v2z" },
+  food: { name: "гастрономическая экскурсия", words: ["гастро", "гастрономия", "еда", "кухня"],
+    d: "M11 9H9V2H7v7H5V2H3v7c0 2.12 1.66 3.84 3.75 3.97V22h2.5v-9.03C11.34 12.84 13 11.12 13 9V2h-2v7zm5-3v8h2.5v8H21V2c-2.76 0-5 2.24-5 4z" },
+  fun: { name: "развлечения", words: ["развлечения", "развлечение", "отдых"],
+    d: "M20 12c0-1.1.9-2 2-2V6c0-1.1-.9-2-2-2H4c-1.1 0-1.99.9-1.99 2v4c1.1 0 1.99.9 1.99 2s-.89 2-2 2v4c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2v-4c-1.1 0-2-.9-2-2zm-4.42 4.8L12 14.5l-3.58 2.3 1.08-4.12-3.29-2.69 4.24-.25L12 5.8l1.54 3.95 4.24.25-3.29 2.69 1.09 4.11z" },
+};
+function tourGroup(t) {
+  const words = [t.kind, t.icon].map((w) => (w || "").trim().toLowerCase());
+  for (const [id, g] of Object.entries(TOUR_GROUPS)) if (words.some((w) => g.words.includes(w))) return id;
+  return t.city ? "city" : "";
+}
+
+// значок точки экскурсии: белый значок группы на кружке цвета остановок в белой обводке
+// (Грегори: «в тон номерам»), 26 px; стоит над точкой, чтобы не закрывать первую остановку
+function tourHomeImage(d) {
   const ctx = new OffscreenCanvas(52, 52).getContext("2d");
   ctx.beginPath();
-  ctx.arc(26, 26, 24, 0, 2 * Math.PI);
+  ctx.arc(26, 26, 25, 0, 2 * Math.PI);
   ctx.fillStyle = "#fff";
   ctx.fill();
-  ctx.lineWidth = 5;
-  ctx.strokeStyle = TOUR_HOME_RING;
-  ctx.stroke();
-  // капля остриём вниз: окружность r=9 с центром (26,22) и касательные к острию (26,40)
   ctx.beginPath();
-  ctx.arc(26, 22, 9, Math.PI - Math.asin(9 / 18), Math.asin(9 / 18));
-  ctx.lineTo(26, 40);
-  ctx.closePath();
-  ctx.fillStyle = TOUR_HOME_DROP;
+  ctx.arc(26, 26, 21, 0, 2 * Math.PI);
+  ctx.fillStyle = TOUR_COLOR;
   ctx.fill();
-  ctx.beginPath();
-  ctx.arc(26, 22, 3.5, 0, 2 * Math.PI);
+  // значок 24×24 → 26 px по центру
+  ctx.translate(13, 13);
+  ctx.scale(26 / 24, 26 / 24);
   ctx.fillStyle = "#fff";
-  ctx.fill();
+  ctx.fill(new Path2D(d));
   return ctx.getImageData(0, 0, 52, 52);
 }
 
@@ -2029,32 +2043,32 @@ const COUNTRY_CODES = {
   "чили": "cl", "перу": "pe", "куба": "cu", "шри-ланка": "lk", "мальдивы": "mv", "казахстан": "kz",
   "узбекистан": "uz", "азербайджан": "az", "сербия": "rs", "северная македония": "mk", "андорра": "ad", "монако": "mc",
 };
-const TOUR_PIN = `<svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5a2.5 2.5 0 0 1 0-5 2.5 2.5 0 0 1 0 5z"/></svg>`;
+const TOUR_PIN = `<svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="${TOUR_PIN_D}"/></svg>`;
 
-// Значок экскурсии (поле «Значок:», иначе по «Тип:») — синий, в тёмно-зелёном кольце, в
-// списке и в шапке панели. Любой другой короткий текст (эмодзи, буква) — как есть
+// Значок экскурсии: слово из «Значок:» (или эмодзи, буква — как есть), иначе значок группы
+// (tourGroup), иначе капля — белый на кружке цвета остановок, в списке и в шапке панели
 function tourIcon(t) {
-  const city = placeIcon("M15 11V5l-3-3-3 3v2H3v14h18V11h-6zm-8 8H5v-2h2v2zm0-4H5v-2h2v2zm0-4H5V9h2v2zm6 8h-2v-2h2v2zm0-4h-2v-2h2v2zm0-4h-2V9h2v2zm0-4h-2V5h2v2zm6 12h-2v-2h2v2zm0-4h-2v-2h2v2z");
+  const city = placeIcon(TOUR_GROUPS.city.d);
   const beach = placeIcon("M13.13 14.56l1.43-1.43 6.44 6.44L19.57 21zm4.29-5.73l2.86-2.86c-3.95-3.95-10.35-3.96-14.3-.02 3.93-1.3 8.31-.25 11.44 2.88zM5.95 5.98c-3.94 3.95-3.93 10.35.02 14.3l2.86-2.86C5.7 14.29 4.65 9.91 5.95 5.98zm.02-.02l-.01.01c-.38 3.01 1.17 6.88 4.3 10.02l5.73-5.73c-3.13-3.13-7.01-4.68-10.02-4.3z");
   const castle = placeIcon("M2 5h3v2h2V5h3v2h4V5h3v2h2V5h3v5h-2v11h-7v-4a2 2 0 0 0-4 0v4H4V10H2V5z");
   const wine = placeIcon("M6 3v6c0 2.97 2.16 5.43 5 5.91V19H8v2h8v-2h-3v-4.09c2.84-.48 5-2.94 5-5.91V3H6zm10 5H8V5h8v3z");
   const church = placeIcon("M18 12.22V9l-5-2.5V5h2V3h-2V1h-2v2H9v2h2v1.5L6 9v3.22L2 14v8h8v-4a2 2 0 0 1 4 0v4h8v-8l-4-1.78z");
   const park = placeIcon("M17 12h2L12 2 5.05 12H7l-3.9 6h6.92v4h3.96v-4H21z");
-  const food = placeIcon("M11 9H9V2H7v7H5V2H3v7c0 2.12 1.66 3.84 3.75 3.97V22h2.5v-9.03C11.34 12.84 13 11.12 13 9V2h-2v7zm5-3v8h2.5v8H21V2c-2.76 0-5 2.24-5 4z");
+  const food = placeIcon(TOUR_GROUPS.food.d);
   const museum = placeIcon("M4 10v7h3v-7H4zm6 0v7h3v-7h-3zM2 22h19v-3H2v3zm14-12v7h3v-7h-3zm-4.5-9L2 6v2h19V6l-9.5-5z");
   const map = {
-    "город": city, "города": city, "по стране": CHIP_ICONS.tours, "страна": CHIP_ICONS.tours, "по региону": CHIP_ICONS.tours,
-    "горы": CHIP_ICONS.hillshade, "вулкан": CHIP_ICONS.hillshade, "вулканы": CHIP_ICONS.hillshade,
+    "город": city, "горы": CHIP_ICONS.hillshade, "вулкан": CHIP_ICONS.hillshade, "вулканы": CHIP_ICONS.hillshade,
     "море": beach, "пляж": beach, "пляжи": beach, "поход": CHIP_ICONS.hiking, "пешком": CHIP_ICONS.hiking,
     "тропы": CHIP_ICONS.hiking, "пешие тропы": CHIP_ICONS.hiking, "замок": castle, "крепость": castle, "крепости": castle,
     "музей": museum, "музеи": museum, "история": museum, "исторические": museum, "гастро": food, "еда": food,
     "вино": wine, "храм": church, "церковь": church, "храмы": church, "природа": park, "лес": park,
     "поезд": CHIP_ICONS.railways, "лодка": PIN_GLYPHS.boat && placeIcon(PIN_GLYPHS.boat), "остров": beach, "фото": CHIP_ICONS.photos,
   };
-  const key = (t.icon || t.kind || "").trim().toLowerCase();
+  const key = (t.icon || "").trim().toLowerCase();
   if (map[key]) return map[key];
   if (t.icon && [...t.icon.trim()].length <= 2) return `<span class="tour-icon-text">${escapeHtml(t.icon.trim())}</span>`;
-  return TOUR_PIN;
+  const group = TOUR_GROUPS[tourGroup(t)];
+  return group ? placeIcon(group.d) : TOUR_PIN;
 }
 
 function setTourMode(on) {
@@ -2084,19 +2098,24 @@ function chooseTour(t) {
 
 // справка списка: группы и значки задаются полями в файле экскурсии; все значки с подписями
 let tourListHelp = false;
-const TOUR_ICON_WORDS = ["город", "горы", "море", "поход", "замок", "музей", "гастро", "вино", "храм", "природа", "поезд", "лодка", "фото"];
+const TOUR_ICON_WORDS = ["горы", "море", "поход", "замок", "музей", "вино", "храм", "природа", "поезд", "лодка", "фото"];
 function tourListHelpBox() {
   const box = Object.assign(document.createElement("div"), { className: "tour-list-help" });
   box.innerHTML = `<p>Список строится из полей в шапке файла экскурсии — поменять можно самому, карандашом в панели или в любом редакторе:</p>`
     + `<pre>Страна: Италия\nГород: Рим\nТип: город\nЗначок: замок</pre>`
-    + `<p>Страна — группа (с флагом), город — подгруппа, если в нём несколько экскурсий, тип — подпись. Нет «Город:» — экскурсия «по стране». Значок — одно из слов (или любой эмодзи; нет поля — по «Тип:»):</p>`;
-  const grid = Object.assign(document.createElement("div"), { className: "tour-icon-grid" });
-  for (const w of TOUR_ICON_WORDS) {
-    const cell = Object.assign(document.createElement("div"), { className: "tour-icon-cell" });
-    cell.innerHTML = `<span class="tour-row-pin">${tourIcon({ icon: w })}</span><span>${w}</span>`;
-    grid.append(cell);
-  }
-  box.append(grid);
+    + `<p>Страна — группа (с флагом), город — подгруппа, если в нём несколько экскурсий. Нет «Город:» — экскурсия «по стране». Тип — группа со своим значком на карте и в списке (есть «Город:», а типа нет — город):</p>`;
+  const grid = (field, words) => {
+    const node = Object.assign(document.createElement("div"), { className: "tour-icon-grid" });
+    for (const w of words) {
+      const cell = Object.assign(document.createElement("div"), { className: "tour-icon-cell" });
+      cell.innerHTML = `<span class="tour-row-pin">${tourIcon({ [field]: w })}</span><span>${w}</span>`;
+      node.append(cell);
+    }
+    return node;
+  };
+  box.append(grid("kind", ["по стране", "город", "гастро", "развлечения"]));
+  box.insertAdjacentHTML("beforeend", "<p>Значок в списке можно заменить своим — одно из слов (или любой эмодзи):</p>");
+  box.append(grid("icon", TOUR_ICON_WORDS));
   return box;
 }
 
@@ -2238,9 +2257,11 @@ function addTours(before) {
       "text-offset": ["array", "number", 2, ["get", "textOff"]],
       "icon-allow-overlap": true, "text-allow-overlap": true, "icon-ignore-placement": true, "text-ignore-placement": true },
     paint: { "text-color": "#fff" } }, before);
-  if (!map.hasImage("tour-home")) map.addImage("tour-home", tourHomeImage(), { pixelRatio: 2 });
+  for (const [id, d] of [["pin", TOUR_PIN_D], ...Object.entries(TOUR_GROUPS).map(([id, g]) => [id, g.d])]) {
+    if (!map.hasImage(`tour-home-${id}`)) map.addImage(`tour-home-${id}`, tourHomeImage(d), { pixelRatio: 2 });
+  }
   map.addLayer({ id: "ov-tour-marks", type: "symbol", source: "ov-tours", maxzoom: 9, filter: kind("tour"),
-    layout: { "icon-image": "tour-home", "icon-anchor": "bottom", "icon-offset": [0, -10],
+    layout: { "icon-image": ["concat", "tour-home-", ["get", "group"]], "icon-anchor": "bottom", "icon-offset": [0, -10],
       "icon-allow-overlap": true, "icon-ignore-placement": true } }, before);
   map.addLayer({ id: "ov-tour-labels", type: "symbol", source: "ov-tours", maxzoom: 9, filter: kind("tour"),
     layout: { "text-field": ["get", "title"], "text-font": styleFont(), "text-size": 12, "text-anchor": "left",
@@ -3020,8 +3041,8 @@ onHover(TOUR_LAYERS, (evt) => {
   const t = tours.get(p.tour);
   openMediaPopup(evt.features[0].geometry.coordinates, 12, "260px",
     `<div class="popup-title">${escapeHtml(p.kind === "stop" ? `${p.n}. ${p.title}` : p.title)}</div>`
-    + `<div class="popup-kind">${escapeHtml(p.kind === "stop" ? `Экскурсия «${t?.title || ""}»` : [t?.region, "экскурсия"].filter(Boolean).join(" · "))}</div>`
-    + `<div class="popup-row popup-muted">Щелчок — открыть</div>`);
+    + `<div class="popup-kind">${escapeHtml(p.kind === "stop" ? `Экскурсия «${t?.title || ""}»` : [t?.region, TOUR_GROUPS[p.group]?.name || "экскурсия"].filter(Boolean).join(" · "))}</div>`
+    + `<div class="popup-row popup-muted">Щелчок — открыть экскурсию</div>`);
   trailPoiPopup.on("close", () => { if (trailPoiHover === p.hover) trailPoiHover = null; });
   keepTrailPoiInfoOnHover();
 });
@@ -3897,7 +3918,7 @@ function openMediaPopup(lngLat, offset, maxWidth, html) {
 
 function keepTrailPoiInfoOnHover() {
   const el = trailPoiPopup.getElement();
-  el.addEventListener("mouseenter", () => clearTimeout(trailPoiHideTimer));
+  el.addEventListener("mouseenter", () => { clearTimeout(trailPoiHideTimer); clearTimeout(trailPoiShowTimer); });
   el.addEventListener("mouseleave", hideTrailPoiInfoSoon);
 }
 
@@ -3929,14 +3950,25 @@ map.getContainer().addEventListener("pointerdown", (e) => { touchPointer = e.poi
 map.getContainer().addEventListener("pointermove", (e) => { if (e.pointerType === "mouse") touchPointer = false; }, true);
 onHover(HOVER_POI_LAYERS, (evt) => showTrailPoiInfo(evt.features[0]));
 
-// подсказка при наведении мыши на слой; уход — прячет с задержкой (hideTrailPoiInfoSoon)
+// подсказка при наведении мыши на слой; уход — прячет с задержкой (hideTrailPoiInfoSoon).
+// По пути к открытой подсказке курсор задевает соседние значки — альбом под подписью
+// экскурсии (Грегори: «навестись на фото галерею нельзя, пропадает»): в первые 400 мс после
+// ухода со значка соседний сменит подсказку, только если курсор задержался на нём
+let trailPoiShowTimer = 0, trailPoiLeftAt = 0;
 function onHover(layers, show) {
   map.on("mousemove", layers, (evt) => {
     if (touchPointer) return;
     clearTimeout(trailPoiHideTimer);
-    show(evt);
+    clearTimeout(trailPoiShowTimer);
+    if (trailPoiPopup?.isOpen() && performance.now() - trailPoiLeftAt < 400) trailPoiShowTimer = setTimeout(() => show(evt), 250);
+    else show(evt);
   });
-  map.on("mouseleave", layers, () => { if (!touchPointer) hideTrailPoiInfoSoon(); });
+  map.on("mouseleave", layers, () => {
+    if (touchPointer) return;
+    clearTimeout(trailPoiShowTimer);
+    trailPoiLeftAt = performance.now();
+    hideTrailPoiInfoSoon();
+  });
 }
 map.on("click", HOVER_POI_LAYERS, (evt) => { if (!evt.features[0].properties.photo) showTrailPoiInfo(evt.features[0]); });
 
