@@ -12,6 +12,9 @@ if errorlevel 1 (
     timeout /t 1 /nobreak >nul
 )
 
+rem desktop shortcuts (local Chrome and Edge): created silently if missing
+start "" wscript //nologo "%~dp0install_desktop_shortcut.vbs" /ifmissing
+
 set CHROME=C:\Program Files\Google\Chrome\Application\chrome.exe
 set EDGE=C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe
 rem "start.bat edge" (or start-edge.bat) opens the app in Edge: its natural online voices

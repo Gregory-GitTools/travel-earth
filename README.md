@@ -6,4 +6,4 @@
 
 Статус: первый прототип — глобус MapLibre с базовой картой CARTO, без данных о поездках.
 
-Локальный запуск: `start.bat` (нужны Python 3 и Chrome/Edge). Ярлык на рабочем столе — один раз запустить `install_desktop_shortcut.vbs`.
+Локальный запуск: `start.bat` (нужны Python 3 и Chrome/Edge). Ярлыки «Travel Earth (локально)» и «Travel Earth (Edge)» на рабочем столе `start.bat` создаёт сам при первом запуске (или `install_desktop_shortcut.vbs`).
