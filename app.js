@@ -2264,6 +2264,24 @@ function renderTourList() {
       if (gOpen) for (const t of ts) tourRow(t).classList.add("in-group");
     }
   }
+  // «Языки» — отдельным блоком под странами (Грегори): разговорники, по флагу первой страны
+  const langs = [...phrasebooks.values()].filter((pb) => !q || [pb.title, ...pb.countries].join(" ").toLowerCase().includes(q))
+    .sort((a, b) => a.title.localeCompare(b.title, "ru"));
+  if (langs.length) {
+    const lOpen = !!q || tourOpen.has("langs");
+    row("langs", "tour-row-country tour-row-langs", `<span class="tour-flag tour-lang-icon">${LANG_ICON}</span><span class="tour-row-name">Языки</span>`
+      + `<span class="tour-row-count">${langs.length}</span>${chevron(lOpen)}`, toggle("langs"));
+    if (lOpen) {
+      for (const pb of langs) {
+        row(`l:${pb.id}`, "tour-row-item in-country", `${flag(pb.countries[0] || "")}<span class="tour-row-text"><span class="tour-row-title">${escapeHtml(pb.title)}</span>`
+          + `<span class="tour-row-sub">${escapeHtml(pb.countries.join(", "))}</span></span>`, () => {
+          tourList.hidden = true;
+          tourCursor = null;
+          renderPhrasebook(pb.id);
+        });
+      }
+    }
+  }
   if (!rows.length) {
     rows.push(Object.assign(document.createElement("div"), { className: "tour-list-empty", textContent: tours.size ? "Ничего не нашлось"
       : tourDir ? "В папке экскурсий нет файлов" : "Экскурсии загружаются…" }));
@@ -2378,6 +2396,7 @@ async function initTours() {
   if (!repoTours) {
     repoTours = repoFolder(REPO_TOURS);
     repoTours.then((dir) => dir && readTours(dir, true));
+    repoFolder(REPO_LANGS).then((dir) => dir && readPhrasebooks(dir));
   }
   if (tourDir || !("showDirectoryPicker" in window)) return;
   const handle = await idb("settings", "readonly", (st) => st.get("tours")).catch(() => null);
@@ -2429,7 +2448,7 @@ async function readTours(handle, repo = false) {
     if (t.city && !t.cityPoint) t.cityPoint = await tourGeocode([t.city, t.country].filter(Boolean).join(", ")).catch(() => null);
     for (const sec of t.sections) if (sec.place && !sec.point) sec.point = await tourGeocode(sec.place, t.point, t.region, t.cityPoint).catch(() => null);
     refreshTours();
-    if (tourPanelId === t.id && !tourEditing) renderTourPanel(t.id);
+    if (tourPanelId === t.id && !tourEditing && !tourPanel.classList.contains("phrasebook")) renderTourPanel(t.id);
   }
   const lost = list.flatMap((t) => t.sections.filter((sec) => sec.place && !sec.point).map((sec) => sec.place));
   updateTourFinder();
@@ -2567,7 +2586,9 @@ async function playTourStep() {
     // поле, 22 км от Колизея, на Commons рядом только карты) — тогда фото первой остановки
     const first = tourHome(t), stop0 = play.stops[0]?.point;
     if (first) showSlides(first).then((n) => { if (!n && stop0 && stop0 !== first && alive()) showSlides(stop0); });
-    await speakText([t.title, ...t.idea].join(". "));
+    const pb = phrasebookFor(t);
+    await speakText([t.title, ...t.idea, pb && `Для поездки есть разговорник, ${pb.title.toLowerCase()} язык: ссылка — в начале экскурсии`]
+      .filter(Boolean).join(". "));
   } else {
     const sec = play.stops[play.i];
     selectTourStop(play.id, sec.n);
@@ -2764,7 +2785,7 @@ function ruVoices() {
 }
 const pickVoice = () => { const list = ruVoices(); return list.find((v) => v.name === localStorage.getItem(VOICE_KEY)) || list[0] || null; };
 
-function speak(text, btn) {
+function speak(text, btn, lang = "") {
   if (!("speechSynthesis" in window)) return;
   const was = btn?.classList.contains("speaking");
   stopTourPlay();
@@ -2772,7 +2793,7 @@ function speak(text, btn) {
   for (const b of document.querySelectorAll(".speaking")) b.classList.remove("speaking");
   if (was) return;
   btn?.classList.add("speaking");
-  speakText(text).then(() => btn?.classList.remove("speaking"));
+  speakText(text, lang).then(() => btn?.classList.remove("speaking"));
 }
 
 // остановить речь — только если она идёт: на Android Chrome cancel() вплотную перед speak()
@@ -2781,16 +2802,17 @@ function stopSpeech() {
   if ("speechSynthesis" in window && (speechSynthesis.speaking || speechSynthesis.pending)) speechSynthesis.cancel();
 }
 
-// прочитать текст выбранным голосом; промис — когда дочитано (или прервано cancel)
-function speakText(text) {
+// прочитать текст выбранным голосом (lang — фраза разговорника: голос её языка); промис — когда
+// дочитано (или прервано cancel)
+function speakText(text, lang = "") {
   return new Promise((resolve) => {
     if (!("speechSynthesis" in window) || !text) { resolve(); return; }
     speechSynthesis.resume(); // Chrome иногда держит синтезатор на паузе
-    const voice = pickVoice(), rate = Number(localStorage.getItem(VOICE_RATE_KEY)) || 1;
+    const voice = lang ? langVoice(lang) : pickVoice(), rate = Number(localStorage.getItem(VOICE_RATE_KEY)) || 1;
     const parts = text.match(/[^.!?…]+[.!?…]*\s*/g)?.map((x) => x.trim()).filter(Boolean) || [text];
     parts.forEach((part, i) => {
       const u = new SpeechSynthesisUtterance(part);
-      u.lang = voice?.lang || "ru-RU";
+      u.lang = voice?.lang || lang || "ru-RU";
       if (voice) u.voice = voice;
       u.rate = rate;
       if (i === parts.length - 1) u.onend = () => resolve();
@@ -2911,6 +2933,15 @@ function renderTourPanel(id) {
   if (meta) aboutBody.append(h("div", "tour-meta", meta));
   if (t.route) aboutBody.append(h("div", "tour-points", `Маршрут: ${t.route}`));
   for (const line of t.idea) aboutBody.append(h("p", "tour-idea", line));
+  // разговорник страны — в начале экскурсии (Грегори: «в начале экскурсии упомянуть»)
+  const pb = phrasebookFor(t);
+  if (pb) {
+    const a = h("button", "pb-link");
+    a.innerHTML = LANG_ICON;
+    a.append(h("span", "", `Разговорник: ${pb.title.toLowerCase()} — главные фразы, аэропорт, гостиница, аренда машины, как пройти`));
+    a.addEventListener("click", () => renderPhrasebook(pb.id, id));
+    aboutBody.append(a);
+  }
   if (aboutBody.childNodes.length) { about.append(aboutHead, aboutBody); nodes.push(about); }
   for (const sec of t.sections) {
     const box = h("section", "tour-section");
@@ -2984,7 +3015,7 @@ function renderTourPanel(id) {
     nodes.push(box);
   }
   tourPanel.replaceChildren(...nodes);
-  tourPanel.classList.remove("editing");
+  tourPanel.classList.remove("editing", "phrasebook");
   tourPanel.hidden = false;
   renderTourPlayer();
 }
@@ -3164,10 +3195,169 @@ async function editTour(id) {
   } else bar.append(save, cancel, status);
   tourPanel.replaceChildren(head, fileRow, area, bar, h("div", "tour-file", t.repo ? "Esc — назад. Как писать файл — кнопка «i» вверху"
     : "Ctrl+S — сохранить, Esc — отмена. Как писать файл — кнопка «i» вверху"));
+  tourPanel.classList.remove("phrasebook");
   tourPanel.classList.add("editing");
   area.focus();
   area.setSelectionRange(0, 0);
   area.scrollTop = 0;
+}
+
+// Разговорники (Грегори: «основные обороты на местном языке… отдельным блоком — Языки»): файлы
+// папки «Языки» репозитория, по файлу на язык. Устроены как разговорники Wikivoyage и русские
+// туристические: произношение, затем разделы в порядке нужды в поездке (самое нужное, аэропорт,
+// как пройти, такси, аренда машины, гостиница, еда, магазин, экстренное), фраза — в три
+// колонки: по-русски — на языке страны — русскими буквами с ударной ЗАГЛАВНОЙ гласной.
+//   # Итальянский               — название
+//   Язык: it-IT                 — код языка: им выбирается голос для чтения фраз
+//   Страны: Италия, Ватикан     — у экскурсий этих стран в «Об экскурсии» — ссылка сюда
+//   Источники: (как у экскурсий)
+//   Текст в шапке               — коротко о языке
+//   ## Раздел                   — раздел; ### Подзаголовок — диалог или группа фраз
+//   - Спасибо — Grazie — грАцие — фраза; «Вы: …», «Портье: …» в начале — кто говорит
+//   Прочий текст                — пояснения (в «Произношении» — правила чтения)
+// Файлы с «_» в начале имени (промт) карта не читает
+const REPO_LANGS = "Языки";
+const PHRASEBOOK_PROMPT = `${REPO_LANGS}/_Промт — как написать разговорник.md`;
+const LANG_ICON = `<svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="m12.87 15.07-2.54-2.51.03-.03A17.52 17.52 0 0 0 14.07 6H17V4h-7V2H8v2H1v2h11.17C11.5 7.92 10.44 9.75 9 11.35 8.07 10.32 7.3 9.19 6.69 8h-2c.73 1.63 1.73 3.17 2.98 4.56l-5.09 5.02L4 19l5-5 3.11 3.11.76-2.04zM18.5 10h-2L12 22h2l1.12-3h4.75L21 22h2l-4.5-12zm-2.62 7 1.62-4.33L19.12 17h-3.24z"/></svg>`;
+const phrasebooks = new Map();
+
+function parsePhrasebook(text, name) {
+  const pb = { title: name.replace(/\.\w+$/, ""), lang: "", countries: [], idea: [], sources: [], sections: [] };
+  let sec = null, inSources = false;
+  for (const raw of text.replace(/^﻿/, "").split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line) { inSources = false; continue; }
+    let m;
+    if ((m = line.match(/^#\s+(.+)/))) { pb.title = m[1].trim(); continue; }
+    if ((m = line.match(/^##\s+(.+)/))) { sec = { title: m[1].trim(), items: [] }; pb.sections.push(sec); inSources = false; continue; }
+    if (sec && (m = line.match(/^###\s+(.+)/))) { sec.items.push({ sub: m[1].trim() }); continue; }
+    if (!sec && (m = line.match(/^(язык|страны|источники):\s*(.*)$/i))) {
+      const key = m[1].toLowerCase();
+      if (key === "язык") pb.lang = m[2].trim();
+      else if (key === "страны") pb.countries = m[2].split(",").map((c) => c.trim()).filter(Boolean);
+      else { inSources = true; if (m[2]) pb.sources.push(m[2]); }
+      continue;
+    }
+    if (!sec && inSources && line.startsWith("- ")) { pb.sources.push(line.slice(2)); continue; }
+    if (!sec) { pb.idea.push(line); continue; }
+    const parts = line.startsWith("- ") ? line.slice(2).split(/\s+—\s+/) : null;
+    if (parts?.length >= 2) {
+      const who = parts[0].match(/^([^:]{1,20}):\s+(.+)$/);
+      sec.items.push({ who: who?.[1] || "", ru: who?.[2] || parts[0], foreign: parts[1], say: parts.slice(2).join(" — ") });
+    } else sec.items.push({ note: line.replace(/^-\s+/, "") });
+  }
+  return pb;
+}
+
+async function readPhrasebooks(dir) {
+  for await (const [name, h] of dir.entries()) {
+    if (h.kind !== "file" || name.startsWith("_") || name.startsWith(".") || !TOUR_TEXT_RE.test(name)) continue;
+    const text = await h.getFile().then((f) => f.text()).catch(() => "");
+    if (text) phrasebooks.set(name, { id: name, path: h.repoPath, ...parsePhrasebook(text, name) });
+  }
+  updateTourFinder();
+  if (tourPanelId && !tourEditing && !tourPanel.classList.contains("phrasebook")) renderTourPanel(tourPanelId);
+}
+
+// разговорник для экскурсии — по стране
+function phrasebookFor(t) {
+  const c = tourCountry(t).toLowerCase();
+  return [...phrasebooks.values()].find((pb) => pb.countries.some((x) => x.toLowerCase() === c)) || null;
+}
+
+// голос языка страны: лучший из установленных, сначала того же региона (it-IT), потом любой it-*
+function langVoice(lang) {
+  if (!("speechSynthesis" in window) || !lang) return null;
+  const norm = (l) => l.toLowerCase().replace("_", "-");
+  const base = norm(lang).split("-")[0];
+  const exact = (v) => (norm(v.lang) === norm(lang) ? 0 : 1);
+  return speechSynthesis.getVoices().filter((v) => norm(v.lang).split("-")[0] === base)
+    .sort((a, b) => exact(a) - exact(b) || voiceRank(a) - voiceRank(b))[0] || null;
+}
+
+// панель разговорника — та же, что у экскурсии; открыт из экскурсии — крестик возвращает к ней
+function renderPhrasebook(id, fromTour = null) {
+  const pb = phrasebooks.get(id);
+  if (!pb) return;
+  stopTourPlay();
+  stopSpeech();
+  if (!fromTour && tourPanelId) { tourPanelId = null; showTourStopsOf(null); }
+  const h = (tag, cls, text) => Object.assign(document.createElement(tag), { className: cls || "", textContent: text || "" });
+  const close = Object.assign(document.createElement("button"), { className: "tour-close",
+    title: fromTour ? "Назад к экскурсии" : "Закрыть", textContent: "×" });
+  close.addEventListener("click", () => (fromTour && tours.has(fromTour) ? renderTourPanel(fromTour) : closeTourToList()));
+  const head = h("div", "tour-head");
+  const bar = h("div", "tour-bar");
+  bar.append(h("span", "tour-bar-gap"), close);
+  const titleRow = h("div", "tour-title-row");
+  const icon = h("span", "tour-row-pin tour-title-icon");
+  icon.innerHTML = LANG_ICON;
+  titleRow.append(icon, h("h2", "", `Разговорник: ${pb.title.toLowerCase()}`));
+  head.append(bar, titleRow);
+  const nodes = [head];
+  const about = h("section", "tour-section tour-about");
+  const aboutBody = h("div", "tour-sec-body");
+  if (pb.countries.length) aboutBody.append(h("div", "tour-meta", pb.countries.join(" · ")));
+  for (const line of pb.idea) aboutBody.append(h("p", "tour-idea", line));
+  aboutBody.append(h("p", "pb-hint", langVoice(pb.lang)
+    ? "Нажмите на фразу — её прочитает голос на языке страны. Ударная гласная в подсказке — заглавная: грАцие."
+    : "Нажмите на фразу, чтобы послушать. Голоса этого языка на устройстве не нашлось — фраза может прозвучать с акцентом или не прозвучать. В Windows голос добавляется так: Параметры → Время и язык → Речь → Добавить голоса."));
+  about.append(aboutBody);
+  nodes.push(about);
+  pb.sections.forEach((sec, i) => {
+    // открыт первый раздел, остальные — по щелчку на заголовке
+    const box = h("section", `tour-section${i ? " shut" : ""}`);
+    const row = h("div", "tour-sec-row");
+    const title = h("button", "tour-sec-title", sec.title);
+    title.addEventListener("click", () => box.classList.toggle("shut"));
+    row.append(title, foldButton(box));
+    const body = h("div", "tour-sec-body");
+    for (const it of sec.items) {
+      if (it.sub) { body.append(h("div", "pb-sub", it.sub)); continue; }
+      if (it.note) { body.append(h("p", "pb-note", it.note)); continue; }
+      const b = h("button", "pb-phrase");
+      b.title = "Послушать";
+      const ru = h("div", "pb-ru");
+      if (it.who) ru.append(h("b", "", `${it.who}: `));
+      ru.append(it.ru);
+      b.append(ru, h("div", "pb-foreign", it.foreign));
+      if (it.say) b.append(h("div", "pb-say", it.say));
+      b.addEventListener("click", () => speak(it.foreign, b, pb.lang));
+      body.append(b);
+    }
+    box.append(row, body);
+    nodes.push(box);
+  });
+  if (pb.sources.length) {
+    const box = h("section", "tour-section tour-sources shut");
+    const row = h("div", "tour-sec-row");
+    row.append(h("div", "tour-sec-title", "Источники"), foldButton(box));
+    const body = h("div", "tour-sec-body");
+    for (const line of pb.sources) {
+      const src = tourSource(line);
+      const div = h("div", "tour-source");
+      if (src.url) div.append(Object.assign(document.createElement("a"), { href: src.url, target: "_blank", rel: "noopener", textContent: src.text }));
+      else div.textContent = src.text;
+      body.append(div);
+    }
+    box.append(row, body);
+    nodes.push(box);
+  }
+  // файл и промт — как в правке экскурсии: дописать фразы или заказать разговорник другого языка
+  const files = h("div", "tour-file");
+  const link = (text, title, path, edit) => {
+    const a = Object.assign(document.createElement("a"), { className: "tour-file-link", href: "#", textContent: text, title });
+    a.addEventListener("click", (e) => { e.preventDefault(); openRepoFile(path, edit); });
+    return a;
+  };
+  if (pb.path) files.append("Файл: ", link(pb.path, "Править: в Блокноте при запуске через start.bat, иначе на GitHub", pb.path, true), " · ");
+  files.append(link("промт для ChatGPT", "Задание для ИИ: разговорник другого языка", PHRASEBOOK_PROMPT, false));
+  nodes.push(files);
+  tourPanel.classList.remove("titles", "min", "editing");
+  tourPanel.classList.add("phrasebook");
+  tourPanel.replaceChildren(...nodes);
+  tourPanel.hidden = false;
+  tourPanel.scrollTop = 0;
 }
 
 function openTour(id) {
