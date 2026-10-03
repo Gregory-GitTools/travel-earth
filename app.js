@@ -2106,7 +2106,7 @@ const tourData = () => {
 const tourStopOffset = (unit) => ["match", ["get", "k"],
   ...[1, 2, 3, 4, 5, 6, 7].flatMap((k) => [k, ["literal", [22 * Math.cos(k * 2.1) / unit, 22 * Math.sin(k * 2.1) / unit]]]),
   ["literal", [0, 0]]];
-const refreshTours = () => { addTourMarkImages(); map.getSource("ov-tours")?.setData(tourData()); };
+const refreshTours = () => { addTourMarkImages(); addTourNumberImages(); map.getSource("ov-tours")?.setData(tourData()); };
 
 // точка экскурсии — регион, если он рядом с остановками (город); регион-страна («Египет» —
 // середина пустыни) далеко — тогда первая остановка (Грегори: «недалеко от первой точки»)
@@ -2208,22 +2208,26 @@ async function tourMarkImage(html) {
   return ctx.getImageData(0, 0, 64, 64);
 }
 
-// кружок остановки: оранжевый с тенью, 20 px (выделенная — в розовом кольце); номер — текстом поверх
-function tourStopImage(ring) {
+// номер остановки: без кружка, красная цифра с тенью (Грегори, 2026-10-04); выделенная — крупнее.
+// Цифра разная у каждой точки, поэтому картинка — на каждое число отдельно (addTourNumberImages)
+const tourNumberImages = new Map();
+function tourNumberImage(n, big) {
   const ctx = new OffscreenCanvas(56, 56).getContext("2d");
   Object.assign(ctx, ICON_SHADOW);
-  if (ring) {
-    ctx.beginPath();
-    ctx.arc(28, 28, 22, 0, 2 * Math.PI);
-    ctx.fillStyle = ring;
-    ctx.fill();
-    ctx.shadowColor = "transparent";
-  }
-  ctx.beginPath();
-  ctx.arc(28, 28, ring ? 18 : 20, 0, 2 * Math.PI);
-  ctx.fillStyle = TOUR_COLOR;
-  ctx.fill();
+  ctx.font = `700 ${big ? 30 : 22}px sans-serif`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillStyle = TOUR_ICON_COLOR;
+  ctx.fillText(String(n), 28, 29);
   return ctx.getImageData(0, 0, 56, 56);
+}
+function addTourNumberImages() {
+  const ns = new Set();
+  for (const t of tours.values()) for (const sec of t.sections) if (sec.n) ns.add(sec.n);
+  for (const n of ns) for (const big of [false, true]) {
+    const name = `tour-num-${big ? "sel-" : ""}${n}`;
+    if (!map.hasImage(name)) map.addImage(name, tourNumberImage(n, big), { pixelRatio: 2 });
+  }
 }
 
 // Поиск экскурсий — режим строки поиска (Грегори, 2026-10-01): значок карты рядом с лупой
@@ -2494,21 +2498,14 @@ function addTours(before) {
   const kind = (k) => ["==", ["get", "kind"], k];
   map.addLayer({ id: "ov-tour-route", type: "line", source: "ov-tours", minzoom: 6, filter: tourStopsFilter("route"),
     paint: { "line-color": TOUR_COLOR, "line-width": 2, "line-opacity": 0.8, "line-dasharray": [2, 2] } }, before);
-  if (!map.hasImage("tour-stop")) map.addImage("tour-stop", tourStopImage(), { pixelRatio: 2 });
+  addTourNumberImages();
   map.addLayer({ id: "ov-tour-stops", type: "symbol", source: "ov-tours", minzoom: 6, filter: tourStopsFilter("stop"),
-    layout: { "icon-image": "tour-stop", "icon-offset": tourStopOffset(1),
-      "text-field": ["to-string", ["get", "n"]], "text-font": styleFont(), "text-size": 11,
-      "text-offset": tourStopOffset(11),
-      "icon-allow-overlap": true, "text-allow-overlap": true, "icon-ignore-placement": true, "text-ignore-placement": true },
-    paint: { "text-color": "#fff" } }, before);
-  // выделенная остановка — крупнее, в розовом кольце, как выделенный снимок
-  if (!map.hasImage("tour-stop-sel")) map.addImage("tour-stop-sel", tourStopImage(PHOTO_COLOR), { pixelRatio: 2 });
+    layout: { "icon-image": ["concat", "tour-num-", ["to-string", ["get", "n"]]], "icon-offset": tourStopOffset(1),
+      "icon-allow-overlap": true, "icon-ignore-placement": true } }, before);
+  // выделенная остановка — крупнее, как выделенный снимок
   map.addLayer({ id: "ov-tour-sel", type: "symbol", source: "ov-tours", minzoom: 6, filter: tourSelFilter(),
-    layout: { "icon-image": "tour-stop-sel", "icon-size": 1.35, "icon-offset": tourStopOffset(1),
-      "text-field": ["to-string", ["get", "n"]], "text-font": styleFont(), "text-size": 14,
-      "text-offset": tourStopOffset(11),
-      "icon-allow-overlap": true, "text-allow-overlap": true, "icon-ignore-placement": true, "text-ignore-placement": true },
-    paint: { "text-color": "#fff" } }, before);
+    layout: { "icon-image": ["concat", "tour-num-sel-", ["to-string", ["get", "n"]]], "icon-offset": tourStopOffset(1),
+      "icon-allow-overlap": true, "icon-ignore-placement": true } }, before);
   addTourMarkImages();
   // значки профиля — ниже точки, чтобы не закрывать остановку; подпись справа от значка
   map.addLayer({ id: "ov-tour-marks", type: "symbol", source: "ov-tours", maxzoom: 9, filter: tourStopsFilter("tour"),
