@@ -2211,15 +2211,16 @@ async function tourMarkImage(html) {
 // номер остановки: без кружка, красная цифра с тенью (Грегори, 2026-10-04); выделенная — крупнее.
 // Цифра разная у каждой точки, поэтому картинка — на каждое число отдельно (addTourNumberImages)
 const tourNumberImages = new Map();
+// холст и шрифт вдвое крупнее прежних (Грегори, 2026-10-04: «цифры плохо видно»)
 function tourNumberImage(n, big) {
-  const ctx = new OffscreenCanvas(56, 56).getContext("2d");
+  const ctx = new OffscreenCanvas(112, 112).getContext("2d");
   Object.assign(ctx, ICON_SHADOW);
-  ctx.font = `700 ${big ? 30 : 22}px sans-serif`;
+  ctx.font = `700 ${big ? 60 : 44}px sans-serif`;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   ctx.fillStyle = TOUR_ICON_COLOR;
-  ctx.fillText(String(n), 28, 29);
-  return ctx.getImageData(0, 0, 56, 56);
+  ctx.fillText(String(n), 56, 58);
+  return ctx.getImageData(0, 0, 112, 112);
 }
 function addTourNumberImages() {
   const ns = new Set();
