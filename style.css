@@ -331,13 +331,13 @@ span.tour-flag {
   flex: none;
   display: inline-grid;
   place-items: center;
-  width: 20px;
-  color: #d9a441;
+  width: 26px;
+  color: #ffc107;
 }
 
 .tour-row-group-icon svg {
-  width: 16px;
-  height: 16px;
+  width: 22px;
+  height: 22px;
   filter: drop-shadow(1px 0 0 #fff) drop-shadow(-1px 0 0 #fff) drop-shadow(0 1px 0 #fff) drop-shadow(0 -1px 0 #fff);
 }
 
