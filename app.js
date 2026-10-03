@@ -2013,7 +2013,7 @@ const tourData = () => {
     // вступление слайд-шоу по-прежнему берёт tourHome — у первой остановки, не в пустыне
     const at = tourGroup(t) === "country" ? t.point || tourHome(t) : tourHome(t);
     if (at) features.push({ type: "Feature", geometry: { type: "Point", coordinates: at },
-      properties: { kind: "tour", tour: t.id, title: t.title, group: tourGroup(t) || "pin", hover: `tour/${t.id}` } });
+      properties: { kind: "tour", tour: t.id, title: t.title, group: tourGroup(t) || "pin", mark: tourMarkKey(t), hover: `tour/${t.id}` } });
   }
   return { type: "FeatureCollection", features };
 };
@@ -2022,7 +2022,7 @@ const tourData = () => {
 const tourStopOffset = (unit) => ["match", ["get", "k"],
   ...[1, 2, 3, 4, 5, 6, 7].flatMap((k) => [k, ["literal", [22 * Math.cos(k * 2.1) / unit, 22 * Math.sin(k * 2.1) / unit]]]),
   ["literal", [0, 0]]];
-const refreshTours = () => map.getSource("ov-tours")?.setData(tourData());
+const refreshTours = () => { addTourMarkImages(); map.getSource("ov-tours")?.setData(tourData()); };
 
 // точка экскурсии — регион, если он рядом с остановками (город); регион-страна («Египет» —
 // середина пустыни) далеко — тогда первая остановка (Грегори: «недалеко от первой точки»)
@@ -2057,6 +2057,16 @@ function tourGroup(t) {
 // закрывать первую остановку. Холст с запасом под тень, кружок чуть выше середины.
 // Так же рисуется альбом «Моих фото» — свой цвет и несколько контуров (фотоаппарат)
 function tourHomeImage(d, color = TOUR_ICON_COLOR) {
+  const ctx = tourHomeCircle();
+  // значок 24×24 → 32 px по центру кружка
+  ctx.translate(16, 14);
+  ctx.scale(32 / 24, 32 / 24);
+  ctx.fillStyle = color;
+  for (const part of [d].flat()) ctx.fill(new Path2D(part));
+  return ctx.getImageData(0, 0, 64, 64);
+}
+
+function tourHomeCircle() {
   const ctx = new OffscreenCanvas(64, 64).getContext("2d");
   Object.assign(ctx, ICON_SHADOW);
   ctx.beginPath();
@@ -2064,11 +2074,53 @@ function tourHomeImage(d, color = TOUR_ICON_COLOR) {
   ctx.fillStyle = "#fff";
   ctx.fill();
   ctx.shadowColor = "transparent";
-  // значок 24×24 → 32 px по центру кружка
-  ctx.translate(16, 14);
-  ctx.scale(32 / 24, 32 / 24);
-  ctx.fillStyle = color;
-  for (const part of [d].flat()) ctx.fill(new Path2D(part));
+  return ctx;
+}
+
+// значок экскурсии на карте — тот же, что в списке (tourIcon): «Значок:» из файла, иначе группа
+// (Грегори: «капли на значках» у Нафплиона, Азор, Мадейры — на карте раньше была только группа)
+function tourMarkKey(t) {
+  const own = t.icon && tourIcon(t) !== tourIcon({ ...t, icon: "" });
+  return own ? t.icon.trim().toLowerCase() : tourGroup(t) || "pin";
+}
+// у слов из «Значок:» значки — SVG разного устройства (chipSvg, placeIcon), их проще отрисовать
+// картинкой; это асинхронно — готовые хранятся, чтобы после смены карты добавить сразу
+const tourMarkImages = new Map();
+function addTourMarkImages() {
+  const keys = new Set(["pin", ...Object.keys(TOUR_GROUPS)]);
+  const sample = new Map();
+  for (const t of tours.values()) { const k = tourMarkKey(t); keys.add(k); if (!sample.has(k)) sample.set(k, t); }
+  for (const key of keys) {
+    const name = `tour-mark-${key}`;
+    if (map.hasImage(name)) continue;
+    if (key === "pin" || TOUR_GROUPS[key]) { map.addImage(name, tourHomeImage(key === "pin" ? TOUR_PIN_D : TOUR_GROUPS[key].d), { pixelRatio: 2 }); continue; }
+    if (tourMarkImages.get(key)) { map.addImage(name, tourMarkImages.get(key), { pixelRatio: 2 }); continue; }
+    if (tourMarkImages.has(key)) continue; // уже рисуется
+    tourMarkImages.set(key, null);
+    tourMarkImage(tourIcon(sample.get(key))).then((img) => {
+      tourMarkImages.set(key, img);
+      if (!map.hasImage(name)) map.addImage(name, img, { pixelRatio: 2 });
+      map.getSource("ov-tours")?.setData(tourData());
+    }).catch(() => tourMarkImages.delete(key));
+  }
+}
+async function tourMarkImage(html) {
+  const ctx = tourHomeCircle();
+  if (!html.startsWith("<svg")) {
+    // эмодзи или буква из «Значок:»
+    const text = new DOMParser().parseFromString(html, "text/html").body.textContent;
+    ctx.font = "30px sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillStyle = TOUR_ICON_COLOR;
+    ctx.fillText(text, 32, 31);
+    return ctx.getImageData(0, 0, 64, 64);
+  }
+  const img = new Image();
+  img.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(
+    html.replace("<svg ", `<svg xmlns="http://www.w3.org/2000/svg" color="${TOUR_ICON_COLOR}" `));
+  await img.decode();
+  ctx.drawImage(img, 16, 14, 32, 32);
   return ctx.getImageData(0, 0, 64, 64);
 }
 
@@ -2349,14 +2401,12 @@ function addTours(before) {
       "text-offset": tourStopOffset(11),
       "icon-allow-overlap": true, "text-allow-overlap": true, "icon-ignore-placement": true, "text-ignore-placement": true },
     paint: { "text-color": "#fff" } }, before);
-  for (const [id, d] of [["pin", TOUR_PIN_D], ...Object.entries(TOUR_GROUPS).map(([id, g]) => [id, g.d])]) {
-    if (!map.hasImage(`tour-home-${id}`)) map.addImage(`tour-home-${id}`, tourHomeImage(d), { pixelRatio: 2 });
-  }
+  addTourMarkImages();
   // значок экскурсии по стране — под точкой страны, чтобы не закрывать её название на карте
   // (Грегори: «закрыл название страны»), остальные — над точкой, подпись — справа от значка
   const country = (a, b) => ["match", ["get", "group"], "country", a, b];
   map.addLayer({ id: "ov-tour-marks", type: "symbol", source: "ov-tours", maxzoom: 9, filter: tourStopsFilter("tour"),
-    layout: { "icon-image": ["concat", "tour-home-", ["get", "group"]], "icon-anchor": country("top", "bottom"),
+    layout: { "icon-image": ["concat", "tour-mark-", ["get", "mark"]], "icon-anchor": country("top", "bottom"),
       "icon-offset": country(["literal", [0, 14]], ["literal", [0, -6]]),
       "icon-allow-overlap": true, "icon-ignore-placement": true } }, before);
   map.addLayer({ id: "ov-tour-labels", type: "symbol", source: "ov-tours", maxzoom: 9, filter: tourStopsFilter("tour"),
@@ -2956,11 +3006,14 @@ function renderTourPanel(id) {
     const languageRow = h("div", "tour-sec-row");
     languageRow.append(h("div", "tour-sec-title", `Язык: ${phrasebookName(pb).toLowerCase()}`), foldButton(language));
     const languageBody = h("div", "tour-sec-body");
-    const a = h("button", "pb-link");
-    a.innerHTML = LANG_ICON;
-    a.append(h("span", "", `Открыть разговорник — главные фразы, аэропорт, гостиница, аренда машины, как пройти`));
-    a.addEventListener("click", () => renderPhrasebook(pb.id, id));
-    languageBody.append(a);
+    // весь языковой пакет: разговорник, словарь, общие фразы (Грегори: «ссылки на языковые пакеты»)
+    for (const book of phrasebooksFor(t)) {
+      const a = h("button", "pb-link");
+      a.innerHTML = LANG_ICON;
+      a.append(h("span", "", phrasebookLinkText(book)));
+      a.addEventListener("click", () => renderPhrasebook(book.id, id));
+      languageBody.append(a);
+    }
     language.append(languageRow, languageBody);
     languageSection = language;
   }
@@ -3295,6 +3348,25 @@ function phrasebookFor(t) {
 }
 
 // «Венгерский от ChatGPT — Разговорник» → «Венгерский»: пометка источника — в имени файла, не в подписи
+// все файлы языка страны экскурсии: сначала разговорник, потом словарь, общие фразы, остальное
+const PB_KINDS = [
+  [/разговорник/i, "Разговорник — главные фразы, аэропорт, гостиница, аренда машины, как пройти"],
+  [/словарь/i, "Словарь — отдельные слова по темам"],
+  [/общие фразы/i, "Общие фразы — вежливость, переспросить, время и количество"],
+];
+function phrasebooksFor(t) {
+  const main = phrasebookFor(t);
+  if (!main) return [];
+  const c = tourCountry(t).toLowerCase();
+  const rank = (pb) => { const i = PB_KINDS.findIndex(([re]) => re.test(pb.title)); return i < 0 ? PB_KINDS.length : i; };
+  return [...phrasebooks.values()]
+    .filter((pb) => pb.lang === main.lang && pb.countries.some((x) => x.toLowerCase() === c))
+    .sort((a, b) => rank(a) - rank(b) || a.title.localeCompare(b.title, "ru"));
+}
+function phrasebookLinkText(pb) {
+  return PB_KINDS.find(([re]) => re.test(pb.title))?.[1] || pb.title;
+}
+
 function phrasebookName(pb) {
   return pb.title.replace(/\s+[—–-]\s+Разговорник$/i, "").replace(/\s+от\s+ChatGPT$/i, "");
 }
