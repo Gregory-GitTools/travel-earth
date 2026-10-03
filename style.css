@@ -324,7 +324,7 @@ span.tour-flag {
 }
 
 .tour-row-group {
-  color: #43a047;
+  color: #15213b;
 }
 
 .tour-row-group-icon {
@@ -332,11 +332,13 @@ span.tour-flag {
   display: inline-grid;
   place-items: center;
   width: 20px;
+  color: #d9a441;
 }
 
 .tour-row-group-icon svg {
   width: 16px;
   height: 16px;
+  filter: drop-shadow(1px 0 0 #fff) drop-shadow(-1px 0 0 #fff) drop-shadow(0 1px 0 #fff) drop-shadow(0 -1px 0 #fff);
 }
 
 .tour-row-name {
@@ -367,28 +369,26 @@ span.tour-flag {
 }
 
 /* экскурсия — как пункт в панели экскурсии: оранжевая метка, жирное название, строка фактов */
-/* метка экскурсии — значок во весь кружок (Грегори: «увеличить максимально») */
+/* метка экскурсии — как на карте (Грегори, 2026-10-04): без кружка-подложки, белый кант вместо тени */
 .tour-row-pin {
   flex: none;
   display: inline-grid;
   place-items: center;
   width: 26px;
   height: 26px;
-  border-radius: 50%;
-  /* как точка экскурсии на карте (Грегори): красный значок на белом кружке, тень вместо каёмки */
-  background: #fff;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
   color: #e53935;
 }
 
 .tour-row-pin svg {
-  width: 16px;
-  height: 16px;
+  width: 20px;
+  height: 20px;
+  filter: drop-shadow(1px 0 0 #fff) drop-shadow(-1px 0 0 #fff) drop-shadow(0 1px 0 #fff) drop-shadow(0 -1px 0 #fff);
 }
 
 .tour-icon-text {
   font-size: 1rem;
   line-height: 1;
+  filter: drop-shadow(1px 0 0 #fff) drop-shadow(-1px 0 0 #fff) drop-shadow(0 1px 0 #fff) drop-shadow(0 -1px 0 #fff);
 }
 
 /* верхняя строка списка: «Справка» слева, «Свернуть/Развернуть все» справа */
