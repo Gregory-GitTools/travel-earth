@@ -1,5 +1,10 @@
 const el = (id) => document.getElementById(id);
-if (!("showDirectoryPicker" in window)) document.documentElement.classList.add("no-folders");
+// Папки с диска — только на компьютере. Chrome на Android с 2025 года тоже умеет
+// showDirectoryPicker, и телефон Грегори спрашивал разрешение на папки экскурсий и фото («запросы
+// продолжаются») — на телефоне они не нужны: всё приходит из репозитория
+const IS_MOBILE = navigator.userAgentData?.mobile ?? /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
+const FOLDERS_OK = "showDirectoryPicker" in window && !IS_MOBILE;
+if (!FOLDERS_OK) document.documentElement.classList.add("no-folders");
 
 // единый движок: глобус и плоская карта — это одна и та же карта MapLibre с
 // projection 'globe', которая сама переходит в обычную проекцию при приближении
@@ -1471,7 +1476,7 @@ async function repoFolder(name) {
 // Альбомы репозитория читаются в любом случае
 async function initMyPhotos() {
   if (myScan) { updateMyThumbs(); return; }
-  const handle = "showDirectoryPicker" in window
+  const handle = FOLDERS_OK
     ? await idb("settings", "readonly", (st) => st.get("dir")).catch(() => null) : null;
   renderMySettings(handle);
   if (handle && await handle.queryPermission({ mode: "read" }) === "granted") { startMyScan(handle); return; }
@@ -1543,7 +1548,7 @@ el("my-photos-here").addEventListener("click", () => {
 });
 
 async function pickMyFolder() {
-  if (!("showDirectoryPicker" in window)) { phonePhotoInput.click(); return; }
+  if (!(FOLDERS_OK)) { phonePhotoInput.click(); return; }
   let handle;
   try { handle = await window.showDirectoryPicker({ id: "travel-earth-photos", mode: "read" }); } catch { return; }
   await idb("settings", "readwrite", (st) => st.put(handle, "dir"));
@@ -1572,7 +1577,7 @@ function resetMyPhotos() {
 function renderMySettings(handle) {
   const name = document.getElementById("my-photos-folder");
   if (!name) return;
-  const folder = "showDirectoryPicker" in window;
+  const folder = FOLDERS_OK;
   name.textContent = folder ? (handle ? handle.name : "не выбрана")
     : handle ? `снимков с телефона: ${phoneFiles}` : "снимки с телефона не выбраны";
   document.getElementById("my-photos-pick").disabled = false;
@@ -2545,7 +2550,7 @@ async function initTours() {
     repoTours.then((dir) => dir && readTours(dir, true));
     repoFolder(REPO_LANGS).then((dir) => dir && readPhrasebooks(dir));
   }
-  if (tourDir || !("showDirectoryPicker" in window)) return;
+  if (tourDir || !(FOLDERS_OK)) return;
   const handle = await idb("settings", "readonly", (st) => st.get("tours")).catch(() => null);
   renderTourSettings(handle);
   if (!handle) return;
@@ -2629,7 +2634,7 @@ async function forgetTourFolder() {
 function renderTourSettings(handle) {
   const name = document.getElementById("tours-folder");
   if (!name) return;
-  const supported = "showDirectoryPicker" in window;
+  const supported = FOLDERS_OK;
   name.textContent = !supported ? "нужен Chrome или Edge на компьютере" : handle ? handle.name : "не выбрана";
   document.getElementById("tours-pick").disabled = !supported;
   document.getElementById("tours-pick").textContent = handle ? "Выбрать другую…" : "Выбрать папку…";
