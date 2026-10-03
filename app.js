@@ -2588,7 +2588,7 @@ async function playTourStep() {
     const first = tourHome(t), stop0 = play.stops[0]?.point;
     if (first) showSlides(first).then((n) => { if (!n && stop0 && stop0 !== first && alive()) showSlides(stop0); });
     const pb = phrasebookFor(t);
-    await speakText([t.title, ...t.idea, pb && `Для поездки есть разговорник, ${pb.title.toLowerCase()} язык: ссылка — в начале экскурсии`]
+    await speakText([t.title, ...t.idea, pb && `Для поездки есть разговорник, ${phrasebookName(pb).toLowerCase()} язык: ссылка — в начале экскурсии`]
       .filter(Boolean).join(". "));
   } else {
     const sec = play.stops[play.i];
@@ -2864,7 +2864,12 @@ const CHEVRON_ICON = `<svg viewBox="0 0 24 24" width="18" height="18"><path fill
 // стрелка пункта: в развёрнутом режиме — сворачивает его (.shut), в режиме «только пункты» — раскрывает (.open)
 function foldButton(box) {
   const b = Object.assign(document.createElement("button"), { className: "tour-fold", title: "Свернуть / развернуть", innerHTML: CHEVRON_ICON });
-  b.addEventListener("click", () => box.classList.toggle(tourPanel.classList.contains("titles") ? "open" : "shut"));
+  b.addEventListener("click", () => {
+    if (tourPanel.classList.contains("titles")) {
+      const open = box.classList.toggle("open");
+      box.classList.toggle("shut", !open);
+    } else box.classList.toggle("shut");
+  });
   return b;
 }
 
@@ -2934,16 +2939,24 @@ function renderTourPanel(id) {
   if (meta) aboutBody.append(h("div", "tour-meta", meta));
   if (t.route) aboutBody.append(h("div", "tour-points", `Маршрут: ${t.route}`));
   for (const line of t.idea) aboutBody.append(h("p", "tour-idea", line));
-  // разговорник страны — в начале экскурсии (Грегори: «в начале экскурсии упомянуть»)
+  // Ссылка на разговорник — отдельный сворачиваемый пункт, не часть описания экскурсии.
   const pb = phrasebookFor(t);
+  let languageSection = null;
   if (pb) {
+    const language = h("section", "tour-section tour-language shut");
+    const languageRow = h("div", "tour-sec-row");
+    languageRow.append(h("div", "tour-sec-title", `Язык: ${phrasebookName(pb).toLowerCase()}`), foldButton(language));
+    const languageBody = h("div", "tour-sec-body");
     const a = h("button", "pb-link");
     a.innerHTML = LANG_ICON;
-    a.append(h("span", "", `Разговорник: ${pb.title.toLowerCase()} — главные фразы, аэропорт, гостиница, аренда машины, как пройти`));
+    a.append(h("span", "", `Открыть разговорник — главные фразы, аэропорт, гостиница, аренда машины, как пройти`));
     a.addEventListener("click", () => renderPhrasebook(pb.id, id));
-    aboutBody.append(a);
+    languageBody.append(a);
+    language.append(languageRow, languageBody);
+    languageSection = language;
   }
   if (aboutBody.childNodes.length) { about.append(aboutHead, aboutBody); nodes.push(about); }
+  if (languageSection) nodes.push(languageSection);
   for (const sec of t.sections) {
     const box = h("section", "tour-section");
     if (sec.n) box.dataset.n = sec.n;
@@ -3263,7 +3276,12 @@ async function readPhrasebooks(dir) {
 // разговорник для экскурсии — по стране
 function phrasebookFor(t) {
   const c = tourCountry(t).toLowerCase();
-  return [...phrasebooks.values()].find((pb) => pb.countries.some((x) => x.toLowerCase() === c)) || null;
+  const matches = [...phrasebooks.values()].filter((pb) => pb.countries.some((x) => x.toLowerCase() === c));
+  return matches.find((pb) => /разговорник/i.test(pb.title)) || matches[0] || null;
+}
+
+function phrasebookName(pb) {
+  return pb.title.replace(/\s+[—–-]\s+Разговорник$/i, "");
 }
 
 // голос языка страны: лучший из установленных, сначала того же региона (it-IT), потом любой it-*
@@ -3403,7 +3421,8 @@ function renderPhrasebook(id, fromTour = null) {
   const titleRow = h("div", "tour-title-row");
   const icon = h("span", "tour-row-pin tour-title-icon");
   icon.innerHTML = LANG_ICON;
-  titleRow.append(icon, h("h2", "", `Разговорник: ${pb.title.toLowerCase()}`));
+  // «Итальянский — Словарь», «… — Общие фразы» — как в файле; сам разговорник — «Разговорник: итальянский»
+  titleRow.append(icon, h("h2", "", /разговорник/i.test(pb.title) ? `Разговорник: ${phrasebookName(pb).toLowerCase()}` : pb.title));
   head.append(bar, titleRow, h("div", "tour-player-label"));
   const nodes = [head];
   pbList = [];
