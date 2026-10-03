@@ -2136,24 +2136,29 @@ function tourGroup(t) {
   return t.city ? "city" : "";
 }
 
-// значок точки экскурсии: красный значок группы без кружка-подложки, с мягкой тенью прямо
-// на самом значке (Грегори, 2026-10-04: «убираем белый фон, включаем тень, делаем больше»),
-// 40 px. Слой размещает его ниже координаты остановки, чтобы значок не закрывал её номер.
-// Холст с запасом под тень. Так же рисуется альбом «Моих фото» — свой цвет и контуры фотоаппарата
+// значок точки экскурсии: красный значок группы без кружка-подложки, с тонким белым кантом
+// вместо тени (Грегори, 2026-10-04: «заменим тень на чёткий узкий белый кант»), 40 px.
+// Слой размещает его ниже координаты остановки, чтобы значок не закрывал её номер.
+// Так же рисуется альбом «Моих фото» — свой цвет и контуры фотоаппарата
 function tourHomeImage(d, color = TOUR_ICON_COLOR) {
   const ctx = tourIconCanvas();
   // значок 24×24 → 40 px, центр там же, где был центр прежнего кружка
   ctx.translate(12, 10);
   ctx.scale(40 / 24, 40 / 24);
+  ctx.lineJoin = "round";
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = "#fff";
   ctx.fillStyle = color;
-  for (const part of [d].flat()) ctx.fill(new Path2D(part));
+  for (const part of [d].flat()) {
+    const p = new Path2D(part);
+    ctx.stroke(p);
+    ctx.fill(p);
+  }
   return ctx.getImageData(0, 0, 64, 64);
 }
 
 function tourIconCanvas() {
-  const ctx = new OffscreenCanvas(64, 64).getContext("2d");
-  Object.assign(ctx, ICON_SHADOW);
-  return ctx;
+  return new OffscreenCanvas(64, 64).getContext("2d");
 }
 
 // значок экскурсии на карте — тот же, что в списке (tourIcon): «Значок:» из файла, иначе группа
@@ -2191,6 +2196,10 @@ async function tourMarkImage(html) {
     ctx.font = "36px sans-serif";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
+    ctx.lineJoin = "round";
+    ctx.lineWidth = 4;
+    ctx.strokeStyle = "#fff";
+    ctx.strokeText(text, 32, 31);
     ctx.fillStyle = TOUR_ICON_COLOR;
     ctx.fillText(text, 32, 31);
     return ctx.getImageData(0, 0, 64, 64);
@@ -2199,20 +2208,30 @@ async function tourMarkImage(html) {
   img.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(
     html.replace("<svg ", `<svg xmlns="http://www.w3.org/2000/svg" color="${TOUR_ICON_COLOR}" `));
   await img.decode();
+  // белый кант вокруг произвольной SVG-картинки: силуэт (filter обращает её в сплошной белый)
+  // рисуется с небольшим сдвигом по кругу, затем обычная цветная картинка — сверху, без сдвига
+  ctx.filter = "brightness(0) invert(1)";
+  for (const [dx, dy] of HALO_OFFSETS) ctx.drawImage(img, 12 + dx, 10 + dy, 40, 40);
+  ctx.filter = "none";
   ctx.drawImage(img, 12, 10, 40, 40);
   return ctx.getImageData(0, 0, 64, 64);
 }
+const HALO_OFFSETS = [[-2, 0], [2, 0], [0, -2], [0, 2], [-1.4, -1.4], [1.4, -1.4], [-1.4, 1.4], [1.4, 1.4]];
 
-// номер остановки: без кружка, красная цифра с тенью (Грегори, 2026-10-04); выделенная — крупнее.
+// номер остановки: без кружка, красная цифра с тонким белым кантом вместо тени
+// (Грегори, 2026-10-04: «заменим тень на чёткий узкий белый кант»); выделенная — крупнее.
 // Цифра разная у каждой точки, поэтому картинка — на каждое число отдельно (addTourNumberImages)
 const tourNumberImages = new Map();
 // холст и шрифт в полтора раза крупнее прежних (Грегори, 2026-10-04: «плохо видно», затем «многовато»)
 function tourNumberImage(n, big) {
   const ctx = new OffscreenCanvas(84, 84).getContext("2d");
-  Object.assign(ctx, ICON_SHADOW);
   ctx.font = `700 ${big ? 45 : 33}px sans-serif`;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
+  ctx.lineJoin = "round";
+  ctx.lineWidth = big ? 4 : 3;
+  ctx.strokeStyle = "#fff";
+  ctx.strokeText(String(n), 42, 44);
   ctx.fillStyle = TOUR_ICON_COLOR;
   ctx.fillText(String(n), 42, 44);
   return ctx.getImageData(0, 0, 84, 84);
