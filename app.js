@@ -3254,7 +3254,12 @@ function parsePhrasebook(text, name) {
     }
     if (!sec && inSources && line.startsWith("- ")) { pb.sources.push(line.slice(2)); continue; }
     if (!sec) { pb.idea.push(line); continue; }
-    const parts = line.startsWith("- ") ? line.slice(2).split(/\s+—\s+/) : null;
+    let parts = line.startsWith("- ") ? line.slice(2).split(/\s+—\s+/) : null;
+    // и «- Bonjour. / Здравствуйте.» — так пишет ChatGPT (французский): на языке / по-русски, без
+    // произношения; делит первая « / », за которой кириллица до следующей «/» («simple / double. /
+    // Одинарный / двойной», «marche-t-il ? / Wi‑Fi работает?»)
+    const slash = parts?.length === 1 && parts[0].match(/^(.+?)\s+\/\s+(?=[^/]*[А-Яа-яЁё])(.+)$/);
+    if (slash) parts = [slash[2], slash[1]];
     if (parts?.length >= 2) {
       const who = parts[0].match(/^([^:]{1,20}):\s+(.+)$/);
       sec.items.push({ who: who?.[1] || "", ru: who?.[2] || parts[0], foreign: parts[1], say: parts.slice(2).join(" — ") });
