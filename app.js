@@ -2564,6 +2564,7 @@ function startTourPlay(id, from = 0) {
 }
 
 function stopTourPlay() {
+  stopPhrasePlay();
   if (!tourPlay) return;
   tourPlay.run = null;
   tourPlay = null;
@@ -2644,7 +2645,7 @@ function tourPlayPause() {
 // кнопки работают, пока он идёт; под названием — «3 / 7 · остановка» (Грегори: отдельная
 // кнопка-наушники убрана, плеер сверху всегда — больше места названию)
 function renderTourPlayer() {
-  const bar = tourPanel.querySelector(".tour-player");
+  const bar = tourPanel.querySelector(".tour-player:not(.pb-player)");
   if (!bar) return;
   const id = tourPanelId;
   const play = tourPlay?.id === id ? tourPlay : null;
@@ -3275,6 +3276,109 @@ function langVoice(lang) {
     .sort((a, b) => exact(a) - exact(b) || voiceRank(a) - voiceRank(b))[0] || null;
 }
 
+// «проигрывать все подряд» (Грегори): каждая фраза — по-русски, затем на языке страны, её
+// карточка подсвечивается и прокручивается в кадр, раздел раскрывается; начало — с первого
+// раскрытого раздела с фразами, дальше до конца. Кнопки — как у аудиогида экскурсии;
+// щелчок по фразе во время чтения — продолжить с неё
+let pbPlay = null; // { list: [{ it, b, box, sec }], lang, i, paused, run }
+let pbList = [], pbLang = ""; // фразы открытого разговорника — по порядку
+
+function startPhrasePlay() {
+  if (!pbList.length) return;
+  stopSpeech();
+  for (const b of document.querySelectorAll(".speaking")) b.classList.remove("speaking");
+  const from = pbList.findIndex((x) => !x.box.classList.contains("shut"));
+  pbPlay = { list: pbList, lang: pbLang, i: Math.max(0, from), paused: false, run: {} };
+  playPhraseStep();
+}
+
+function stopPhrasePlay() {
+  if (!pbPlay) return;
+  pbPlay.run = null;
+  pbPlay = null;
+  stopSpeech();
+  for (const b of tourPanel.querySelectorAll(".pb-phrase.speaking")) b.classList.remove("speaking");
+  renderPhrasePlayer();
+}
+
+async function playPhraseStep() {
+  const play = pbPlay;
+  if (!play) return;
+  const run = play.run = {};
+  const alive = () => pbPlay === play && play.run === run && !play.paused;
+  renderPhrasePlayer();
+  const { it, b, box, sec } = play.list[play.i];
+  for (const x of tourPanel.querySelectorAll(".pb-phrase.speaking")) x.classList.remove("speaking");
+  box.classList.remove("shut");
+  updatePbFoldAll();
+  b.classList.add("speaking");
+  b.scrollIntoView({ block: "center", behavior: "smooth" });
+  // новый раздел — сначала его название
+  if (play.list[play.i - 1]?.sec !== sec) {
+    await speakText(sec);
+    if (!alive()) return;
+    await wait(500);
+    if (!alive()) return;
+  }
+  await speakText(it.ru);
+  if (!alive()) return;
+  await wait(400);
+  if (!alive()) return;
+  await speakText(it.foreign, play.lang);
+  if (!alive()) return;
+  await wait(1200);
+  if (!alive()) return;
+  b.classList.remove("speaking");
+  if (play.i + 1 >= play.list.length) { stopPhrasePlay(); return; }
+  play.i++;
+  playPhraseStep();
+}
+
+function phrasePlayGo(delta) {
+  if (!pbPlay) return;
+  pbPlay.i = Math.max(0, Math.min(pbPlay.list.length - 1, pbPlay.i + delta));
+  pbPlay.paused = false;
+  stopSpeech();
+  playPhraseStep();
+}
+
+function phrasePlayPause() {
+  if (!pbPlay) return;
+  pbPlay.paused = !pbPlay.paused;
+  if (pbPlay.paused) { pbPlay.run = null; stopSpeech(); renderPhrasePlayer(); }
+  else playPhraseStep();
+}
+
+function renderPhrasePlayer() {
+  const bar = tourPanel.querySelector(".pb-player");
+  if (!bar) return;
+  const play = pbPlay;
+  const b = (icon, title, fn, off) => {
+    const x = Object.assign(document.createElement("button"), { className: "tour-edit", title, innerHTML: icon, disabled: !!off });
+    x.addEventListener("click", fn);
+    return x;
+  };
+  const main = b(play && !play.paused ? PAUSE_ICON : PLAY_BIG_ICON,
+    !play ? "Читать все фразы подряд — с первого раскрытого раздела" : play.paused ? "Продолжить" : "Пауза",
+    () => (play ? phrasePlayPause() : startPhrasePlay()));
+  main.classList.toggle("on", !!play);
+  bar.replaceChildren(b(PREV_ICON, "Назад", () => phrasePlayGo(-1), !play), main,
+    b(NEXT_ICON, "Дальше", () => phrasePlayGo(1), !play), b(STOP_ICON, "Стоп", stopPhrasePlay, !play));
+  const label = tourPanel.querySelector(".tour-player-label");
+  const cur = play?.list[play.i];
+  label.hidden = !play;
+  label.textContent = cur ? `${play.i + 1} / ${play.list.length} · ${cur.sec}` : "";
+}
+
+// свернуть / развернуть все разделы (кроме описания языка)
+function updatePbFoldAll() {
+  const btn = tourPanel.querySelector(".pb-fold-all");
+  if (!btn) return;
+  const open = [...tourPanel.querySelectorAll(".tour-section:not(.tour-about)")].some((x) => !x.classList.contains("shut"));
+  btn.innerHTML = open ? FOLD_ICON : UNFOLD_ICON;
+  btn.title = open ? "Свернуть все разделы" : "Развернуть все разделы";
+}
+
 // панель разговорника — та же, что у экскурсии; открыт из экскурсии — крестик возвращает к ней
 function renderPhrasebook(id, fromTour = null) {
   const pb = phrasebooks.get(id);
@@ -3287,14 +3391,23 @@ function renderPhrasebook(id, fromTour = null) {
     title: fromTour ? "Назад к экскурсии" : "Закрыть", textContent: "×" });
   close.addEventListener("click", () => (fromTour && tours.has(fromTour) ? renderTourPanel(fromTour) : closeTourToList()));
   const head = h("div", "tour-head");
+  const foldAll = h("button", "tour-edit pb-fold-all");
+  foldAll.addEventListener("click", () => {
+    const secs = [...tourPanel.querySelectorAll(".tour-section:not(.tour-about)")];
+    const open = secs.some((x) => !x.classList.contains("shut"));
+    for (const x of secs) x.classList.toggle("shut", open);
+    updatePbFoldAll();
+  });
   const bar = h("div", "tour-bar");
-  bar.append(h("span", "tour-bar-gap"), close);
+  bar.append(h("div", "tour-player pb-player"), h("span", "tour-bar-gap"), foldAll, close);
   const titleRow = h("div", "tour-title-row");
   const icon = h("span", "tour-row-pin tour-title-icon");
   icon.innerHTML = LANG_ICON;
   titleRow.append(icon, h("h2", "", `Разговорник: ${pb.title.toLowerCase()}`));
-  head.append(bar, titleRow);
+  head.append(bar, titleRow, h("div", "tour-player-label"));
   const nodes = [head];
+  pbList = [];
+  pbLang = pb.lang;
   const about = h("section", "tour-section tour-about");
   const aboutBody = h("div", "tour-sec-body");
   if (pb.countries.length) aboutBody.append(h("div", "tour-meta", pb.countries.join(" · ")));
@@ -3312,6 +3425,7 @@ function renderPhrasebook(id, fromTour = null) {
     const row = h("div", "tour-sec-row");
     const title = h("button", "tour-sec-title", sec.title);
     title.addEventListener("click", () => box.classList.toggle("shut"));
+    box.addEventListener("click", updatePbFoldAll); // после переключения раздела — обновить значок «свернуть все»
     row.append(title, foldButton(box));
     const body = h("div", "tour-sec-body");
     for (const it of sec.items) {
@@ -3324,7 +3438,14 @@ function renderPhrasebook(id, fromTour = null) {
       ru.append(it.ru);
       b.append(ru, h("div", "pb-foreign", it.foreign));
       if (it.say) b.append(h("div", "pb-say", it.say));
-      b.addEventListener("click", () => speak(it.foreign, b, pb.lang));
+      const idx = pbList.push({ it, b, box, sec: sec.title }) - 1;
+      b.addEventListener("click", () => {
+        if (!pbPlay) { speak(it.foreign, b, pb.lang); return; }
+        pbPlay.i = idx;
+        pbPlay.paused = false;
+        stopSpeech();
+        playPhraseStep();
+      });
       body.append(b);
     }
     box.append(row, body);
@@ -3360,6 +3481,8 @@ function renderPhrasebook(id, fromTour = null) {
   tourPanel.replaceChildren(...nodes);
   tourPanel.hidden = false;
   tourPanel.scrollTop = 0;
+  renderPhrasePlayer();
+  updatePbFoldAll();
 }
 
 function openTour(id) {
