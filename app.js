@@ -1345,6 +1345,8 @@ window.addEventListener("message", (e) => {
 // Щелчок по альбому — перелёт к нему, двойной — альбом в окне галереи (все снимки папки);
 // двойной по снимку — тот же альбом с этого снимка; галерея ведёт карту (перелёт к снимку)
 const MY_COLOR = "#7c4dff";
+const MY_ALBUM_ICON = ["M12 15.2a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4z",
+  "M9 2 7.17 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2h-3.17L15 2H9zm3 15c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5z"];
 const MY_IMAGE_RE = /\.(jpe?g|webp|png)$/i;
 const MY_TEXT_RE = /\.(txt|md)$/i;
 const MY_ALBUM_PROBE = 25; // сколько снимков альбома пробовать в поисках координат на первом проходе
@@ -1404,9 +1406,12 @@ function addMyPhotos(before) {
   for (const [id, data] of photoImages) if (!map.hasImage(id)) map.addImage(id, data, { pixelRatio: 2 });
   map.addSource("ov-myphotos", { type: "geojson", data: myData() });
   const kind = (k) => ["==", ["get", "kind"], k];
-  map.addLayer({ id: "ov-my-albums", type: "circle", source: "ov-myphotos", maxzoom: photoDotZoom(), filter: kind("album"),
-    paint: { "circle-color": MY_COLOR, "circle-radius": ["interpolate", ["linear"], ["zoom"], 2, 5, 10, 7],
-      "circle-stroke-color": "#fff", "circle-stroke-width": 2 } }, before);
+  // альбом — фотоаппарат цвета своих снимков на белом кружке с тенью, как значки экскурсий
+  // (Грегори: «не просто точкой»); ближе — распадается на точки снимков
+  if (!map.hasImage("my-album")) map.addImage("my-album", tourHomeImage(MY_ALBUM_ICON, MY_COLOR), { pixelRatio: 2 });
+  map.addLayer({ id: "ov-my-albums", type: "symbol", source: "ov-myphotos", maxzoom: photoDotZoom(), filter: kind("album"),
+    layout: { "icon-image": "my-album", "icon-size": 0.85, "icon-offset": [0, 2],
+      "icon-allow-overlap": true, "icon-ignore-placement": true } }, before);
   map.addLayer({ id: "ov-my-dots", type: "circle", source: "ov-myphotos", minzoom: photoDotZoom(), filter: kind("photo"),
     paint: { "circle-color": MY_COLOR, "circle-radius": 4, "circle-stroke-color": "#fff", "circle-stroke-width": 1.5 } }, before);
   map.addLayer({ id: "ov-my-photos", type: "symbol", source: "ov-myphotos", minzoom: photoMinZoom(), filter: ["all", kind("photo"), ["has", "img"]],
@@ -1754,7 +1759,7 @@ function showAlbumInfo(f) {
   const p = f.properties;
   if (trailPoiHover === p.album && trailPoiPopup?.isOpen()) return;
   trailPoiHover = p.album;
-  openMediaPopup(f.geometry.coordinates, 10, "260px", `<div class="popup-title">${escapeHtml(p.title)}</div>`
+  openMediaPopup(f.geometry.coordinates, 16, "260px", `<div class="popup-title">${escapeHtml(p.title)}</div>`
     + `<div class="popup-kind">${escapeHtml(`Альбом · ${p.count} фото`)}</div>`
     + (p.excursion ? `<div class="popup-row">${escapeHtml(`Экскурсия: ${p.excursion}`)}</div>` : "")
     + `<div class="popup-row popup-muted">${escapeHtml(canOpenGallery() ? "Щелчок — к альбому, двойной — открыть фотогалерею" : "Нажмите — к альбому")}</div>`);
@@ -1997,8 +2002,9 @@ function tourGroup(t) {
 
 // значок точки экскурсии: красный значок группы на белом кружке без каёмки, вместо неё —
 // мягкая тень (Грегори: «как у кайтера в Windy»), 26 px; стоит над точкой, чтобы не
-// закрывать первую остановку. Холст с запасом под тень, кружок чуть выше середины
-function tourHomeImage(d) {
+// закрывать первую остановку. Холст с запасом под тень, кружок чуть выше середины.
+// Так же рисуется альбом «Моих фото» — свой цвет и несколько контуров (фотоаппарат)
+function tourHomeImage(d, color = TOUR_ICON_COLOR) {
   const ctx = new OffscreenCanvas(64, 64).getContext("2d");
   Object.assign(ctx, ICON_SHADOW);
   ctx.beginPath();
@@ -2009,8 +2015,8 @@ function tourHomeImage(d) {
   // значок 24×24 → 32 px по центру кружка
   ctx.translate(16, 14);
   ctx.scale(32 / 24, 32 / 24);
-  ctx.fillStyle = TOUR_ICON_COLOR;
-  ctx.fill(new Path2D(d));
+  ctx.fillStyle = color;
+  for (const part of [d].flat()) ctx.fill(new Path2D(part));
   return ctx.getImageData(0, 0, 64, 64);
 }
 
