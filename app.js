@@ -363,10 +363,10 @@ const OVERLAYS = [
     layers: ["ov-photo-selected", "ov-photos", "ov-photo-dots"] },
   { id: "myphotos", name: "Мои фото", icon: CHIP_ICONS.myphotos,
     hint: "Фотографии из папки на этом компьютере (выбирается в ⚙ настройках) — альбомы видны на всём глобусе",
-    layers: ["ov-my-selected", "ov-my-photos", "ov-my-dots", "ov-my-albums"], available: () => "showDirectoryPicker" in window },
+    layers: ["ov-my-selected", "ov-my-photos", "ov-my-dots", "ov-my-albums"] },
   { id: "tours", name: "Экскурсии", icon: CHIP_ICONS.tours,
     hint: "Наброски будущих путешествий из текстовых файлов в своей папке (выбирается в ⚙ настройках) — маршрут, точки, справки",
-    layers: ["ov-tour-labels", "ov-tour-marks", "ov-tour-sel", "ov-tour-stops", "ov-tour-route"], available: () => "showDirectoryPicker" in window,
+    layers: ["ov-tour-labels", "ov-tour-marks", "ov-tour-sel", "ov-tour-stops", "ov-tour-route"],
     // кнопки в «Слоях» нет (Грегори): экскурсии видны всегда, вход к ним — значок карты в строке поиска
     hidden: true },
   { id: "mapillary", name: "Снимки улиц", icon: CHIP_ICONS.streets,
@@ -376,8 +376,8 @@ const OVERLAYS = [
     layers: ["ov-rail-tunnel", "ov-rail"] },
 ];
 const OVERLAYS_STORAGE_KEY = "travel-earth.overlays";
-const activeOverlays = new Set(JSON.parse(localStorage.getItem(OVERLAYS_STORAGE_KEY) || "[]"));
-if (!("showDirectoryPicker" in window)) activeOverlays.delete("tours");
+// при первом запуске альбомы из репозитория видны сразу (Грегори: «видны всегда»)
+const activeOverlays = new Set(JSON.parse(localStorage.getItem(OVERLAYS_STORAGE_KEY) || '["myphotos"]'));
 
 // шрифт подписей высот — тот же, что у подписей самой карты: у каждого стиля свой
 // сервер шрифтов, и чужого шрифта на нём может не быть
@@ -1423,14 +1423,57 @@ function addMyPhotos(before) {
   initMyPhotos();
 }
 
-// выбранная папка из IndexedDB; есть разрешение — обход, нет — кнопка «Открыть мои фото»
+// Папки «Экскурсии» и «Альбомы» в самом репозитории — видны всем и в любом браузере, без
+// настроек (Грегори: «переедем экскурсиями на GitHub»); папки с диска из ⚙ читаются вдобавок.
+// Список файлов: локальный сервер start.bat (GET /list) или, на GitHub Pages, GitHub API;
+// сами файлы — с того же сайта. Для остального кода это обычная папка: entries(), getFile()
+const REPO = "Gregory-GitTools/travel-earth";
+const REPO_TOURS = "Экскурсии", REPO_ALBUMS = "Альбомы";
+let repoTree = null;
+const repoUrl = (path) => path.split("/").map(encodeURIComponent).join("/");
+async function repoFolder(name) {
+  let items = await fetch(`list?dir=${encodeURIComponent(name)}`)
+    .then((r) => (r.ok && r.headers.get("Content-Type")?.includes("json") ? r.json() : null)).catch(() => null);
+  if (!items) {
+    repoTree ??= fetch(`https://api.github.com/repos/${REPO}/git/trees/HEAD?recursive=1`)
+      .then((r) => (r.ok ? r.json() : null)).catch(() => null);
+    const tree = await repoTree;
+    // вместо даты файла — его хэш: изменился файл — изменился и хэш
+    items = tree?.tree?.filter((x) => x.type === "blob" && x.path.startsWith(`${name}/`))
+      .map((x) => ({ path: x.path, size: x.size, mtime: x.sha }));
+  }
+  if (!items?.length) return null;
+  const dirNode = (dirName) => ({ kind: "directory", name: dirName, children: new Map(),
+    async *entries() { yield* this.children; } });
+  const root = dirNode(name);
+  for (const { path, size, mtime } of items) {
+    const parts = path.split("/").slice(1);
+    let dir = root;
+    for (const part of parts.slice(0, -1)) {
+      if (!dir.children.has(part)) dir.children.set(part, dirNode(part));
+      dir = dir.children.get(part);
+    }
+    const fileName = parts.at(-1);
+    dir.children.set(fileName, { kind: "file", name: fileName, repoPath: path, meta: { size, lastModified: mtime },
+      async getFile() {
+        const r = await fetch(repoUrl(path));
+        if (!r.ok) throw new Error(`${r.status}`);
+        return new File([await r.blob()], fileName, { lastModified: typeof mtime === "number" ? mtime : 0 });
+      } });
+  }
+  return root;
+}
+
+// выбранная папка из IndexedDB; есть разрешение — обход, нет — кнопка «Открыть мои фото».
+// Альбомы репозитория читаются в любом случае
 async function initMyPhotos() {
-  if (myDir || !("showDirectoryPicker" in window)) { updateMyThumbs(); return; }
-  const handle = await idb("settings", "readonly", (st) => st.get("dir")).catch(() => null);
+  if (myScan) { updateMyThumbs(); return; }
+  const handle = "showDirectoryPicker" in window
+    ? await idb("settings", "readonly", (st) => st.get("dir")).catch(() => null) : null;
   renderMySettings(handle);
-  if (!handle) { setMyStatus(""); return; }
-  if (await handle.queryPermission({ mode: "read" }) === "granted") startMyScan(handle);
-  else showMyAccessButton(handle);
+  if (handle && await handle.queryPermission({ mode: "read" }) === "granted") { startMyScan(handle); return; }
+  startMyScan(null);
+  if (handle) showMyAccessButton(handle);
 }
 
 function showMyAccessButton(handle) {
@@ -1465,9 +1508,8 @@ async function pickMyFolder() {
 
 async function forgetMyFolder() {
   await idb("settings", "readwrite", (st) => st.delete("dir"));
-  resetMyPhotos();
   renderMySettings(null);
-  setMyStatus("");
+  startMyScan(null);
 }
 
 function resetMyPhotos() {
@@ -1492,6 +1534,7 @@ function renderMySettings(handle) {
 }
 
 async function startMyScan(handle) {
+  resetMyPhotos();
   myDir = handle;
   const scan = myScan = {};
   const exifr = await loadExifr().catch(() => null);
@@ -1511,12 +1554,13 @@ async function startMyScan(handle) {
   const exifOf = async (id) => {
     const file = myFiles.get(id);
     if (file.rec) return file.rec;
-    const f = await file.handle.getFile();
+    // у снимка из репозитория размер и хэш известны без скачивания — кэш проверяется по ним
+    const f = file.handle.meta || await file.handle.getFile();
     const hit = cache.get(file.path);
     if (hit && hit.size === f.size && hit.mtime === f.lastModified) return (file.rec = hit);
     let rec = { size: f.size, mtime: f.lastModified };
     try {
-      const e = await exifr.parse(f, { tiff: true, exif: true, gps: true, xmp: false, icc: false, iptc: false, jfif: false, ihdr: false, translateValues: false });
+      const e = await exifr.parse(f instanceof Blob ? f : await file.handle.getFile(), { tiff: true, exif: true, gps: true, xmp: false, icc: false, iptc: false, jfif: false, ihdr: false, translateValues: false });
       if (Number.isFinite(e?.latitude) && Number.isFinite(e?.longitude) && (e.latitude || e.longitude)) rec = { ...rec, lat: e.latitude, lon: e.longitude };
       if (e?.DateTimeOriginal instanceof Date) rec.date = e.DateTimeOriginal.getTime();
       if (e?.Orientation) rec.orient = e.Orientation;
@@ -1567,7 +1611,7 @@ async function startMyScan(handle) {
     for (const [name, h] of dirs.sort((a, b) => a[0].localeCompare(b[0], undefined, { numeric: true }))) await walk(h, `${path}/${name}`);
   };
   setMyStatus("Читаю папку…");
-  await walk(handle, handle.name);
+  for (const root of [await repoFolder(REPO_ALBUMS), handle]) if (root && scan === myScan) await walk(root, root.name);
 
   // проход 2: все снимки, альбомы ближе к центру карты — первыми
   for (;;) {
@@ -2105,7 +2149,7 @@ function setTourMode(on) {
   tourCursor = null;
   tourList.hidden = !on;
   // экскурсии на карте — только пока кнопка нажата (Грегори)
-  if (on !== activeOverlays.has("tours") && "showDirectoryPicker" in window) toggleOverlay("tours");
+  if (on !== activeOverlays.has("tours")) toggleOverlay("tours");
   if (on) { renderTourList(); input.focus(); }
 }
 
@@ -2214,7 +2258,7 @@ function renderTourList() {
   }
   if (!rows.length) {
     rows.push(Object.assign(document.createElement("div"), { className: "tour-list-empty", textContent: tours.size ? "Ничего не нашлось"
-      : tourDir ? "В папке экскурсий нет файлов" : "Папка экскурсий не выбрана — ⚙ настройки" }));
+      : tourDir ? "В папке экскурсий нет файлов" : "Экскурсии загружаются…" }));
   }
   tourList.replaceChildren(...rows);
   markTourCursor();
@@ -2320,7 +2364,13 @@ function showTourStopsOf(id) {
   }
 }
 
+// экскурсии репозитория — всем и всегда; папка с диска из ⚙ — вдобавок
+let repoTours = null;
 async function initTours() {
+  if (!repoTours) {
+    repoTours = repoFolder(REPO_TOURS);
+    repoTours.then((dir) => dir && readTours(dir, true));
+  }
   if (tourDir || !("showDirectoryPicker" in window)) return;
   const handle = await idb("settings", "readonly", (st) => st.get("tours")).catch(() => null);
   renderTourSettings(handle);
@@ -2335,9 +2385,10 @@ function setTourStatus(text) {
   if (node) node.textContent = text;
 }
 
-// все .md/.txt папки и подпапок; изменённые (по дате файла) — разобрать заново, места — найти
-async function readTours(handle) {
-  tourDir = handle;
+// все .md/.txt папки и подпапок; изменённые (по дате файла) — разобрать заново, места — найти.
+// repo — папка репозитория: файл с тем же путём в папке с диска важнее (его можно править)
+async function readTours(handle, repo = false) {
+  if (!repo) tourDir = handle;
   const seen = new Set();
   const walk = async (dir, path) => {
     for await (const [name, h] of dir.entries()) {
@@ -2345,22 +2396,25 @@ async function readTours(handle) {
       if (h.kind === "directory") await walk(h, `${path}/${name}`);
       else if (TOUR_TEXT_RE.test(name)) {
         const id = `${path}/${name}`;
+        if (repo && tours.get(id) && !tours.get(id).repo) continue;
         seen.add(id);
+        if (repo && tours.get(id)?.mtime === h.meta.lastModified) continue;
         const file = await h.getFile();
-        if (tours.get(id)?.mtime === file.lastModified) continue;
+        if (tours.get(id)?.mtime === file.lastModified && tours.get(id).repo === repo) continue;
         const bytes = await file.arrayBuffer();
         let text;
         try { text = new TextDecoder("utf-8", { fatal: true }).decode(bytes); } catch { text = new TextDecoder("windows-1251").decode(bytes); }
-        tours.set(id, { id, file: name, handle: h, mtime: file.lastModified, ...parseTour(text, name) });
+        tours.set(id, { id, file: name, handle: h, repo, mtime: repo ? h.meta.lastModified : file.lastModified, ...parseTour(text, name) });
       }
     }
   };
   try { await walk(handle, handle.name); } catch { setTourStatus("Папка недоступна"); return; }
-  for (const id of tours.keys()) if (!seen.has(id)) tours.delete(id);
+  for (const [id, t] of tours) if (!seen.has(id) && t.repo === repo) tours.delete(id);
   const list = [...tours.values()];
   // номера — только у остановок с местом, по порядку
   for (const t of list) { let n = 0; for (const sec of t.sections) sec.n = sec.place ? ++n : 0; }
   refreshTours();
+  updateTourFinder();
   setTourStatus(`Экскурсий: ${list.length}`);
   for (const t of list) {
     if (t.region && !t.point) t.point = await tourGeocode(t.region).catch(() => null);
@@ -2378,7 +2432,7 @@ async function pickTourFolder() {
   let handle;
   try { handle = await window.showDirectoryPicker({ id: "travel-earth-tours", mode: "read" }); } catch { return; }
   await idb("settings", "readwrite", (st) => st.put(handle, "tours"));
-  tours.clear();
+  for (const [id, t] of tours) if (!t.repo) tours.delete(id);
   renderTourSettings(handle);
   if (!activeOverlays.has("tours")) toggleOverlay("tours");
   readTours(handle);
@@ -2390,6 +2444,7 @@ async function forgetTourFolder() {
   tours.clear();
   refreshTours();
   closeTourPanel();
+  repoTours?.then((dir) => dir && readTours(dir, true));
   renderTourSettings(null);
   setTourStatus("");
 }
@@ -2975,6 +3030,17 @@ function tourFilePath(t) {
   return `${base}\\${t.id.slice(t.id.indexOf("/") + 1).replace(/\//g, "\\")}`;
 }
 
+// промт для ChatGPT и других ИИ: как написать файл экскурсии — лежит рядом с экскурсиями
+// репозитория («_» — карта его не читает), ссылка на него — в режиме правки
+const TOUR_PROMPT = `${REPO_TOURS}/_Промт — как написать экскурсию.md`;
+// файл репозитория: при запуске через start.bat — в программе по умолчанию (Блокнот…),
+// иначе — на GitHub (edit — сразу правка, иначе просмотр с кнопкой «скопировать»)
+async function openRepoFile(path, edit) {
+  const res = await fetch("/open-file", { method: "POST", headers: { "Content-Type": "application/json", "X-Travel-Earth": "1" },
+    body: JSON.stringify({ path }) }).catch(() => null);
+  if (!res?.ok) window.open(`https://github.com/${REPO}/${edit ? "edit" : "blob"}/main/${repoUrl(path)}`, "_blank", "noopener");
+}
+
 async function editTour(id) {
   const t = tours.get(id);
   if (!t?.handle) return;
@@ -2990,6 +3056,7 @@ async function editTour(id) {
   const save = h("button", "text-btn tour-save", "Сохранить");
   const cancel = h("button", "text-btn tour-cancel", "Отмена");
   const doSave = async () => {
+    if (t.repo) return;
     try {
       if (await t.handle.queryPermission({ mode: "readwrite" }) !== "granted"
         && await t.handle.requestPermission({ mode: "readwrite" }) !== "granted") { status.textContent = "Нет разрешения на запись"; return; }
@@ -3010,10 +3077,11 @@ async function editTour(id) {
   });
   const head = h("div", "tour-head");
   const editTitle = h("div", "tour-title-row");
-  // крестик — закрыть окно, как в просмотре (несохранённая правка отменяется)
-  const closeEdit = Object.assign(document.createElement("button"), { className: "tour-close", title: "Закрыть", textContent: "×" });
-  closeEdit.addEventListener("click", closeTourPanel);
-  editTitle.append(h("h2", "", `Правка: ${t.file}`), tourHelpButton(), closeEdit);
+  // вместо крестика — нажатый карандаш: отжать — вернуться к экскурсии (Грегори: «из карандаша
+  // не выскочить обратно»); несохранённая правка отменяется, как по «Отмена»
+  const back = Object.assign(document.createElement("button"), { className: "tour-edit on", title: "Вернуться к экскурсии", innerHTML: EDIT_ICON });
+  back.addEventListener("click", () => renderTourPanel(id));
+  editTitle.append(h("h2", "", `Правка: ${t.file}`), tourHelpButton(), back);
   head.append(editTitle);
   // путь к файлу — ссылкой: открывает файл в программе Windows по умолчанию (Блокнот, VS Code…).
   // Сама страница программу запустить не может и полного пути на диске не знает — поэтому
@@ -3022,8 +3090,9 @@ async function editTour(id) {
   // старый http.server) — файл открывается в новой вкладке только для чтения и объясняется почему
   const link = Object.assign(document.createElement("a"), { className: "tour-file-link", href: "#" });
   const setLink = () => {
-    link.textContent = tourFilePath(t) || t.id;
-    link.title = tourFilePath(t) ? "Открыть в программе по умолчанию" : "Указать, где на диске лежит папка экскурсий";
+    link.textContent = t.repo ? t.handle.repoPath : tourFilePath(t) || t.id;
+    link.title = t.repo ? "Править: в Блокноте при запуске через start.bat, иначе на GitHub"
+      : tourFilePath(t) ? "Открыть в программе по умолчанию" : "Указать, где на диске лежит папка экскурсий";
   };
   setLink();
   // путь к папке не задан — спросить прямо здесь, одним полем (в ⚙ то же самое поле)
@@ -3050,6 +3119,7 @@ async function editTour(id) {
   };
   link.addEventListener("click", async (e) => {
     e.preventDefault();
+    if (t.repo) { openRepoFile(t.handle.repoPath, true); return; }
     const fullPath = tourFilePath(t);
     if (!fullPath) { askPath(); return; }
     const res = await fetch("/open-file", { method: "POST", headers: { "Content-Type": "application/json", "X-Travel-Earth": "1" },
@@ -3070,10 +3140,18 @@ async function editTour(id) {
     setTimeout(() => URL.revokeObjectURL(url), 60000);
   });
   const fileRow = h("div", "tour-file");
-  fileRow.append("Файл: ", link);
+  const prompt = Object.assign(document.createElement("a"), { className: "tour-file-link", href: "#",
+    textContent: "промт для ChatGPT", title: "Подробное задание для ИИ: как написать файл экскурсии — скопируйте и допишите тему" });
+  prompt.addEventListener("click", (e) => { e.preventDefault(); openRepoFile(TOUR_PROMPT, false); });
+  fileRow.append("Файл: ", link, " · ", prompt);
   const bar = h("div", "tour-edit-bar");
-  bar.append(save, cancel, status);
-  tourPanel.replaceChildren(head, fileRow, area, bar, h("div", "tour-file", "Ctrl+S — сохранить, Esc — отмена. Как писать файл — кнопка «i» вверху"));
+  // экскурсия из репозитория: здесь только просмотр, правка — по ссылке «Файл»
+  if (t.repo) {
+    area.readOnly = true;
+    bar.append(h("span", "tour-edit-status", "Файл из репозитория — здесь только просмотр. Править — по ссылке «Файл»: на GitHub или, при запуске через start.bat, в Блокноте"));
+  } else bar.append(save, cancel, status);
+  tourPanel.replaceChildren(head, fileRow, area, bar, h("div", "tour-file", t.repo ? "Esc — назад. Как писать файл — кнопка «i» вверху"
+    : "Ctrl+S — сохранить, Esc — отмена. Как писать файл — кнопка «i» вверху"));
   tourPanel.classList.add("editing");
   area.focus();
   area.setSelectionRange(0, 0);
