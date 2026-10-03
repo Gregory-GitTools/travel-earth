@@ -2012,6 +2012,7 @@ body.has-photo-strip .map-status {
 
 /* без доступа к папкам (телефон) — разделы «Мои фото» и «Экскурсии» с выбором папок не нужны:
    экскурсии, языки и альбомы приходят из репозитория (Грегори: «не актуально, только мешают») */
-.no-folders .folders-only {
+.no-folders .folders-only,
+.no-folders .access-bar {
   display: none;
 }

@@ -2,7 +2,8 @@ const el = (id) => document.getElementById(id);
 // Папки с диска — только на компьютере. Chrome на Android с 2025 года тоже умеет
 // showDirectoryPicker, и телефон Грегори спрашивал разрешение на папки экскурсий и фото («запросы
 // продолжаются») — на телефоне они не нужны: всё приходит из репозитория
-const IS_MOBILE = navigator.userAgentData?.mobile ?? /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
+const IS_MOBILE = !!navigator.userAgentData?.mobile || /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent)
+  || matchMedia("(pointer: coarse) and (hover: none)").matches;
 const FOLDERS_OK = "showDirectoryPicker" in window && !IS_MOBILE;
 if (!FOLDERS_OK) document.documentElement.classList.add("no-folders");
 
@@ -1490,6 +1491,7 @@ function showMyAccessButton(handle) {
 
 // после перезапуска Chrome разрешение на папку даётся только щелчком — кнопки вверху по центру
 function showFolderAccessButton(id, icon, label, handle, start) {
+  if (!FOLDERS_OK) return; // телефон — без папок и без запросов
   let bar = document.getElementById("access-bar");
   if (!bar) document.body.append(bar = Object.assign(document.createElement("div"), { id: "access-bar", className: "access-bar" }));
   let btn = document.getElementById(id);
