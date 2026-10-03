@@ -2276,12 +2276,16 @@ function addTours(before) {
   for (const [id, d] of [["pin", TOUR_PIN_D], ...Object.entries(TOUR_GROUPS).map(([id, g]) => [id, g.d])]) {
     if (!map.hasImage(`tour-home-${id}`)) map.addImage(`tour-home-${id}`, tourHomeImage(d), { pixelRatio: 2 });
   }
-  map.addLayer({ id: "ov-tour-marks", type: "symbol", source: "ov-tours", maxzoom: 9, filter: kind("tour"),
-    layout: { "icon-image": ["concat", "tour-home-", ["get", "group"]], "icon-anchor": "bottom", "icon-offset": [0, -6],
+  // значок экскурсии по стране — под точкой страны, чтобы не закрывать её название на карте
+  // (Грегори: «закрыл название страны»), остальные — над точкой, подпись — справа от значка
+  const country = (a, b) => ["match", ["get", "group"], "country", a, b];
+  map.addLayer({ id: "ov-tour-marks", type: "symbol", source: "ov-tours", maxzoom: 9, filter: tourStopsFilter("tour"),
+    layout: { "icon-image": ["concat", "tour-home-", ["get", "group"]], "icon-anchor": country("top", "bottom"),
+      "icon-offset": country(["literal", [0, 14]], ["literal", [0, -6]]),
       "icon-allow-overlap": true, "icon-ignore-placement": true } }, before);
-  map.addLayer({ id: "ov-tour-labels", type: "symbol", source: "ov-tours", maxzoom: 9, filter: kind("tour"),
+  map.addLayer({ id: "ov-tour-labels", type: "symbol", source: "ov-tours", maxzoom: 9, filter: tourStopsFilter("tour"),
     layout: { "text-field": ["get", "title"], "text-font": styleFont(), "text-size": 12, "text-anchor": "left",
-      "text-offset": [1.3, -1.9], "text-optional": true },
+      "text-offset": country(["literal", [1.3, 2.4]], ["literal", [1.3, -1.9]]), "text-optional": true },
     // на тёмной карте и спутнике — светлые с тёмной обводкой (Грегори: «в инверсию в зависимости от фона»)
     paint: darkBasemap() ? { "text-color": "#ffe0b2", "text-halo-color": "rgba(0,0,0,0.85)", "text-halo-width": 1.5 }
       : { "text-color": "#8a3c00", "text-halo-color": "rgba(255,255,255,0.9)", "text-halo-width": 1.5 } }, before);
@@ -2291,20 +2295,22 @@ function addTours(before) {
   updateTourFinder();
 }
 
-// пока открыта панель экскурсии — номера и пунктир только её (у соседних номера пересекались),
-// и видны издалека: экскурсия по стране целиком в кадре — это зум ~4 (Грегори: «номера
-// пропадают»); панель закрыта — снова все экскурсии, с зума 6
-const TOUR_STOPS_ZOOM = 6, TOUR_PANEL_STOPS_ZOOM = 3;
+// пока открыта панель экскурсии — на карте только она: её значок, номера и пунктир (у соседних
+// номера пересекались), и номера видны на зум дальше обычного — шкала ~200 км, Египет целиком
+// в кадре (Грегори: «номера пропадают», зум 3 — «слишком далеко»); панель закрыта — снова все
+// экскурсии, с зума 6
+const TOUR_STOPS_ZOOM = 6, TOUR_PANEL_STOPS_ZOOM = 5;
 function tourStopsFilter(k) {
   const kind = ["==", ["get", "kind"], k];
   return tourPanelId ? ["all", kind, ["==", ["get", "tour"], tourPanelId]] : kind;
 }
 function showTourStopsOf(id) {
   const min = id ? TOUR_PANEL_STOPS_ZOOM : TOUR_STOPS_ZOOM;
-  for (const [layer, k] of [["ov-tour-route", "route"], ["ov-tour-stops", "stop"], ["ov-tour-sel", ""]]) {
+  for (const [layer, k] of [["ov-tour-route", "route"], ["ov-tour-stops", "stop"], ["ov-tour-sel", ""],
+    ["ov-tour-marks", "tour"], ["ov-tour-labels", "tour"]]) {
     if (!map.getLayer(layer)) continue;
     if (k) map.setFilter(layer, tourStopsFilter(k));
-    map.setLayerZoomRange(layer, min, 24);
+    if (k !== "tour") map.setLayerZoomRange(layer, min, 24);
   }
 }
 
@@ -2408,6 +2414,18 @@ function closeTourPanel() {
   tourEditing = false;
   stopSpeech();
   selectTourStop(null);
+}
+
+// крестик панели: экскурсия закрыта — на карте снова все, и открывается список экскурсий
+// (Грегори). После щелчка — в следующем такте: щелчок мимо поиска сам прячет список
+function closeTourToList() {
+  closeTourPanel();
+  if (!tourMode) return;
+  setTimeout(() => {
+    tourList.hidden = false;
+    renderTourList();
+    el("search-input").focus();
+  });
 }
 
 // ---------- обзорная экскурсия: озвучка с переходами по точкам и слайд-шоу ----------
@@ -2767,7 +2785,7 @@ function renderTourPanel(id) {
   };
   tourEditing = false;
   const close = Object.assign(document.createElement("button"), { className: "tour-close", title: "Закрыть", textContent: "×" });
-  close.addEventListener("click", closeTourPanel);
+  close.addEventListener("click", closeTourToList);
   const edit = Object.assign(document.createElement("button"), { className: "tour-edit", title: "Править файл экскурсии", innerHTML: EDIT_ICON });
   edit.addEventListener("click", () => editTour(id));
   const head = h("div", "tour-head");
@@ -3057,6 +3075,8 @@ async function editTour(id) {
 }
 
 function openTour(id) {
+  // открытая экскурсия — всегда развёрнутой (Грегори), даже если прошлую свернули «_»
+  localStorage.setItem(TOUR_MIN_KEY, "0");
   renderTourPanel(id);
   const pts = (tours.get(id)?.sections || []).map((sec) => sec.point).filter(Boolean);
   if (pts.length > 1) {
@@ -3075,8 +3095,12 @@ onHover(TOUR_LAYERS, (evt) => {
   if (trailPoiHover === p.hover && trailPoiPopup?.isOpen()) return;
   trailPoiHover = p.hover;
   const t = tours.get(p.tour);
-  // подсказка точки экскурсии — над значком, который стоит над точкой (Грегори: «перекрывает значок»)
-  openMediaPopup(evt.features[0].geometry.coordinates, p.kind === "stop" ? 12 : 40, "260px",
+  // подсказка точки экскурсии — над значком, который стоит над точкой (Грегори: «перекрывает значок»);
+  // у экскурсии по стране значок под точкой — подсказка над ним или под ним
+  const offset = p.kind === "stop" ? 12 : p.group !== "country" ? 40
+    : { top: [0, 50], "top-left": [0, 50], "top-right": [0, 50], bottom: [0, -2], "bottom-left": [0, -2], "bottom-right": [0, -2],
+      left: [18, 30], right: [-18, 30], center: [0, 30] };
+  openMediaPopup(evt.features[0].geometry.coordinates, offset, "260px",
     `<div class="popup-title">${escapeHtml(p.kind === "stop" ? `${p.n}. ${p.title}` : p.title)}</div>`
     + `<div class="popup-kind">${escapeHtml(p.kind === "stop" ? `Экскурсия «${t?.title || ""}»` : [t?.region, TOUR_GROUPS[p.group]?.name || "экскурсия"].filter(Boolean).join(" · "))}</div>`
     + `<div class="popup-row popup-muted">Щелчок — открыть экскурсию</div>`);
