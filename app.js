@@ -579,24 +579,28 @@ function addTrailPoi() {
 function trailPoiImage(kind) {
   if (map.hasImage(`trail-poi-${kind}`)) return;
   const { color, path, text, evenodd, white } = TRAIL_POI_ICONS[kind];
-  // без белой обводки — с ней значки выглядели размытыми (Грегори)
-  const size = 64; // pixelRatio 2: символ 24 px и поле по краям под тень
+  // белый кант вместо тени — тот же приём, что у цифр и значков экскурсий (Грегори, 2026-10-04)
+  const size = 64; // pixelRatio 2: символ 24 px и поле по краям под кант
   const ctx = Object.assign(document.createElement("canvas"), { width: size, height: size }).getContext("2d");
   ctx.fillStyle = color;
-  Object.assign(ctx, ICON_SHADOW);
   if (text) {
     ctx.font = "bold 26px Arial, sans-serif";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
+    ctx.lineWidth = 6;
+    ctx.strokeStyle = "#fff";
+    ctx.strokeText(text, 32, 33);
     ctx.fillText(text, 32, 33);
   } else {
     // символ 24×24 → 48 px в двойном размере
     ctx.translate(8, 8);
     ctx.scale(2, 2);
     const shape = new Path2D(path);
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = "#fff";
+    ctx.stroke(shape);
     ctx.fill(shape, evenodd ? "evenodd" : "nonzero");
     if (white) {
-      ctx.shadowColor = "transparent";
       ctx.fillStyle = "#fff";
       ctx.fill(new Path2D(white));
     }
