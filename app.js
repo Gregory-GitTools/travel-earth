@@ -1464,8 +1464,10 @@ async function repoFolder(name) {
     }
     const fileName = parts.at(-1);
     dir.children.set(fileName, { kind: "file", name: fileName, repoPath: path, meta: { size, lastModified: mtime },
+      // ?v=хэш — иначе браузер и CDN GitHub Pages отдают старое содержимое файла по кэшу,
+      // хотя список файлов (дерево) уже новый: правки «долго не доходят» (Грегори)
       async getFile() {
-        const r = await fetch(repoUrl(path));
+        const r = await fetch(mtime != null ? `${repoUrl(path)}?v=${encodeURIComponent(mtime)}` : repoUrl(path));
         if (!r.ok) throw new Error(`${r.status}`);
         return new File([await r.blob()], fileName, { lastModified: typeof mtime === "number" ? mtime : 0 });
       } });
@@ -3687,7 +3689,10 @@ function renderPhrasebook(id, fromTour = null) {
   const h = (tag, cls, text) => Object.assign(document.createElement(tag), { className: cls || "", textContent: text || "" });
   const close = Object.assign(document.createElement("button"), { className: "tour-close",
     title: fromTour ? "Назад к экскурсии" : "Закрыть", textContent: "×" });
-  close.addEventListener("click", () => (fromTour && tours.has(fromTour) ? renderTourPanel(fromTour) : closeTourToList()));
+  close.addEventListener("click", () => {
+    stopPhrasePlay();
+    fromTour && tours.has(fromTour) ? renderTourPanel(fromTour) : closeTourToList();
+  });
   const head = h("div", "tour-head");
   const foldAll = h("button", "tour-edit pb-fold-all");
   foldAll.addEventListener("click", () => {
