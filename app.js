@@ -1944,21 +1944,27 @@ const tourData = () => {
         properties: { kind: "route", tour: t.id } });
     }
     // остановки в одном месте (одна деревня — две тропы) разводятся на экране по кругу на 22 px,
-    // чтобы номера не слипались на любом масштабе
+    // чтобы номера не слипались на любом масштабе; k — номер повтора, сдвиг — tourStopOffset
     const same = new Map();
     stops.forEach((sec) => {
       const key = sec.point.join(","), k = same.get(key) || 0;
       same.set(key, k + 1);
-      const off = k ? [22 * Math.cos(k * 2.1), 22 * Math.sin(k * 2.1)] : [0, 0];
       features.push({ type: "Feature", geometry: { type: "Point", coordinates: sec.point },
-        properties: { kind: "stop", tour: t.id, n: sec.n, title: sec.title, hover: `tour/${t.id}/${sec.n}`, off, textOff: off.map((v) => v / 11) } });
+        properties: { kind: "stop", tour: t.id, n: sec.n, title: sec.title, hover: `tour/${t.id}/${sec.n}`, k } });
     });
-    const at = tourHome(t);
+    // значок экскурсии по стране — в точке страны, у её названия на карте (Грегори, 2026-10-03);
+    // вступление слайд-шоу по-прежнему берёт tourHome — у первой остановки, не в пустыне
+    const at = tourGroup(t) === "country" ? t.point || tourHome(t) : tourHome(t);
     if (at) features.push({ type: "Feature", geometry: { type: "Point", coordinates: at },
       properties: { kind: "tour", tour: t.id, title: t.title, group: tourGroup(t) || "pin", hover: `tour/${t.id}` } });
   }
   return { type: "FeatureCollection", features };
 };
+// сдвиг k-й остановки в той же точке; массив в свойствах точки MapLibre превращает в строку
+// (сдвиг не работал), поэтому сдвиги — готовым списком по k. unit — px для значка, 11 для текста
+const tourStopOffset = (unit) => ["match", ["get", "k"],
+  ...[1, 2, 3, 4, 5, 6, 7].flatMap((k) => [k, ["literal", [22 * Math.cos(k * 2.1) / unit, 22 * Math.sin(k * 2.1) / unit]]]),
+  ["literal", [0, 0]]];
 const refreshTours = () => map.getSource("ov-tours")?.setData(tourData());
 
 // точка экскурсии — регион, если он рядом с остановками (город); регион-страна («Египет» —
@@ -1974,7 +1980,8 @@ function tourHome(t) {
 const TOUR_PIN_D = "M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5a2.5 2.5 0 0 1 0-5 2.5 2.5 0 0 1 0 5z";
 const TOUR_GROUPS = {
   country: { name: "экскурсия по стране", words: ["по стране", "страна", "по региону", "регион"],
-    d: "M14.4 6L14 4H5v17h2v-7h5.6l.4 2h7V6z" },
+    // сложенная карта (флажок Грегори не понравился)
+    d: "M20.5 3l-.16.03L15 5.1 9 3 3.36 4.9c-.21.07-.36.25-.36.48V20.5c0 .28.22.5.5.5l.16-.03L9 18.9l6 2.1 5.64-1.9c.21-.07.36-.25.36-.48V3.5c0-.28-.22-.5-.5-.5zM15 19l-6-2.11V5l6 2.11V19z" },
   city: { name: "экскурсия по городу", words: ["город", "города", "по городу"],
     d: "M15 11V5l-3-3-3 3v2H3v14h18V11h-6zm-8 8H5v-2h2v2zm0-4H5v-2h2v2zm0-4H5V9h2v2zm6 8h-2v-2h2v2zm0-4h-2v-2h2v2zm0-4h-2V9h2v2zm0-4h-2V5h2v2zm6 12h-2v-2h2v2zm0-4h-2v-2h2v2z" },
   food: { name: "гастрономическая экскурсия", words: ["гастро", "гастрономия", "еда", "кухня"],
@@ -2249,21 +2256,21 @@ function updateTourFinder() {
 function addTours(before) {
   map.addSource("ov-tours", { type: "geojson", data: tourData() });
   const kind = (k) => ["==", ["get", "kind"], k];
-  map.addLayer({ id: "ov-tour-route", type: "line", source: "ov-tours", minzoom: 6, filter: kind("route"),
+  map.addLayer({ id: "ov-tour-route", type: "line", source: "ov-tours", minzoom: 6, filter: tourStopsFilter("route"),
     paint: { "line-color": TOUR_COLOR, "line-width": 2, "line-opacity": 0.8, "line-dasharray": [2, 2] } }, before);
   if (!map.hasImage("tour-stop")) map.addImage("tour-stop", tourStopImage(), { pixelRatio: 2 });
-  map.addLayer({ id: "ov-tour-stops", type: "symbol", source: "ov-tours", minzoom: 6, filter: kind("stop"),
-    layout: { "icon-image": "tour-stop", "icon-offset": ["array", "number", 2, ["get", "off"]],
+  map.addLayer({ id: "ov-tour-stops", type: "symbol", source: "ov-tours", minzoom: 6, filter: tourStopsFilter("stop"),
+    layout: { "icon-image": "tour-stop", "icon-offset": tourStopOffset(1),
       "text-field": ["to-string", ["get", "n"]], "text-font": styleFont(), "text-size": 11,
-      "text-offset": ["array", "number", 2, ["get", "textOff"]],
+      "text-offset": tourStopOffset(11),
       "icon-allow-overlap": true, "text-allow-overlap": true, "icon-ignore-placement": true, "text-ignore-placement": true },
     paint: { "text-color": "#fff" } }, before);
   // выделенная остановка — крупнее, в розовом кольце, как выделенный снимок
   if (!map.hasImage("tour-stop-sel")) map.addImage("tour-stop-sel", tourStopImage(PHOTO_COLOR), { pixelRatio: 2 });
   map.addLayer({ id: "ov-tour-sel", type: "symbol", source: "ov-tours", minzoom: 6, filter: tourSelFilter(),
-    layout: { "icon-image": "tour-stop-sel", "icon-size": 1.35, "icon-offset": ["array", "number", 2, ["get", "off"]],
+    layout: { "icon-image": "tour-stop-sel", "icon-size": 1.35, "icon-offset": tourStopOffset(1),
       "text-field": ["to-string", ["get", "n"]], "text-font": styleFont(), "text-size": 14,
-      "text-offset": ["array", "number", 2, ["get", "textOff"]],
+      "text-offset": tourStopOffset(11),
       "icon-allow-overlap": true, "text-allow-overlap": true, "icon-ignore-placement": true, "text-ignore-placement": true },
     paint: { "text-color": "#fff" } }, before);
   for (const [id, d] of [["pin", TOUR_PIN_D], ...Object.entries(TOUR_GROUPS).map(([id, g]) => [id, g.d])]) {
@@ -2278,9 +2285,27 @@ function addTours(before) {
     // на тёмной карте и спутнике — светлые с тёмной обводкой (Грегори: «в инверсию в зависимости от фона»)
     paint: darkBasemap() ? { "text-color": "#ffe0b2", "text-halo-color": "rgba(0,0,0,0.85)", "text-halo-width": 1.5 }
       : { "text-color": "#8a3c00", "text-halo-color": "rgba(255,255,255,0.9)", "text-halo-width": 1.5 } }, before);
+  showTourStopsOf(tourPanelId);
   raiseTrailPoi();
   initTours();
   updateTourFinder();
+}
+
+// пока открыта панель экскурсии — номера и пунктир только её (у соседних номера пересекались),
+// и видны издалека: экскурсия по стране целиком в кадре — это зум ~4 (Грегори: «номера
+// пропадают»); панель закрыта — снова все экскурсии, с зума 6
+const TOUR_STOPS_ZOOM = 6, TOUR_PANEL_STOPS_ZOOM = 3;
+function tourStopsFilter(k) {
+  const kind = ["==", ["get", "kind"], k];
+  return tourPanelId ? ["all", kind, ["==", ["get", "tour"], tourPanelId]] : kind;
+}
+function showTourStopsOf(id) {
+  const min = id ? TOUR_PANEL_STOPS_ZOOM : TOUR_STOPS_ZOOM;
+  for (const [layer, k] of [["ov-tour-route", "route"], ["ov-tour-stops", "stop"], ["ov-tour-sel", ""]]) {
+    if (!map.getLayer(layer)) continue;
+    if (k) map.setFilter(layer, tourStopsFilter(k));
+    map.setLayerZoomRange(layer, min, 24);
+  }
 }
 
 async function initTours() {
@@ -2379,6 +2404,7 @@ function closeTourPanel() {
   stopTourPlay();
   tourPanel.hidden = true;
   tourPanelId = null;
+  showTourStopsOf(null);
   tourEditing = false;
   stopSpeech();
   selectTourStop(null);
@@ -2732,6 +2758,7 @@ function renderTourPanel(id) {
   const t = tours.get(id);
   if (!t) { closeTourPanel(); return; }
   tourPanelId = id;
+  showTourStopsOf(id);
   const h = (tag, cls, text) => Object.assign(document.createElement(tag), { className: cls || "", textContent: text || "" });
   const speakBtn = (text) => {
     const b = Object.assign(document.createElement("button"), { className: "tour-speak", title: "Послушать", innerHTML: SPEAK_ICON });
