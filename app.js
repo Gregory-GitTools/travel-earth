@@ -1496,7 +1496,37 @@ function showFolderAccessButton(id, icon, label, handle, start) {
   };
 }
 
+// Телефон (Грегори, 2026-10-03: «речь только о новых фото на телефоне, DCIM/Camera»): папку
+// целиком браузер телефона не открывает (showDirectoryPicker только на компьютере), но выбрать
+// много файлов может. Выбор — через системное окно файлов (DCIM → Camera, выделить снимки):
+// accept по расширениям, а не image/* — на image/* Android 13+ открывает «Фото» (Photo Picker),
+// а он вырезает из снимков координаты. Снимки раскладываются в альбомы по дню съёмки (дата файла),
+// дальше обход как у папки (startMyScan) — точки, миниатюры, лента. Выбор не запоминается после
+// перезагрузки (браузер телефона не хранит доступ к файлам), но EXIF уже прочитанных — в кэше
+const phonePhotoInput = Object.assign(document.createElement("input"), { type: "file", multiple: true,
+  accept: ".jpg,.jpeg,.webp,.png,image/jpeg", hidden: true });
+document.body.append(phonePhotoInput);
+phonePhotoInput.addEventListener("change", () => {
+  const files = [...phonePhotoInput.files];
+  phonePhotoInput.value = "";
+  if (!files.length) return;
+  const dir = (name) => ({ kind: "directory", name, children: new Map(), async *entries() { yield* this.children; } });
+  const root = dir("Телефон");
+  for (const f of files) {
+    const d = new Date(f.lastModified);
+    const day = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    if (!root.children.has(day)) root.children.set(day, dir(day));
+    root.children.get(day).children.set(f.name, { kind: "file", name: f.name, getFile: async () => f });
+  }
+  phoneFiles = files.length;
+  renderMySettings(root);
+  if (!activeOverlays.has("myphotos")) toggleOverlay("myphotos");
+  startMyScan(root);
+});
+let phoneFiles = 0;
+
 async function pickMyFolder() {
+  if (!("showDirectoryPicker" in window)) { phonePhotoInput.click(); return; }
   let handle;
   try { handle = await window.showDirectoryPicker({ id: "travel-earth-photos", mode: "read" }); } catch { return; }
   await idb("settings", "readwrite", (st) => st.put(handle, "dir"));
@@ -1525,11 +1555,14 @@ function resetMyPhotos() {
 function renderMySettings(handle) {
   const name = document.getElementById("my-photos-folder");
   if (!name) return;
-  const supported = "showDirectoryPicker" in window;
-  name.textContent = !supported ? "нужен Chrome или Edge на компьютере" : handle ? handle.name : "не выбрана";
-  document.getElementById("my-photos-pick").disabled = !supported;
-  document.getElementById("my-photos-pick").textContent = handle ? "Выбрать другую…" : "Выбрать папку…";
-  document.getElementById("my-photos-forget").hidden = !handle;
+  const folder = "showDirectoryPicker" in window;
+  name.textContent = folder ? (handle ? handle.name : "не выбрана")
+    : handle ? `снимков с телефона: ${phoneFiles}` : "снимки с телефона не выбраны";
+  document.getElementById("my-photos-pick").disabled = false;
+  document.getElementById("my-photos-pick").textContent = folder ? (handle ? "Выбрать другую…" : "Выбрать папку…") : "Выбрать снимки…";
+  document.getElementById("my-photos-forget").hidden = !handle || !folder;
+  const hint = document.getElementById("my-photos-phone-hint");
+  if (hint) hint.hidden = folder;
   document.getElementById("my-photos-status").textContent = myStatus;
 }
 
@@ -1548,7 +1581,9 @@ async function startMyScan(handle) {
     if (batch.length) idb("exif", "readwrite", (st) => { for (const [k, v] of batch) st.put(v, k); }).catch(() => {});
   };
   let checked = 0, located = 0;
-  const report = (done) => setMyStatus(`${done ? "Готово" : "Читаю папку…"} Альбомов на карте: ${[...myAlbums.values()].filter((a) => a.point).length} из ${myAlbums.size}, снимков с координатами: ${located}, проверено: ${checked}`);
+  const report = (done) => setMyStatus(`${done ? "Готово" : "Читаю папку…"} Альбомов на карте: ${[...myAlbums.values()].filter((a) => a.point).length} из ${myAlbums.size}, снимков с координатами: ${located}, проверено: ${checked}`
+    + (done && handle?.name === "Телефон" && checked && !located
+      ? ". В снимках нет координат: включите в камере «Сохранять местоположение» и выбирайте снимки через «Файлы» (DCIM → Camera), а не через «Фото» — оно удаляет координаты" : ""));
 
   // координаты и дата снимка — из кэша или из EXIF
   const exifOf = async (id) => {
