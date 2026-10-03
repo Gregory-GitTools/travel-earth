@@ -2504,9 +2504,12 @@ function addTours(before) {
       "icon-allow-overlap": true, "icon-ignore-placement": true } }, before);
   addTourMarkImages();
   // значки профиля — ниже точки, чтобы не закрывать остановку; подпись справа от значка
+  // офсет — в экранных px, на мелком зуме те же 14 px отвечают уже километрам на местности
+  // и прибрежный значок «уезжает» в море (Грегори, 2026-10-04); нужен он только чтобы не
+  // закрыть номер первой остановки, а номера показываются только с zoom 6 — ниже офсет убираем
   map.addLayer({ id: "ov-tour-marks", type: "symbol", source: "ov-tours", maxzoom: 9, filter: tourStopsFilter("tour"),
     layout: { "icon-image": ["concat", "tour-mark-", ["get", "mark"]], "icon-anchor": "top",
-      "icon-offset": ["literal", [0, 14]],
+      "icon-offset": ["interpolate", ["linear"], ["zoom"], 6, ["literal", [0, 0]], 9, ["literal", [0, 14]]],
       "icon-allow-overlap": true, "icon-ignore-placement": true } }, before);
   map.addLayer({ id: "ov-tour-labels", type: "symbol", source: "ov-tours", maxzoom: 9, filter: tourStopsFilter("tour"),
     layout: { "text-field": ["get", "title"], "text-font": styleFont(), "text-size": 12, "text-anchor": "left",
