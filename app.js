@@ -5255,9 +5255,12 @@ class RuScaleControl extends maplibregl.ScaleControl {
   }
 }
 // Справа внизу (Грегори, 2026-10-01): плитка карт в углу, слева от неё масштаб и ⓘ (их
-// перекрывает раскрытая влево панель карт), над плиткой столбиком снизу вверх: «+ −», компас,
-// местоположение, настройки. MapLibre ставит каждый следующий контрол угла выше предыдущих
+// перекрывает раскрытая влево панель карт), над плиткой столбиком снизу вверх: настройки, «+ −»,
+// компас, местоположение (2026-10-04, Грегори: шестерёнка путалась с навигацией — её опустили
+// в низ столбика, подальше от кнопок управления картой). MapLibre ставит каждый следующий
+// контрол угла выше предыдущих
 map.addControl(new RuScaleControl({ unit: "metric" }), "bottom-right");
+map.addControl(new SettingsControl(), "bottom-right");
 map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "bottom-right");
 map.addControl(new maplibregl.NavigationControl({ showZoom: false, visualizePitch: true }), "bottom-right");
 
@@ -5357,7 +5360,6 @@ map.on("dragstart", () => {
 });
 
 map.addControl(new GeolocateControl(), "bottom-right");
-map.addControl(new SettingsControl(), "bottom-right");
 if (localStorage.getItem(GEO_STORAGE_KEY) === "on") startGeo();
 
 
