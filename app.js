@@ -377,7 +377,9 @@ const OVERLAYS = [
 ];
 const OVERLAYS_STORAGE_KEY = "travel-earth.overlays";
 // при первом запуске альбомы из репозитория видны сразу (Грегори: «видны всегда»)
-const activeOverlays = new Set(JSON.parse(localStorage.getItem(OVERLAYS_STORAGE_KEY) || '["myphotos"]'));
+// при первом открытии — сразу экскурсии (и с ними разговорники) и свои фото (Грегори: «экскурсия
+// и языковой пакет запускаются сразу после открытия»); дальше — как оставил пользователь
+const activeOverlays = new Set(JSON.parse(localStorage.getItem(OVERLAYS_STORAGE_KEY) || '["myphotos", "tours"]'));
 
 // шрифт подписей высот — тот же, что у подписей самой карты: у каждого стиля свой
 // сервер шрифтов, и чужого шрифта на нём может не быть
@@ -1904,7 +1906,8 @@ function selectTourStop(tour, n) {
 }
 const TOUR_KEYS = { "место": "place", "регион": "region", "тропа": "trail", "длина": "length", "время": "time",
   "сложность": "difficulty", "сезон": "season", "точки": "points", "особенности": "features", "справка": "history",
-  "выдержка": "quote", "выдержки": "quote", "источник": "sources", "источники": "sources", "теги": "tags", "идея": "idea", "маршрут": "route", "страна": "country", "город": "city", "тип": "kind", "значок": "icon" };
+  "выдержка": "quote", "выдержки": "quote", "источник": "sources", "источники": "sources", "теги": "tags", "идея": "idea", "маршрут": "route", "страна": "country", "город": "city", "тип": "kind", "значок": "icon",
+  "фото вступления": "introPlace" };
 const TOUR_LIST_KEYS = new Set(["features", "sources", "quote", "history", "points"]);
 let tourDir = null;
 const tours = new Map(); // путь файла → { id, file, mtime, title, region, tags, sources, sections, point }
@@ -1917,8 +1920,8 @@ let tourGeoQueue = Promise.resolve();
 function tourFields(line) {
   const fields = [];
   for (const part of line.split(/\s+·\s+/)) {
-    const m = part.match(/^([А-Яа-яЁё]+)\s*:\s*(.*)$/);
-    const key = m && TOUR_KEYS[m[1].toLowerCase()];
+    const m = part.match(/^([А-Яа-яЁё ]+)\s*:\s*(.*)$/);
+    const key = m && TOUR_KEYS[m[1].trim().toLowerCase()];
     if (key) fields.push([key, m[2]]);
     else if (fields.length) fields[fields.length - 1][1] += ` · ${part}`;
     else return null;
@@ -1929,7 +1932,7 @@ function tourFields(line) {
 // разбор файла: «# Название», поля «Ключ: значение», «## Раздел» (остановка, если есть «Место:»),
 // списки «- …» к последнему полю-списку (по умолчанию — особенности), остальное — абзацы
 function parseTour(text, file) {
-  const tour = { title: "", region: "", country: "", city: "", kind: "", icon: "", tags: "", sources: [], idea: [], sections: [] };
+  const tour = { title: "", region: "", country: "", city: "", kind: "", icon: "", introPlace: "", tags: "", sources: [], idea: [], sections: [] };
   let target = tour, key = null;
   const add = (k, v) => {
     if (!v) return;
@@ -2044,8 +2047,8 @@ const tourData = () => {
       features.push({ type: "Feature", geometry: { type: "Point", coordinates: sec.point },
         properties: { kind: "stop", tour: t.id, n: sec.n, title: sec.title, hover: `tour/${t.id}/${sec.n}`, k } });
     });
-    // значок экскурсии по стране — в точке страны, у её названия на карте (Грегори, 2026-10-03);
-    // вступление слайд-шоу по-прежнему берёт tourHome — у первой остановки, не в пустыне
+    // значок профиля — у региона (или страны); вступительные фото задаются отдельно полем
+    // «Фото вступления», если оно есть, иначе выбираются по tourHome
     const at = tourGroup(t) === "country" ? t.point || tourHome(t) : tourHome(t);
     if (at) features.push({ type: "Feature", geometry: { type: "Point", coordinates: at },
       properties: { kind: "tour", tour: t.id, title: t.title, group: tourGroup(t) || "pin", mark: tourMarkKey(t), hover: `tour/${t.id}` } });
@@ -2088,8 +2091,8 @@ function tourGroup(t) {
 }
 
 // значок точки экскурсии: красный значок группы на белом кружке без каёмки, вместо неё —
-// мягкая тень (Грегори: «как у кайтера в Windy»), 26 px; стоит над точкой, чтобы не
-// закрывать первую остановку. Холст с запасом под тень, кружок чуть выше середины.
+// мягкая тень (Грегори: «как у кайтера в Windy»), 26 px. Слой размещает его ниже координаты
+// остановки, чтобы значок не закрывал её номер. Холст с запасом под тень, кружок чуть выше середины.
 // Так же рисуется альбом «Моих фото» — свой цвет и несколько контуров (фотоаппарат)
 function tourHomeImage(d, color = TOUR_ICON_COLOR) {
   const ctx = tourHomeCircle();
@@ -2457,16 +2460,14 @@ function addTours(before) {
       "icon-allow-overlap": true, "text-allow-overlap": true, "icon-ignore-placement": true, "text-ignore-placement": true },
     paint: { "text-color": "#fff" } }, before);
   addTourMarkImages();
-  // значок экскурсии по стране — под точкой страны, чтобы не закрывать её название на карте
-  // (Грегори: «закрыл название страны»), остальные — над точкой, подпись — справа от значка
-  const country = (a, b) => ["match", ["get", "group"], "country", a, b];
+  // значки профиля — ниже точки, чтобы не закрывать остановку; подпись справа от значка
   map.addLayer({ id: "ov-tour-marks", type: "symbol", source: "ov-tours", maxzoom: 9, filter: tourStopsFilter("tour"),
-    layout: { "icon-image": ["concat", "tour-mark-", ["get", "mark"]], "icon-anchor": country("top", "bottom"),
-      "icon-offset": country(["literal", [0, 14]], ["literal", [0, -6]]),
+    layout: { "icon-image": ["concat", "tour-mark-", ["get", "mark"]], "icon-anchor": "top",
+      "icon-offset": ["literal", [0, 14]],
       "icon-allow-overlap": true, "icon-ignore-placement": true } }, before);
   map.addLayer({ id: "ov-tour-labels", type: "symbol", source: "ov-tours", maxzoom: 9, filter: tourStopsFilter("tour"),
     layout: { "text-field": ["get", "title"], "text-font": styleFont(), "text-size": 12, "text-anchor": "left",
-      "text-offset": country(["literal", [1.3, 2.4]], ["literal", [1.3, -1.9]]), "text-optional": true },
+      "text-offset": ["literal", [1.3, 2.4]], "text-optional": true },
     // на тёмной карте и спутнике — светлые с тёмной обводкой (Грегори: «в инверсию в зависимости от фона»)
     paint: darkBasemap() ? { "text-color": "#ffe0b2", "text-halo-color": "rgba(0,0,0,0.85)", "text-halo-width": 1.5 }
       : { "text-color": "#8a3c00", "text-halo-color": "rgba(255,255,255,0.9)", "text-halo-width": 1.5 } }, before);
@@ -2548,12 +2549,14 @@ async function readTours(handle, repo = false) {
   refreshTours();
   updateTourFinder();
   setTourStatus(`Экскурсий: ${list.length}`);
-  for (const t of list) {
-    if (t.region && !t.point) t.point = await tourGeocode(t.region).catch(() => null);
-    if (t.city && !t.cityPoint) t.cityPoint = await tourGeocode([t.city, t.country].filter(Boolean).join(", ")).catch(() => null);
-    for (const sec of t.sections) if (sec.place && !sec.point) sec.point = await tourGeocode(sec.place, t.point, t.region, t.cityPoint).catch(() => null);
-    refreshTours();
-    if (tourPanelId === t.id && !tourEditing && !tourPanel.classList.contains("phrasebook")) renderTourPanel(t.id);
+  // Места ищутся по одному (Nominatim — раз в секунду), а экскурсий уже ~20: на новом устройстве
+  // (телефон Грегори) очередь доходила до открытой экскурсии через минуты, и у аудиогида не было
+  // остановок — «дальше» не шло, пункты не нажимались. Поэтому каждый раз берётся следующее место
+  // открытой экскурсии, и только потом остальных (tourGeoNext)
+  const pending = new Set(list);
+  for (let t; (t = tourGeoNext(pending)); ) {
+    await geocodeTour(t);
+    pending.delete(t);
   }
   const lost = list.flatMap((t) => t.sections.filter((sec) => sec.place && !sec.point).map((sec) => sec.place));
   updateTourFinder();
@@ -2664,12 +2667,52 @@ function stopNarration(sec) {
   ].filter(Boolean).join(" ");
 }
 
+// найти места одной экскурсии (регион, город, фото вступления, остановки по порядку);
+// `one` — только первое ненайденное
+async function geocodeTour(t, one = false) {
+  if (t.region && t.point === undefined) t.point = await tourGeocode(t.region).catch(() => null);
+  if (t.city && t.cityPoint === undefined) t.cityPoint = await tourGeocode([t.city, t.country].filter(Boolean).join(", ")).catch(() => null);
+  if (t.introPlace && t.introPoint === undefined) {
+    t.introPoint = await tourGeocode(t.introPlace, t.point, t.region, t.cityPoint).catch(() => null);
+  }
+  for (const sec of t.sections) {
+    if (!sec.place || sec.point !== undefined) continue;
+    sec.point = await tourGeocode(sec.place, t.point, t.region, t.cityPoint).catch(() => null);
+    if (tourPanelId === t.id) refreshTours();
+    if (one || (tourPanelId && tourPanelId !== t.id && tours.get(tourPanelId)?.sections.some((x) => x.place && x.point === undefined))) break;
+  }
+  refreshTours();
+}
+// следующая экскурсия для поиска: открытая, если у неё ещё есть ненайденные места
+function tourGeoNext(pending) {
+  const open = tours.get(tourPanelId);
+  if (open && (open.sections.some((x) => x.place && x.point === undefined) || (open.region && open.point === undefined)
+    || (open.introPlace && open.introPoint === undefined))) return open;
+  for (const t of pending) {
+    if (t.sections.some((x) => x.place && x.point === undefined) || (t.region && t.point === undefined)
+      || (t.city && t.cityPoint === undefined) || (t.introPlace && t.introPoint === undefined)) return t;
+    pending.delete(t);
+  }
+  return null;
+}
+// панель при найденном месте не перерисовывается: заголовок пункта — кнопка и до того, а
+// перерисовка раз в секунду сбивала прокрутку и съедала нажатия на телефоне
+// место остановки сейчас — если ещё не найдено, найти вне очереди (аудиогид, щелчок по пункту)
+async function stopPoint(t, sec) {
+  if (sec.point === undefined && sec.place) {
+    sec.point = await tourGeocode(sec.place, t.point, t.region, t.cityPoint).catch(() => null);
+    refreshTours();
+  }
+  return sec.point;
+}
+
 function startTourPlay(id, from = 0) {
   const t = tours.get(id);
   if (!t) return;
   stopSpeech();
   for (const b of document.querySelectorAll(".speaking")) b.classList.remove("speaking");
-  const stops = t.sections.filter((sec) => sec.n && sec.point);
+  // все остановки с «Место:» — даже если место ещё ищется: найдётся, когда до неё дойдёт рассказ
+  const stops = t.sections.filter((sec) => sec.n);
   tourPlay = { id, stops, i: from, paused: false, run: {} };
   tourPanel.classList.remove("min");
   playTourStep();
@@ -2695,16 +2738,30 @@ async function playTourStep() {
   if (play.i < 0) {
     // вступление: вся поездка в кадре и сразу картинки — пока они грузятся, начинается рассказ
     openTour(play.id);
-    // у точки региона фото может не быть (Грегори: Рим с «Регион: Лацио» — центр области в
-    // поле, 22 км от Колизея, на Commons рядом только карты) — тогда фото первой остановки
-    const first = tourHome(t), stop0 = play.stops[0]?.point;
-    if (first) showSlides(first).then((n) => { if (!n && stop0 && stop0 !== first && alive()) showSlides(stop0); });
+    // «Фото вступления» отделяет заставку от остановок; без него сохраняется обычный выбор по региону
+    const opening = t.introPlace
+      ? (t.introPoint ? Promise.resolve(t.introPoint) : tourGeocode(t.introPlace, t.point, t.region, t.cityPoint).catch(() => null))
+      : Promise.resolve(tourHome(t));
+    opening.then((first) => {
+      if (t.introPlace) t.introPoint = first;
+      if (!alive()) return;
+      const stop0 = play.stops.find((x) => x.point)?.point;
+      if (first) showSlides(first).then((n) => {
+        if (!n && !t.introPlace && stop0 && stop0 !== first && alive()) showSlides(stop0);
+      });
+    });
     const pb = phrasebookFor(t);
     await speakText([t.title, ...t.idea, pb && `Для поездки есть разговорник, ${phrasebookName(pb).toLowerCase()} язык: ссылка — в начале экскурсии`]
       .filter(Boolean).join(". "));
   } else {
     const sec = play.stops[play.i];
     selectTourStop(play.id, sec.n);
+    await stopPoint(t, sec);
+    if (!alive()) return;
+    if (!sec.point) { await speakText(stopNarration(sec)); }
+  }
+  if (play.i >= 0 && play.stops[play.i].point && alive()) {
+    const sec = play.stops[play.i];
     // картинки новой остановки — сразу, ещё во время перелёта
     showSlides(sec.point);
     // точка — в свободной части кадра: справа панель, внизу слева слайд-шоу; на телефоне сверху
@@ -3078,15 +3135,16 @@ function renderTourPanel(id) {
     const box = h("section", "tour-section");
     if (sec.n) box.dataset.n = sec.n;
     if (sec.n && tourSel?.tour === id && tourSel.n === sec.n) box.classList.add("current", "open");
-    const title = h(sec.point ? "button" : "div", "tour-sec-title");
+    const title = h(sec.n ? "button" : "div", "tour-sec-title");
     if (sec.n) title.append(h("span", "tour-num", String(sec.n)));
     title.append(sec.title || sec.place || "");
-    if (sec.point) {
-      title.title = "Показать на карте";
-      title.addEventListener("click", () => {
+    if (sec.n) {
+      title.title = sec.point === null ? "Место не нашлось на карте" : "Показать на карте";
+      title.addEventListener("click", async () => {
         if (jumpTourPlay(id, sec.n)) return;
         selectTourStop(id, sec.n);
-        map.flyTo({ center: sec.point, zoom: Math.max(map.getZoom(), 12), duration: 2000 });
+        const point = await stopPoint(t, sec);
+        if (point) map.flyTo({ center: point, zoom: Math.max(map.getZoom(), 12), duration: 2000 });
       });
     }
     const row = h("div", "tour-sec-row");
@@ -5292,6 +5350,9 @@ map.once("load", () => {
   attrib?.classList.remove("maplibregl-compact-show");
   attrib?.removeAttribute("open");
 });
+// экскурсии и разговорники — грузить сразу при открытии, даже если кнопка экскурсий выключена:
+// список и поиск мест для остановок готовы к первому нажатию
+map.once("load", () => initTours());
 
 el("about-close-btn").addEventListener("click", closeAboutModal);
 el("my-photos-pick").addEventListener("click", pickMyFolder);
