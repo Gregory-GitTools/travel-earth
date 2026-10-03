@@ -2427,6 +2427,7 @@ function renderTourList() {
             tourCursor = null;
             renderPhrasebook(pb.id);
             startPhrasePlay(); // разговорник — тоже сразу звучит
+            checkSpeechStarted();
           });
         }
       }
@@ -2791,6 +2792,7 @@ async function playTourStep() {
       });
     });
     const pb = phrasebookFor(t);
+    checkSpeechStarted();
     await speakText([t.title, ...t.idea, pb && `Для поездки есть разговорник, ${phrasebookName(pb).toLowerCase()} язык: ссылка — в начале экскурсии`]
       .filter(Boolean).join(". "));
   } else {
@@ -3014,6 +3016,33 @@ function stopSpeech() {
   if ("speechSynthesis" in window && (speechSynthesis.speaking || speechSynthesis.pending)) speechSynthesis.cancel();
 }
 
+// Android Chrome: озвучка, запущенная сама при открытии экскурсии (а не кнопкой «плей»), может
+// молчать — синтезатор «разблокируется» только речью прямо в обработчике касания. Поэтому при
+// первом касании страницы — пустая беззвучная фраза (известный приём для мобильных браузеров).
+// Если и так не заговорило — подсказка нажать «плей» (Грегори: «на ПК стал стартовать, на телефоне нет»)
+let speechUnlocked = false;
+function unlockSpeech() {
+  if (speechUnlocked || !("speechSynthesis" in window)) return;
+  speechUnlocked = true;
+  const u = new SpeechSynthesisUtterance(" ");
+  u.volume = 0;
+  speechSynthesis.speak(u);
+}
+addEventListener("pointerdown", unlockSpeech, { capture: true });
+addEventListener("touchend", unlockSpeech, { capture: true });
+addEventListener("keydown", unlockSpeech, { capture: true });
+let speechHintShown = false;
+function checkSpeechStarted() {
+  setTimeout(() => {
+    if (speechHintShown || speechSynthesis.speaking || speechSynthesis.pending) return;
+    if (!tourPlay && !pbPlay) return;
+    speechHintShown = true;
+    flashStatus("Звук не включился — нажмите ▶ вверху панели");
+    if (tourPlay) { tourPlay.paused = true; tourPlay.run = null; renderTourPlayer(); }
+    else stopPhrasePlay();
+  }, 2500);
+}
+
 // прочитать текст выбранным голосом (lang — фраза разговорника: голос её языка); промис — когда
 // дочитано (или прервано cancel)
 function speakText(text, lang = "") {
@@ -3163,7 +3192,7 @@ function renderTourPanel(id) {
       const a = h("button", "pb-link");
       a.innerHTML = LANG_ICON;
       a.append(h("span", "", phrasebookLinkText(book)));
-      a.addEventListener("click", () => { renderPhrasebook(book.id, id); startPhrasePlay(); });
+      a.addEventListener("click", () => { renderPhrasebook(book.id, id); startPhrasePlay(); checkSpeechStarted(); });
       languageBody.append(a);
     }
     language.append(languageRow, languageBody);
