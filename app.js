@@ -1953,7 +1953,7 @@ function selectTourStop(tour, n) {
 const TOUR_KEYS = { "место": "place", "регион": "region", "тропа": "trail", "длина": "length", "время": "time",
   "сложность": "difficulty", "сезон": "season", "точки": "points", "особенности": "features", "справка": "history",
   "выдержка": "quote", "выдержки": "quote", "источник": "sources", "источники": "sources", "теги": "tags", "идея": "idea", "маршрут": "route", "страна": "country", "город": "city", "тип": "kind", "значок": "icon",
-  "фото вступления": "introPlace" };
+  "фото вступления": "introPlace", "группа": "group" };
 const TOUR_LIST_KEYS = new Set(["features", "sources", "quote", "history", "points"]);
 let tourDir = null;
 const tours = new Map(); // путь файла → { id, file, mtime, title, region, tags, sources, sections, point }
@@ -1978,7 +1978,7 @@ function tourFields(line) {
 // разбор файла: «# Название», поля «Ключ: значение», «## Раздел» (остановка, если есть «Место:»),
 // списки «- …» к последнему полю-списку (по умолчанию — особенности), остальное — абзацы
 function parseTour(text, file) {
-  const tour = { title: "", region: "", country: "", city: "", kind: "", icon: "", introPlace: "", tags: "", sources: [], idea: [], sections: [] };
+  const tour = { title: "", region: "", country: "", city: "", group: "", kind: "", icon: "", introPlace: "", tags: "", sources: [], idea: [], sections: [] };
   let target = tour, key = null;
   const add = (k, v) => {
     if (!v) return;
@@ -2339,7 +2339,9 @@ function renderTourList() {
   for (const t of all) {
     const c = tourCountry(t);
     if (!tree.has(c)) tree.set(c, new Map());
-    const g = t.city || "";
+    // «Группа:» — когда у частей одной области разные «Город:» (разъезд по геокодингу: Сицилия —
+    // Палермо и Агридженто), но в списке их хочется видеть одной группой; нет поля — группа по городу
+    const g = t.group || t.city || "";
     if (!tree.get(c).has(g)) tree.get(c).set(g, []);
     tree.get(c).get(g).push(t);
   }
@@ -2400,13 +2402,18 @@ function renderTourList() {
     row(ck, "tour-row-country", `${flag(country)}<span class="tour-row-name">${escapeHtml(country)}</span>`
       + `<span class="tour-row-count">${count}</span>${chevron(cOpen)}`, toggle(ck));
     if (!cOpen) continue;
-    // «по стране» (без города) — первыми, дальше города по алфавиту
-    for (const city of [...cities.keys()].sort((a, b) => (a ? 1 : 0) - (b ? 1 : 0) || a.localeCompare(b, "ru"))) {
+    // «по стране» (без города) — первыми; дальше группы (несколько экскурсий) выше одиночных
+    // (Грегори, 2026-10-04: «папки должны быть сверху одиночных экскурсий»), и те и те — по алфавиту
+    for (const city of [...cities.keys()].sort((a, b) => {
+      if (!a || !b) return (a ? 1 : 0) - (b ? 1 : 0);
+      const ga = cities.get(a).length > 1, gb = cities.get(b).length > 1;
+      return ga !== gb ? (ga ? -1 : 1) : a.localeCompare(b, "ru");
+    })) {
       const ts = cities.get(city).sort((a, b) => a.title.localeCompare(b.title, "ru"));
       if (!city || ts.length === 1) { for (const t of ts) tourRow(t).classList.add("in-country"); continue; }
       const gk = `g:${country}/${city}`;
       const gOpen = !!q || tourOpen.has(gk);
-      row(gk, "tour-row-group in-country", `<span class="tour-row-name">${escapeHtml(city)}</span>`
+      row(gk, "tour-row-group in-country", `<span class="tour-row-group-icon">${FOLDER_ICON}</span><span class="tour-row-name">${escapeHtml(city)}</span>`
         + `<span class="tour-row-count">${ts.length}</span>${chevron(gOpen)}`, toggle(gk));
       if (gOpen) for (const t of ts) tourRow(t).classList.add("in-group");
     }
@@ -3105,6 +3112,9 @@ const UNFOLD_ICON = `<svg viewBox="0 0 24 24" width="18" height="18"><path fill=
 const COLLAPSE_ICON = `<svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M19 13H5v-2h14v2z"/></svg>`;
 const EXPAND_ICON = `<svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M19 19H5V5h14v14zM5 3a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2H5z"/></svg>`;
 const CHEVRON_ICON = `<svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M16.59 8.59 12 13.17 7.41 8.59 6 10l6 6 6-6z"/></svg>`;
+// значок папки у строки группы экскурсий в списке (Грегори, 2026-10-04): у страны есть флаг, у
+// группы в ней — ничего, отличить от одиночной экскурсии можно было только по жирному капсу
+const FOLDER_ICON = `<svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M10 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg>`;
 
 // стрелка пункта: в развёрнутом режиме — сворачивает его (.shut), в режиме «только пункты» — раскрывает (.open)
 function foldButton(box) {

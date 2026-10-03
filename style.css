@@ -327,6 +327,18 @@ span.tour-flag {
   color: #43a047;
 }
 
+.tour-row-group-icon {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+}
+
+.tour-row-group-icon svg {
+  width: 16px;
+  height: 16px;
+}
+
 .tour-row-name {
   flex: 1;
   min-width: 0;
