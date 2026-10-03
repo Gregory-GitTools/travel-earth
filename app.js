@@ -3294,8 +3294,9 @@ function phrasebookFor(t) {
   return matches.find((pb) => /разговорник/i.test(pb.title)) || matches[0] || null;
 }
 
+// «Венгерский от ChatGPT — Разговорник» → «Венгерский»: пометка источника — в имени файла, не в подписи
 function phrasebookName(pb) {
-  return pb.title.replace(/\s+[—–-]\s+Разговорник$/i, "");
+  return pb.title.replace(/\s+[—–-]\s+Разговорник$/i, "").replace(/\s+от\s+ChatGPT$/i, "");
 }
 
 // голос языка страны: лучший из установленных, сначала того же региона (it-IT), потом любой it-*
