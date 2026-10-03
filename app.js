@@ -482,6 +482,9 @@ const TRAIL_POI_RETRY_MS = 60000;
 const TRAIL_POI_CELL = 0.5;
 const QLEVER_URL = "https://qlever.dev/api/osm-planet";
 const BRIGHT_YELLOW = "#ffd600";
+// тень значков вместо белой обводки (Грегори: «суперская тень, как у кайтера в Windy») —
+// у всех значков на карте: мест, флажков категорий, остановок и меток экскурсий
+const ICON_SHADOW = { shadowColor: "rgba(0, 0, 0, 0.85)", shadowBlur: 6, shadowOffsetY: 2 };
 const TRAIL_POI_ICONS = {
   // информация — светло-синие, щиты и карты — серые: их много
   info: { color: "#6a9fe0", path: "M10.2 9.5h3.6V20h-3.6z M12 3.5a2.2 2.2 0 1 1 0 4.4a2.2 2.2 0 1 1 0-4.4z" },
@@ -505,9 +508,9 @@ const TRAIL_POI_ICONS = {
   drinking_water: { color: "#0288d1", path: "M12 2.5S5 10.5 5 15a7 7 0 0 0 14 0c0-4.5-7-12.5-7-12.5z" },
   toilets: { color: "#0288d1", text: "WC" },
   // пляж — наклонный зонтик на песке, сёрфинг — кайтер; оба ярко-жёлтые (Грегори): воздушный змей, стропы, райдер на доске
-  beach: { color: BRIGHT_YELLOW, shadow: true, path: "M1.53 16.1A8.5 8.5 0 0 1 16.55 8.12A2.83 2.83 0 0 0 11.54 10.78A2.83 2.83 0 0 0 6.54 13.44" +
+  beach: { color: BRIGHT_YELLOW, path: "M1.53 16.1A8.5 8.5 0 0 1 16.55 8.12A2.83 2.83 0 0 0 11.54 10.78A2.83 2.83 0 0 0 6.54 13.44" +
     "A2.83 2.83 0 0 0 1.53 16.1z M8.29 12.51L9.79 11.71L14.25 20.1L12.75 20.9z M2 20h20v2.5H2z" },
-  kitesurfing: { color: BRIGHT_YELLOW, shadow: true, path: "M11.5 4.2Q17.5 -0.4 23.5 5.2L21.8 6.9Q17.5 3.1 12.7 6z M11.83 5.20L11.93 12.60L12.47 12.60L12.37 5.20z M22.45 " +
+  kitesurfing: { color: BRIGHT_YELLOW, path: "M11.5 4.2Q17.5 -0.4 23.5 5.2L21.8 6.9Q17.5 3.1 12.7 6z M11.83 5.20L11.93 12.60L12.47 12.60L12.37 5.20z M22.45 " +
     "5.87L12.05 12.37L12.35 12.83L22.75 6.33z M7.60 7.65a1.75 1.75 0 1 1 0 3.50a1.75 1.75 0 1 1 0 -3.50z M7.22 " +
     "11.26L5.22 15.66L7.58 16.74L9.58 12.34z M8.27 12.44L12.07 13.24L12.33 11.96L8.53 11.16z M6.10 17.10L9.10 " +
     "18.10L9.70 16.30L6.70 15.30z M8.79 17.79L10.99 20.09L12.21 18.91L10.01 16.61z M5.50 16.51L6.90 20.51L8.70 " +
@@ -566,22 +569,20 @@ function addTrailPoi() {
 
 function trailPoiImage(kind) {
   if (map.hasImage(`trail-poi-${kind}`)) return;
-  const { color, path, text, evenodd, white, shadow } = TRAIL_POI_ICONS[kind];
+  const { color, path, text, evenodd, white } = TRAIL_POI_ICONS[kind];
   // без белой обводки — с ней значки выглядели размытыми (Грегори)
-  const size = 56; // pixelRatio 2: символ 24 px и поле по краям
+  const size = 64; // pixelRatio 2: символ 24 px и поле по краям под тень
   const ctx = Object.assign(document.createElement("canvas"), { width: size, height: size }).getContext("2d");
   ctx.fillStyle = color;
-  // ярко-жёлтые (пляж, кайтер) — в мягкой тёмной тени, как кайтер в Windy (Грегори): без неё
-  // жёлтый теряется на светлой карте и на 3D-домах
-  if (shadow) Object.assign(ctx, { shadowColor: "rgba(0, 0, 0, 0.85)", shadowBlur: 6, shadowOffsetY: 2 });
+  Object.assign(ctx, ICON_SHADOW);
   if (text) {
     ctx.font = "bold 26px Arial, sans-serif";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillText(text, 28, 29);
+    ctx.fillText(text, 32, 33);
   } else {
     // символ 24×24 → 48 px в двойном размере
-    ctx.translate(4, 4);
+    ctx.translate(8, 8);
     ctx.scale(2, 2);
     const shape = new Path2D(path);
     ctx.fill(shape, evenodd ? "evenodd" : "nonzero");
@@ -1992,9 +1993,7 @@ function tourGroup(t) {
 // закрывать первую остановку. Холст с запасом под тень, кружок чуть выше середины
 function tourHomeImage(d) {
   const ctx = new OffscreenCanvas(64, 64).getContext("2d");
-  ctx.shadowColor = "rgba(0, 0, 0, 0.5)";
-  ctx.shadowBlur = 8;
-  ctx.shadowOffsetY = 2;
+  Object.assign(ctx, ICON_SHADOW);
   ctx.beginPath();
   ctx.arc(32, 30, 26, 0, 2 * Math.PI);
   ctx.fillStyle = "#fff";
@@ -2008,18 +2007,22 @@ function tourHomeImage(d) {
   return ctx.getImageData(0, 0, 64, 64);
 }
 
-// кружок остановки: оранжевый в белой (у выделенной — розовой) обводке, 22 px; номер — текстом поверх
-function tourStopImage(ring = "#fff") {
-  const ctx = new OffscreenCanvas(44, 44).getContext("2d");
+// кружок остановки: оранжевый с тенью, 20 px (выделенная — в розовом кольце); номер — текстом поверх
+function tourStopImage(ring) {
+  const ctx = new OffscreenCanvas(56, 56).getContext("2d");
+  Object.assign(ctx, ICON_SHADOW);
+  if (ring) {
+    ctx.beginPath();
+    ctx.arc(28, 28, 22, 0, 2 * Math.PI);
+    ctx.fillStyle = ring;
+    ctx.fill();
+    ctx.shadowColor = "transparent";
+  }
   ctx.beginPath();
-  ctx.arc(22, 22, 21, 0, 2 * Math.PI);
-  ctx.fillStyle = ring;
-  ctx.fill();
-  ctx.beginPath();
-  ctx.arc(22, 22, 17, 0, 2 * Math.PI);
+  ctx.arc(28, 28, ring ? 18 : 20, 0, 2 * Math.PI);
   ctx.fillStyle = TOUR_COLOR;
   ctx.fill();
-  return ctx.getImageData(0, 0, 44, 44);
+  return ctx.getImageData(0, 0, 56, 56);
 }
 
 // Поиск экскурсий — режим строки поиска (Грегори, 2026-10-01): значок карты рядом с лупой
@@ -3662,22 +3665,22 @@ function poiZoomRange(poi) {
 // флажок-булавка цвета категории — заметнее точки, не теряется среди подписей карты.
 // Картинки рисуются по требованию и после смены стиля (setStyle их удаляет) — заново.
 // glyph — белый значок из PIN_GLYPHS в головке вместо белого кружка;
-// ink — другой цвет значка и обводки для светлых флажков, на которых белое теряется
+// ink — другой цвет значка для светлых флажков, на которых белое теряется. Обводки нет — тень
 function pinImage(color, glyph, ink) {
   const id = `pin-${color}-${glyph || "dot"}${ink ? `-${ink}` : ""}`;
   if (map.hasImage(id)) return id;
-  const w = 44, h = 58; // в двойном размере: pixelRatio 2 — чётко на любом экране
+  const w = 56, h = 62; // в двойном размере: pixelRatio 2 — чётко на любом экране; поля под тень
   const ctx = Object.assign(document.createElement("canvas"), { width: w, height: h }).getContext("2d");
+  ctx.translate(6, 4); // остриё — у нижнего края, как раньше (icon-anchor: bottom)
+  Object.assign(ctx, ICON_SHADOW);
   ctx.beginPath();
   ctx.moveTo(22, 55);
   ctx.bezierCurveTo(18, 42, 4, 34, 4, 21);
   ctx.arc(22, 21, 18, Math.PI, 0);
   ctx.bezierCurveTo(40, 34, 26, 42, 22, 55);
   ctx.fillStyle = color;
-  ctx.strokeStyle = ink || "#fff";
-  ctx.lineWidth = 3;
   ctx.fill();
-  ctx.stroke();
+  ctx.shadowColor = "transparent";
   ctx.fillStyle = ink || "#fff";
   const shape = PIN_GLYPHS[glyph];
   if (typeof shape === "string" && shape.startsWith("text:")) {
@@ -3692,7 +3695,6 @@ function pinImage(color, glyph, ink) {
     ctx.scale(22 / 24, 22 / 24);
     ctx.translate(-12, -12);
     ctx.fill(new Path2D(shape.path || shape));
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
   } else {
     ctx.beginPath();
     ctx.arc(22, 21, 7, 0, Math.PI * 2);

@@ -67,7 +67,8 @@ html, body {
   bottom: 24px;
   z-index: 2;
   display: flex;
-  align-items: center;
+  /* по нижнему краю плитки карт (Грегори) */
+  align-items: flex-end;
   justify-content: flex-end;
   gap: 8px;
   height: 76px;
