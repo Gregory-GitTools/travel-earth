@@ -64,7 +64,7 @@ html, body {
 .bottom-row {
   position: absolute;
   right: 96px;
-  bottom: 24px;
+  bottom: 10px;
   z-index: 2;
   display: flex;
   /* по нижнему краю плитки карт (Грегори) */
@@ -76,7 +76,7 @@ html, body {
 
 /* столбик кнопок MapLibre — над плиткой карт */
 .maplibregl-ctrl-bottom-right {
-  bottom: 102px;
+  bottom: 88px;
 }
 
 .bottom-row .maplibregl-ctrl {
@@ -783,7 +783,7 @@ span.tour-flag {
    обводкой (как подписи на спутнике) читается и на карте, и на звёздах. По бокам место плитки карт и кнопок */
 .map-status {
   position: fixed;
-  bottom: 52px;
+  bottom: 38px;
   left: 50%;
   transform: translateX(-50%);
   width: max-content;
@@ -1221,7 +1221,7 @@ span.tour-flag {
 .tour-slides {
   position: fixed;
   right: 64px;
-  bottom: 110px;
+  bottom: 96px;
   z-index: 11;
   width: min(320px, calc(100vw - 440px));
   aspect-ratio: 4 / 3;
@@ -1592,7 +1592,7 @@ button.tour-sec-title:hover {
 @media (max-width: 600px) {
   .tour-panel {
     top: auto;
-    bottom: 108px;
+    bottom: 94px;
     left: 10px;
     right: 10px;
     width: auto;
@@ -1607,7 +1607,7 @@ button.tour-sec-title:hover {
   }
 }
 
-/* лента фото внизу — в уровень и в высоту плитки переключателя карт (76 px, снизу 24 px, рамка
+/* лента фото внизу — в уровень и в высоту плитки переключателя карт (76 px, снизу 10 px, как справа, рамка
    2 px как у плитки), до
    правого края; кнопки справа внизу (шкала, ⓘ, шестерёнка, масштаб) — поверх неё (z-index 2 у
    углов MapLibre), поэтому справа запас прокрутки, чтобы последние снимки из-под них выезжали */
@@ -1615,7 +1615,7 @@ button.tour-sec-title:hover {
   position: fixed;
   left: 10px;
   right: 250px;
-  bottom: 24px;
+  bottom: 10px;
   z-index: 1;
   box-sizing: border-box;
   display: flex;
@@ -1695,7 +1695,7 @@ button.tour-sec-title:hover {
 }
 
 body.has-photo-strip .map-status {
-  bottom: 110px;
+  bottom: 96px;
 }
 
 /* окно снимка на узком экране — карточкой над лентой во всю ширину, чтобы не уходило за
@@ -1746,7 +1746,7 @@ body.has-photo-strip .map-status {
 .basemap-switcher {
   position: fixed;
   right: 10px;
-  bottom: 24px;
+  bottom: 10px;
   display: flex;
   flex-direction: row-reverse; /* ряд карт раскрывается влево — поверх шкалы и ⓘ */
   align-items: flex-end;
