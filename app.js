@@ -3370,11 +3370,11 @@ function renderPhrasePlayer() {
   label.textContent = cur ? `${play.i + 1} / ${play.list.length} · ${cur.sec}` : "";
 }
 
-// свернуть / развернуть все разделы (кроме описания языка)
+// свернуть / развернуть все разделы, и описание языка тоже
 function updatePbFoldAll() {
   const btn = tourPanel.querySelector(".pb-fold-all");
   if (!btn) return;
-  const open = [...tourPanel.querySelectorAll(".tour-section:not(.tour-about)")].some((x) => !x.classList.contains("shut"));
+  const open = [...tourPanel.querySelectorAll(".tour-section")].some((x) => !x.classList.contains("shut"));
   btn.innerHTML = open ? FOLD_ICON : UNFOLD_ICON;
   btn.title = open ? "Свернуть все разделы" : "Развернуть все разделы";
 }
@@ -3393,7 +3393,7 @@ function renderPhrasebook(id, fromTour = null) {
   const head = h("div", "tour-head");
   const foldAll = h("button", "tour-edit pb-fold-all");
   foldAll.addEventListener("click", () => {
-    const secs = [...tourPanel.querySelectorAll(".tour-section:not(.tour-about)")];
+    const secs = [...tourPanel.querySelectorAll(".tour-section")];
     const open = secs.some((x) => !x.classList.contains("shut"));
     for (const x of secs) x.classList.toggle("shut", open);
     updatePbFoldAll();
@@ -3410,12 +3410,15 @@ function renderPhrasebook(id, fromTour = null) {
   pbLang = pb.lang;
   const about = h("section", "tour-section tour-about");
   const aboutBody = h("div", "tour-sec-body");
-  if (pb.countries.length) aboutBody.append(h("div", "tour-meta", pb.countries.join(" · ")));
   for (const line of pb.idea) aboutBody.append(h("p", "tour-idea", line));
   aboutBody.append(h("p", "pb-hint", langVoice(pb.lang)
     ? "Нажмите на фразу — её прочитает голос на языке страны. Ударная гласная в подсказке — заглавная: грАцие."
     : "Нажмите на фразу, чтобы послушать. Голоса этого языка на устройстве не нашлось — фраза может прозвучать с акцентом или не прозвучать. В Windows голос добавляется так: Параметры → Время и язык → Речь → Добавить голоса."));
-  about.append(aboutBody);
+  // описание языка сворачивается, как «Об экскурсии» (Грегори); список стран здесь лишний — он в списке «Языки»
+  const aboutHead = h("div", "tour-sec-row");
+  aboutHead.append(h("div", "tour-sec-title", "О языке"), foldButton(about));
+  about.addEventListener("click", updatePbFoldAll);
+  about.append(aboutHead, aboutBody);
   nodes.push(about);
   // открыты первый раздел и первый с фразами (Грегори не нашёл «Buongiorno»: в «Произношении» одни
   // правила, «Самое нужное» было свёрнуто), остальные — по щелчку на заголовке
