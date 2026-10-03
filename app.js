@@ -1,4 +1,5 @@
 const el = (id) => document.getElementById(id);
+if (!("showDirectoryPicker" in window)) document.documentElement.classList.add("no-folders");
 
 // единый движок: глобус и плоская карта — это одна и та же карта MapLibre с
 // projection 'globe', которая сама переходит в обычную проекцию при приближении
