@@ -3304,9 +3304,11 @@ function renderPhrasebook(id, fromTour = null) {
     : "Нажмите на фразу, чтобы послушать. Голоса этого языка на устройстве не нашлось — фраза может прозвучать с акцентом или не прозвучать. В Windows голос добавляется так: Параметры → Время и язык → Речь → Добавить голоса."));
   about.append(aboutBody);
   nodes.push(about);
+  // открыты первый раздел и первый с фразами (Грегори не нашёл «Buongiorno»: в «Произношении» одни
+  // правила, «Самое нужное» было свёрнуто), остальные — по щелчку на заголовке
+  const firstPhrases = pb.sections.findIndex((sec) => sec.items.some((it) => it.foreign));
   pb.sections.forEach((sec, i) => {
-    // открыт первый раздел, остальные — по щелчку на заголовке
-    const box = h("section", `tour-section${i ? " shut" : ""}`);
+    const box = h("section", `tour-section${i && i !== firstPhrases ? " shut" : ""}`);
     const row = h("div", "tour-sec-row");
     const title = h("button", "tour-sec-title", sec.title);
     title.addEventListener("click", () => box.classList.toggle("shut"));
