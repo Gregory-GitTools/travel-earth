@@ -1947,15 +1947,22 @@ function tourSource(line) {
 // Остановка ищется рядом с точкой региона (near): короткое название вроде «Sorrento» или
 // «Vesuvio» без региона Nominatim находил в США (жалоба Грегори — точки «ушли на американский
 // континент»). Поэтому viewbox ±2,5° вокруг региона (bounded=0 — только предпочтение), а если
-// всё равно дальше TOUR_NEAR_KM — повтор с регионом в запросе; не помогло — места нет (null)
-const TOUR_NEAR_KM = 800;
+// всё равно дальше TOUR_NEAR_KM — повтор с регионом в запросе; не помогло — места нет (null).
+// У экскурсии по городу («Город:») — сначала только в пределах ±0,3° (~30 км) от города:
+// «Castel Sant'Angelo» в Риме с «Регион: Лацио» находился городком под Риети (Грегори:
+// «точка 6 убежала»); не нашлось рядом с городом — поиск как обычно
+const TOUR_NEAR_KM = 800, TOUR_CITY_BOX = 0.3;
 const kmBetween = ([lon1, lat1], [lon2, lat2]) => 6371 * Math.acos(Math.min(1,
   Math.sin(lat1 * Math.PI / 180) * Math.sin(lat2 * Math.PI / 180)
   + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.cos((lon2 - lon1) * Math.PI / 180)));
 
-async function tourGeocode(query, near = null, region = "") {
+async function tourGeocode(query, near = null, region = "", city = null) {
   const m = query.match(/^(-?\d+(?:\.\d+)?)\s*[,;]\s*(-?\d+(?:\.\d+)?)$/);
   if (m) return [Number(m[2]), Number(m[1])];
+  if (city) {
+    const inCity = await tourGeocodeOnce(query, city, TOUR_CITY_BOX);
+    if (inCity) return inCity;
+  }
   let point = await tourGeocodeOnce(query, near);
   if (point && near && kmBetween(point, near) > TOUR_NEAR_KM && region) {
     point = await tourGeocodeOnce(`${query}, ${region}`, near);
@@ -1964,14 +1971,15 @@ async function tourGeocode(query, near = null, region = "") {
   return point;
 }
 
-async function tourGeocodeOnce(query, near) {
+async function tourGeocodeOnce(query, near, box = 0) {
   // кэш — по запросу и окрестности: одно и то же название в разных поездках — разные места
-  const key = near ? `${query.toLowerCase()}@${near.map((v) => v.toFixed(1)).join(",")}` : query.toLowerCase();
+  const key = (near ? `${query.toLowerCase()}@${near.map((v) => v.toFixed(1)).join(",")}` : query.toLowerCase()) + (box ? `#${box}` : "");
   const hit = await idb("geo", "readonly", (st) => st.get(key)).catch(() => undefined);
   if (hit !== undefined) return hit;
   const run = tourGeoQueue.then(async () => {
     const params = new URLSearchParams({ q: query, format: "jsonv2", limit: "1", "accept-language": uiLanguageCode(),
-      ...(near && { viewbox: [near[0] - 2.5, near[1] + 2.5, near[0] + 2.5, near[1] - 2.5].join(","), bounded: "0" }) });
+      ...(near && { viewbox: [near[0] - (box || 2.5), near[1] + (box || 2.5), near[0] + (box || 2.5), near[1] - (box || 2.5)].join(","),
+        bounded: box ? "1" : "0" }) });
     const res = await fetch(`${NOMINATIM_URL}?${params}`).catch(() => null);
     const [found] = res?.ok ? await res.json() : [];
     const point = found ? [Number(found.lon), Number(found.lat)] : null;
@@ -2418,7 +2426,8 @@ async function readTours(handle, repo = false) {
   setTourStatus(`Экскурсий: ${list.length}`);
   for (const t of list) {
     if (t.region && !t.point) t.point = await tourGeocode(t.region).catch(() => null);
-    for (const sec of t.sections) if (sec.place && !sec.point) sec.point = await tourGeocode(sec.place, t.point, t.region).catch(() => null);
+    if (t.city && !t.cityPoint) t.cityPoint = await tourGeocode([t.city, t.country].filter(Boolean).join(", ")).catch(() => null);
+    for (const sec of t.sections) if (sec.place && !sec.point) sec.point = await tourGeocode(sec.place, t.point, t.region, t.cityPoint).catch(() => null);
     refreshTours();
     if (tourPanelId === t.id && !tourEditing) renderTourPanel(t.id);
   }
