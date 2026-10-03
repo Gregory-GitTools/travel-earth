@@ -2293,7 +2293,9 @@ function chooseTour(t) {
   el("search-input").value = "";
   el("search-clear-btn").hidden = true;
   el("search-input").blur();
-  openTour(t.id);
+  // выбранная экскурсия сразу и звучит (Грегори: «запускай озвучку сразу после открытия,
+  // останавливай после закрытия»); остановить или перейти — кнопками плеера
+  startTourPlay(t.id, -1);
 }
 
 // справка списка: группы и значки задаются полями в файле экскурсии; все значки с подписями
@@ -2423,6 +2425,7 @@ function renderTourList() {
             tourList.hidden = true;
             tourCursor = null;
             renderPhrasebook(pb.id);
+            startPhrasePlay(); // разговорник — тоже сразу звучит
           });
         }
       }
@@ -3159,7 +3162,7 @@ function renderTourPanel(id) {
       const a = h("button", "pb-link");
       a.innerHTML = LANG_ICON;
       a.append(h("span", "", phrasebookLinkText(book)));
-      a.addEventListener("click", () => renderPhrasebook(book.id, id));
+      a.addEventListener("click", () => { renderPhrasebook(book.id, id); startPhrasePlay(); });
       languageBody.append(a);
     }
     language.append(languageRow, languageBody);
@@ -3794,7 +3797,7 @@ map.on("click", TOUR_LAYERS, (evt) => {
   if (p.kind === "stop") {
     if (tourPanelId !== p.tour || tourEditing) renderTourPanel(p.tour);
     if (!jumpTourPlay(p.tour, p.n)) selectTourStop(p.tour, p.n);
-  } else openTour(p.tour);
+  } else if (tourPlay?.id !== p.tour) startTourPlay(p.tour, -1);
 });
 
 function addOverlay(id) {
