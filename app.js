@@ -3485,8 +3485,11 @@ async function editTour(id) {
     area.readOnly = true;
     bar.append(h("span", "tour-edit-status", "Файл из репозитория — здесь только просмотр. Править — по ссылке «Файл»: на GitHub или, при запуске через start.bat, в Блокноте"));
   } else bar.append(save, cancel, status);
-  tourPanel.replaceChildren(head, fileRow, area, bar, h("div", "tour-file", t.repo ? "Esc — назад. Как писать файл — кнопка «i» вверху"
-    : "Ctrl+S — сохранить, Esc — отмена. Как писать файл — кнопка «i» вверху"));
+  // строка «Файл: …» — внизу, после текста, как в разговорниках (Грегори, 2026-10-04: «по-разному,
+  // сделай и в экскурсии исходный файл тоже снизу, как в языках»)
+  const hint = h("div", "tour-file", t.repo ? "Esc — назад. Как писать файл — кнопка «i» вверху"
+    : "Ctrl+S — сохранить, Esc — отмена. Как писать файл — кнопка «i» вверху");
+  tourPanel.replaceChildren(head, area, bar, hint, fileRow);
   tourPanel.classList.remove("phrasebook");
   tourPanel.classList.add("editing");
   area.focus();
