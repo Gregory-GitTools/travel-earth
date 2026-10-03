@@ -2554,8 +2554,10 @@ async function playTourStep() {
   if (play.i < 0) {
     // вступление: вся поездка в кадре и сразу картинки — пока они грузятся, начинается рассказ
     openTour(play.id);
-    const first = tourHome(t);
-    if (first) showSlides(first);
+    // у точки региона фото может не быть (Грегори: Рим с «Регион: Лацио» — центр области в
+    // поле, 22 км от Колизея, на Commons рядом только карты) — тогда фото первой остановки
+    const first = tourHome(t), stop0 = play.stops[0]?.point;
+    if (first) showSlides(first).then((n) => { if (!n && stop0 && stop0 !== first && alive()) showSlides(stop0); });
     await speakText([t.title, ...t.idea].join(". "));
   } else {
     const sec = play.stops[play.i];
@@ -2673,7 +2675,7 @@ async function showSlides(point) {
     } catch { /* без Commons — только свои */ }
     tourSlideCache.set(key, slides);
   }
-  if (tourPlay !== play || !slides.length) { if (!slides.length) hideSlides(); return; }
+  if (tourPlay !== play || !slides.length) { if (!slides.length) hideSlides(); return slides.length; }
   let k = 0, front = 0;
   tourSlides.slides = slides;
   // открытая галерея слайд-шоу — получает фото новой остановки
@@ -2705,6 +2707,7 @@ async function showSlides(point) {
   };
   await show();
   if (slides.length > 1) slideTimer = setInterval(show, 5000);
+  return slides.length;
 }
 
 // двойной щелчок по слайд-шоу — эти же фото в окне галереи, с текущего (Грегори: «фотки в новое
