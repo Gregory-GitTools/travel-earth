@@ -2263,6 +2263,15 @@ function renderTourList() {
     groupKeys.push(`c:${country}`);
     for (const [city, ts] of cities) if (city && ts.length > 1) groupKeys.push(`g:${country}/${city}`);
   }
+  // языки — группа на язык (см. блок «Языки» ниже)
+  const langs = [...phrasebooks.values()].filter((pb) => !q || [pb.title, ...pb.countries].join(" ").toLowerCase().includes(q));
+  const byLang = new Map();
+  for (const pb of langs) {
+    const name = phrasebookLanguage(pb);
+    if (!byLang.has(name)) byLang.set(name, []);
+    byLang.get(name).push(pb);
+  }
+  if (!q && byLang.size) groupKeys.push("langs", ...[...byLang.keys()].map((n) => `lg:${n}`));
   const rows = [];
   const row = (key, cls, html, onClick) => {
     const r = Object.assign(document.createElement("button"), { className: `tour-row ${cls}`, innerHTML: html });
@@ -2316,21 +2325,32 @@ function renderTourList() {
       if (gOpen) for (const t of ts) tourRow(t).classList.add("in-group");
     }
   }
-  // «Языки» — отдельным блоком под странами (Грегори): разговорники, по флагу первой страны
-  const langs = [...phrasebooks.values()].filter((pb) => !q || [pb.title, ...pb.countries].join(" ").toLowerCase().includes(q))
-    .sort((a, b) => a.title.localeCompare(b.title, "ru"));
+  // «Языки» — отдельным блоком под странами (Грегори), внутри — группа на язык (Грегори: «структурируй
+  // языки по группам»): флаг первой страны (нет стран — региона из «Язык:»), в группе — разговорник,
+  // словарь, общие фразы
   if (langs.length) {
     const lOpen = !!q || tourOpen.has("langs");
     row("langs", "tour-row-country tour-row-langs", `<span class="tour-flag tour-lang-icon">${LANG_ICON}</span><span class="tour-row-name">Языки</span>`
-      + `<span class="tour-row-count">${langs.length}</span>${chevron(lOpen)}`, toggle("langs"));
+      + `<span class="tour-row-count">${byLang.size}</span>${chevron(lOpen)}`, toggle("langs"));
     if (lOpen) {
-      for (const pb of langs) {
-        row(`l:${pb.id}`, "tour-row-item in-country", `${flag(pb.countries[0] || "")}<span class="tour-row-text"><span class="tour-row-title">${escapeHtml(pb.title)}</span>`
-          + `<span class="tour-row-sub">${escapeHtml(pb.countries.join(", "))}</span></span>`, () => {
-          tourList.hidden = true;
-          tourCursor = null;
-          renderPhrasebook(pb.id);
-        });
+      for (const name of [...byLang.keys()].sort((a, b) => a.localeCompare(b, "ru"))) {
+        const books = byLang.get(name).sort((a, b) => phrasebookRank(a) - phrasebookRank(b) || a.title.localeCompare(b.title, "ru"));
+        const gk = `lg:${name}`;
+        const gOpen = !!q || tourOpen.has(gk);
+        const first = books.find((pb) => pb.countries.length) || books[0];
+        const langFlag = first.countries.length ? flag(first.countries[0])
+          : `<img class="tour-flag" alt="" src="https://flagcdn.com/w40/${(first.lang.split("-")[1] || "").toLowerCase()}.png">`;
+        row(gk, "tour-row-group in-country", `${langFlag}<span class="tour-row-name">${escapeHtml(name)}</span>`
+          + `<span class="tour-row-count">${books.length}</span>${chevron(gOpen)}`, toggle(gk));
+        if (!gOpen) continue;
+        for (const pb of books) {
+          row(`l:${pb.id}`, "tour-row-item in-group", `<span class="tour-row-pin">${LANG_ICON}</span><span class="tour-row-text"><span class="tour-row-title">${escapeHtml(phrasebookKind(pb))}</span>`
+            + `<span class="tour-row-sub">${escapeHtml(pb.countries.join(", "))}</span></span>`, () => {
+            tourList.hidden = true;
+            tourCursor = null;
+            renderPhrasebook(pb.id);
+          });
+        }
       }
     }
   }
@@ -3350,18 +3370,22 @@ function phrasebookFor(t) {
 // «Венгерский от ChatGPT — Разговорник» → «Венгерский»: пометка источника — в имени файла, не в подписи
 // все файлы языка страны экскурсии: сначала разговорник, потом словарь, общие фразы, остальное
 const PB_KINDS = [
-  [/разговорник/i, "Разговорник — главные фразы, аэропорт, гостиница, аренда машины, как пройти"],
-  [/словарь/i, "Словарь — отдельные слова по темам"],
-  [/общие фразы/i, "Общие фразы — вежливость, переспросить, время и количество"],
+  [/разговорник/i, "Разговорник — главные фразы, аэропорт, гостиница, аренда машины, как пройти", "Разговорник"],
+  [/словарь/i, "Словарь — отдельные слова по темам", "Словарь"],
+  [/общие фразы/i, "Общие фразы — вежливость, переспросить, время и количество", "Общие фразы"],
 ];
+const phrasebookRank = (pb) => { const i = PB_KINDS.findIndex(([re]) => re.test(pb.title)); return i < 0 ? PB_KINDS.length : i; };
+// «Французский — общие фразы от ChatGPT» → язык «Французский», вид «Общие фразы»
+const phrasebookLanguage = (pb) => pb.title.split(/\s+[—–-]\s+/)[0].replace(/\s+от\s+ChatGPT$/i, "");
+const phrasebookKind = (pb) => PB_KINDS.find(([re]) => re.test(pb.title))?.[2]
+  || pb.title.split(/\s+[—–-]\s+/).slice(1).join(" — ") || pb.title;
 function phrasebooksFor(t) {
   const main = phrasebookFor(t);
   if (!main) return [];
   const c = tourCountry(t).toLowerCase();
-  const rank = (pb) => { const i = PB_KINDS.findIndex(([re]) => re.test(pb.title)); return i < 0 ? PB_KINDS.length : i; };
   return [...phrasebooks.values()]
     .filter((pb) => pb.lang === main.lang && pb.countries.some((x) => x.toLowerCase() === c))
-    .sort((a, b) => rank(a) - rank(b) || a.title.localeCompare(b.title, "ru"));
+    .sort((a, b) => phrasebookRank(a) - phrasebookRank(b) || a.title.localeCompare(b.title, "ru"));
 }
 function phrasebookLinkText(pb) {
   return PB_KINDS.find(([re]) => re.test(pb.title))?.[1] || pb.title;
