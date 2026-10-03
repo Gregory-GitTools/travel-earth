@@ -2000,3 +2000,15 @@ body.has-photo-strip .map-status {
   width: 18px;
   height: 18px;
 }
+
+/* в разговорнике «О языке» и «Источники» — такие же разделы, как остальные (Грегори: «другим шрифтом и не выделяется») */
+.tour-panel.phrasebook .tour-about .tour-sec-title,
+.tour-panel.phrasebook .tour-sources .tour-sec-title {
+  color: inherit;
+  font-size: inherit;
+}
+
+.tour-panel.phrasebook .tour-about .tour-sec-title:hover,
+.tour-panel.phrasebook .tour-sources .tour-sec-title:hover {
+  color: #ef6c00;
+}

@@ -3416,7 +3416,9 @@ function renderPhrasebook(id, fromTour = null) {
     : "Нажмите на фразу, чтобы послушать. Голоса этого языка на устройстве не нашлось — фраза может прозвучать с акцентом или не прозвучать. В Windows голос добавляется так: Параметры → Время и язык → Речь → Добавить голоса."));
   // описание языка сворачивается, как «Об экскурсии» (Грегори); список стран здесь лишний — он в списке «Языки»
   const aboutHead = h("div", "tour-sec-row");
-  aboutHead.append(h("div", "tour-sec-title", "О языке"), foldButton(about));
+  const aboutTitle = h("button", "tour-sec-title", "О языке");
+  aboutTitle.addEventListener("click", () => about.classList.toggle("shut"));
+  aboutHead.append(aboutTitle, foldButton(about));
   about.addEventListener("click", updatePbFoldAll);
   about.append(aboutHead, aboutBody);
   nodes.push(about);
@@ -3457,7 +3459,10 @@ function renderPhrasebook(id, fromTour = null) {
   if (pb.sources.length) {
     const box = h("section", "tour-section tour-sources shut");
     const row = h("div", "tour-sec-row");
-    row.append(h("div", "tour-sec-title", "Источники"), foldButton(box));
+    const srcTitle = h("button", "tour-sec-title", "Источники");
+    srcTitle.addEventListener("click", () => box.classList.toggle("shut"));
+    box.addEventListener("click", updatePbFoldAll);
+    row.append(srcTitle, foldButton(box));
     const body = h("div", "tour-sec-body");
     for (const line of pb.sources) {
       const src = tourSource(line);
