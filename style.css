@@ -1273,7 +1273,7 @@ span.tour-flag {
     left: 10px;
     right: 10px;
     bottom: auto;
-    top: calc(var(--top-inset) + 64px);
+    top: calc(var(--tour-panel-bottom, calc(var(--top-inset) + 56px)) + 8px);
     width: auto;
     aspect-ratio: 16 / 9;
   }
@@ -1587,17 +1587,14 @@ button.tour-sec-title:hover {
   color: #1a73e8;
 }
 
-/* телефон: панель экскурсии — шторкой снизу, над плиткой карт (сверху её закрывали строка
-   поиска и слайд-шоу); слайд-шоу — сверху под поиском, между ними — карта с остановкой */
+/* телефон: панель экскурсии — сверху под поиском, слайд-шоу — под ней (--tour-panel-bottom из
+   app.js), ниже до кнопок — карта с остановкой (Грегори, 2026-10-03: раньше панель была шторкой снизу) */
 @media (max-width: 600px) {
   .tour-panel {
-    top: auto;
-    bottom: 94px;
     left: 10px;
     right: 10px;
     width: auto;
-    max-height: 38vh;
-    z-index: 11;
+    max-height: 32vh;
   }
 
   .tour-panel.editing {

@@ -2494,6 +2494,13 @@ const PLAY_ICON = `<svg viewBox="0 0 24 24" width="14" height="14"><path fill="c
 let tourPanelId = null;
 const tourPanel = Object.assign(document.createElement("aside"), { className: "tour-panel", hidden: true });
 document.body.append(tourPanel);
+// телефон: слайд-шоу — сразу под панелью экскурсии (Грегори: «окно экскурсии выше, под поиском,
+// галерея ниже, под окном экскурсии»); высота панели меняется — низ передаётся в CSS
+new ResizeObserver(() => {
+  const bottom = tourPanel.hidden ? 0 : tourPanel.getBoundingClientRect().bottom;
+  if (bottom) document.documentElement.style.setProperty("--tour-panel-bottom", `${Math.round(bottom)}px`);
+  else document.documentElement.style.removeProperty("--tour-panel-bottom");
+}).observe(tourPanel);
 
 function closeTourPanel() {
   stopTourPlay();
@@ -2595,10 +2602,12 @@ async function playTourStep() {
     selectTourStop(play.id, sec.n);
     // картинки новой остановки — сразу, ещё во время перелёта
     showSlides(sec.point);
-    // точка — в свободной части кадра: справа панель, внизу слева слайд-шоу
+    // точка — в свободной части кадра: справа панель, внизу слева слайд-шоу; на телефоне сверху
+    // панель и под ней слайд-шоу 16:9 — точка посередине между ними и кнопками внизу
     const narrow = matchMedia("(max-width: 600px)").matches;
+    const freeTop = tourPanel.getBoundingClientRect().bottom + 8 + ((innerWidth - 20) * 9) / 16;
     map.flyTo({ center: sec.point, zoom: Math.max(14, Math.min(map.getZoom(), 15)), duration: 3000,
-      offset: narrow ? [0, -70] : [190, -100] });
+      offset: narrow ? [0, Math.round((freeTop + innerHeight - 100) / 2 - innerHeight / 2)] : [190, -100] });
     await new Promise((r) => { map.once("moveend", r); setTimeout(r, 4000); });
     if (!alive()) return;
     await speakText(stopNarration(sec));
@@ -3524,8 +3533,11 @@ function openTour(id) {
   const pts = (tours.get(id)?.sections || []).map((sec) => sec.point).filter(Boolean);
   if (pts.length > 1) {
     const lons = pts.map((c) => c[0]), lats = pts.map((c) => c[1]);
+    // на телефоне панель сверху во всю ширину — маршрут под ней
+    const narrow = matchMedia("(max-width: 600px)").matches;
     map.fitBounds([[Math.min(...lons), Math.min(...lats)], [Math.max(...lons), Math.max(...lats)]],
-      { padding: { top: 90, bottom: 130, left: 400, right: 90 }, maxZoom: 13, duration: 2500 });
+      { padding: narrow ? { top: Math.round(tourPanel.getBoundingClientRect().bottom) + 20, bottom: 130, left: 40, right: 70 }
+        : { top: 90, bottom: 130, left: 400, right: 90 }, maxZoom: 13, duration: 2500 });
   } else if (pts.length || tours.get(id)?.point) map.flyTo({ center: pts[0] || tours.get(id).point, zoom: 10, duration: 2500 });
 }
 
