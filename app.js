@@ -1521,11 +1521,25 @@ phonePhotoInput.addEventListener("change", () => {
     root.children.get(day).children.set(f.name, { kind: "file", name: f.name, getFile: async () => f });
   }
   phoneFiles = files.length;
+  phoneHere = null;
+  phoneRoot = root;
   renderMySettings(root);
   if (!activeOverlays.has("myphotos")) toggleOverlay("myphotos");
   startMyScan(root);
 });
 let phoneFiles = 0;
+let phoneHere = null; // [lon, lat] — куда ставить снимки телефона без координат
+let phoneRoot = null;
+el("my-photos-here").addEventListener("click", () => {
+  if (!navigator.geolocation) { flashStatus("Этот браузер не умеет определять местоположение"); return; }
+  setMyStatus("Определяю, где вы…");
+  navigator.geolocation.getCurrentPosition((pos) => {
+    phoneHere = [pos.coords.longitude, pos.coords.latitude];
+    el("my-photos-here").hidden = true;
+    startMyScan(phoneRoot);
+    map.flyTo({ center: phoneHere, zoom: Math.max(map.getZoom(), 15), duration: 2000 });
+  }, () => setMyStatus("Нет доступа к местоположению — разрешите его браузеру"), { enableHighAccuracy: true, timeout: 20000 });
+});
 
 async function pickMyFolder() {
   if (!("showDirectoryPicker" in window)) { phonePhotoInput.click(); return; }
@@ -1582,10 +1596,23 @@ async function startMyScan(handle) {
     const batch = pending.splice(0);
     if (batch.length) idb("exif", "readwrite", (st) => { for (const [k, v] of batch) st.put(v, k); }).catch(() => {});
   };
-  let checked = 0, located = 0;
-  const report = (done) => setMyStatus(`${done ? "Готово" : "Читаю папку…"} Альбомов на карте: ${[...myAlbums.values()].filter((a) => a.point).length} из ${myAlbums.size}, снимков с координатами: ${located}, проверено: ${checked}`
-    + (done && handle?.name === "Телефон" && checked && !located
-      ? ". В снимках нет координат: включите в камере «Сохранять местоположение» и выбирайте снимки через «Файлы» (DCIM → Camera), а не через «Фото» — оно удаляет координаты" : ""));
+  let checked = 0, located = 0, phoneDated = 0, phoneGps = 0;
+  const phone = handle?.name === "Телефон";
+  const report = (done) => {
+    let text = `${done ? "Готово" : "Читаю папку…"} Альбомов на карте: ${[...myAlbums.values()].filter((a) => a.point).length} из ${myAlbums.size}, снимков с координатами: ${located}, проверено: ${checked}`;
+    // Телефон: сколько выбранных снимков пришли с датой съёмки и сколько — с координатами.
+    // Дата есть, координат нет — их вырезал Android при передаче сайту (браузеру без права
+    // «доступ к местоположению в медиафайлах» он отдаёт снимки без GPS). Тогда — кнопка
+    // «Поставить там, где я сейчас»: для свежих снимков это и есть место съёмки
+    const here = el("my-photos-here");
+    if (phone && done) {
+      text += `. С телефона: выбрано ${phoneFiles}, с датой съёмки ${phoneDated}, с координатами ${phoneGps}`;
+      if (phoneGps < phoneDated) text += phoneGps ? ". У части снимков координат нет" : ". Координаты из снимков убрал телефон при передаче браузеру (Android так делает для сайтов), либо в камере выключено «Сохранять местоположение»";
+      if (phoneDated && phoneGps < phoneDated && !phoneHere) text += " — можно поставить снимки без координат туда, где вы сейчас";
+      if (here) here.hidden = !(phoneGps < phoneFiles) || !!phoneHere;
+    } else if (here && !phone) here.hidden = true;
+    setMyStatus(text);
+  };
 
   // координаты и дата снимка — из кэша или из EXIF
   const exifOf = async (id) => {
@@ -1594,7 +1621,7 @@ async function startMyScan(handle) {
     // у снимка из репозитория размер и хэш известны без скачивания — кэш проверяется по ним
     const f = file.handle.meta || await file.handle.getFile();
     const hit = cache.get(file.path);
-    if (hit && hit.size === f.size && hit.mtime === f.lastModified) return (file.rec = hit);
+    if (hit && hit.size === f.size && hit.mtime === f.lastModified) return (file.rec = phoneRec(hit, file.path));
     let rec = { size: f.size, mtime: f.lastModified };
     try {
       const e = await exifr.parse(f instanceof Blob ? f : await file.handle.getFile(), { tiff: true, exif: true, gps: true, xmp: false, icc: false, iptc: false, jfif: false, ihdr: false, translateValues: false });
@@ -1605,8 +1632,17 @@ async function startMyScan(handle) {
     checked++;
     pending.push([file.path, rec]);
     if (pending.length >= 200) flush();
+    rec = phoneRec(rec, file.path);
     return (file.rec = rec);
   };
+  // снимок с телефона: счёт для подсказки и место «где я сейчас» для снимков без координат
+  // (в кэш не пишется — это догадка, а не данные снимка)
+  function phoneRec(rec, path) {
+    if (!phone || !path.startsWith("Телефон/")) return rec; // альбомы репозитория не в счёт
+    if (rec.date || rec.lat) phoneDated++;
+    if (rec.lat) phoneGps++;
+    return !rec.lat && phoneHere ? { ...rec, lat: phoneHere[1], lon: phoneHere[0], here: true } : rec;
+  }
   const addPhotoFeature = (id) => {
     const file = myFiles.get(id);
     if (!file.rec?.lat || myPhotoFeatures.has(id)) return;
