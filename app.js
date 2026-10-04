@@ -6,6 +6,7 @@ const IS_MOBILE = !!navigator.userAgentData?.mobile || /Android|iPhone|iPad|iPod
   || matchMedia("(pointer: coarse) and (hover: none)").matches;
 const FOLDERS_OK = "showDirectoryPicker" in window && !IS_MOBILE;
 if (!FOLDERS_OK) document.documentElement.classList.add("no-folders");
+if (IS_MOBILE) document.documentElement.classList.add("is-mobile");
 
 // единый движок: глобус и плоская карта — это одна и та же карта MapLibre с
 // projection 'globe', которая сама переходит в обычную проекцию при приближении
@@ -974,8 +975,12 @@ function selectPhoto(f, { popup = true } = {}) {
 // лента внизу: загруженные снимки в кадре, слева направо как на карте; снимки, ушедшие
 // из кадра, из ленты убираются. Элементы переиспользуются — прокрутка ленты не сбрасывается
 const photoStrip = Object.assign(document.createElement("div"), { className: "photo-strip", hidden: true });
-// внутри контейнера карты — чтобы кнопки в углах MapLibre (z-index 2) были поверх ленты
-map.getContainer().append(photoStrip);
+// внутри контейнера карты — чтобы кнопки в углах MapLibre (z-index 2) были поверх ленты; на телефоне —
+// в body: там лента сама поверх всего, в том числе плитки карт (#map с position: fixed — свой слой)
+const narrowStrip = matchMedia("(max-width: 600px)");
+const placePhotoStrip = () => (narrowStrip.matches ? document.body : map.getContainer()).append(photoStrip);
+placePhotoStrip();
+narrowStrip.addEventListener("change", placePhotoStrip);
 const photoStripItems = new Map(); // "photo/123" → кнопка
 let photoStripList = []; // снимки ленты по порядку — для галереи
 photoStrip.addEventListener("wheel", (e) => {
@@ -1951,7 +1956,6 @@ function selectTourStop(tour, n) {
     if (on) {
       sec.classList.add("open");
       sec.classList.remove("shut");
-      tourPanel.classList.remove("min");
       sec.scrollIntoView({ block: "nearest", behavior: "smooth" });
     }
   }
@@ -2277,6 +2281,9 @@ const COUNTRY_CODES = {
   "эстония": "ee", "япония": "jp", "вьетнам": "vn", "канада": "ca", "бразилия": "br", "аргентина": "ar",
   "чили": "cl", "перу": "pe", "куба": "cu", "шри-ланка": "lk", "мальдивы": "mv", "казахстан": "kz",
   "узбекистан": "uz", "азербайджан": "az", "сербия": "rs", "северная македония": "mk", "андорра": "ad", "монако": "mc",
+  "россия": "ru", "беларусь": "by", "украина": "ua", "молдова": "md", "киргизия": "kg", "таджикистан": "tj",
+  "монголия": "mn", "южная корея": "kr", "филиппины": "ph", "малайзия": "my", "сингапур": "sg", "австралия": "au",
+  "новая зеландия": "nz", "юар": "za", "кения": "ke", "танзания": "tz", "сейшелы": "sc", "маврикий": "mu",
 };
 const TOUR_PIN = `<svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="${TOUR_PIN_D}"/></svg>`;
 
@@ -2795,7 +2802,28 @@ const STOP_ICON = `<svg viewBox="0 0 24 24" width="18" height="18"><path fill="c
 const PLAY_BIG_ICON = `<svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M8 5v14l11-7z"/></svg>`;
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const tourSlides = Object.assign(document.createElement("div"), { className: "tour-slides", hidden: true });
-tourSlides.innerHTML = `<img alt=""><img alt=""><div class="tour-slides-caption"></div>`;
+tourSlides.innerHTML = `<img alt=""><img alt=""><div class="tour-slides-caption"></div><button class="tour-slides-close" title="Закрыть альбом">×</button>`;
+// Альбом (слайд-шоу) можно закрыть крестиком и включить снова кнопкой в панели экскурсии (Грегори,
+// 2026-10-04: «закрыть его нет никакой возможности»). Выбор запоминается. На телефоне закрытый альбом
+// отдаёт своё место панели: она растягивается до 2/3 экрана, ниже — карта с остановками
+const ALBUM_KEY = "travel-earth.tour-album";
+let albumOff = localStorage.getItem(ALBUM_KEY) === "off";
+document.documentElement.classList.toggle("album-off", albumOff);
+function setAlbum(on) {
+  albumOff = !on;
+  localStorage.setItem(ALBUM_KEY, on ? "on" : "off");
+  document.documentElement.classList.toggle("album-off", albumOff);
+  const btn = tourPanel.querySelector(".tour-album-btn");
+  btn?.classList.toggle("on", on);
+  if (btn) btn.title = on ? "Скрыть альбом фото" : "Показать альбом фото";
+  if (!on) { hideSlides(); return; }
+  // включили во время аудиогида — сразу фото текущей остановки (или вступления)
+  const t = tourPlay && tours.get(tourPlay.id);
+  const point = tourPlay?.i >= 0 ? tourPlay.stops[tourPlay.i]?.point : t && tourHome(t);
+  if (point) showSlides(point);
+}
+tourSlides.querySelector(".tour-slides-close").addEventListener("click", (e) => { e.stopPropagation(); setAlbum(false); });
+tourSlides.querySelector(".tour-slides-close").addEventListener("dblclick", (e) => e.stopPropagation());
 document.body.append(tourSlides);
 const tourSlideCache = new Map(); // "lon,lat" → [{ url, caption }]
 let slideTimer = 0;
@@ -2858,8 +2886,9 @@ function startTourPlay(id, from = 0) {
   for (const b of document.querySelectorAll(".speaking")) b.classList.remove("speaking");
   // все остановки с «Место:» — даже если место ещё ищется: найдётся, когда до неё дойдёт рассказ
   const stops = t.sections.filter((sec) => sec.n);
-  tourPlay = { id, stops, i: from, paused: false, run: {} };
-  tourPanel.classList.remove("min");
+  // панель уже открыта на этой экскурсии (▶ в шапке) — свёрнутой и остаётся
+  const keepMin = tourPanelId === id && !tourPanel.hidden;
+  tourPlay = { id, stops, i: from, paused: false, run: {}, keepMin };
   playTourStep();
 }
 
@@ -2882,7 +2911,8 @@ async function playTourStep() {
   const t = tours.get(play.id);
   if (play.i < 0) {
     // вступление: вся поездка в кадре и сразу картинки — пока они грузятся, начинается рассказ
-    openTour(play.id);
+    openTour(play.id, play.keepMin || play.started);
+    play.started = true;
     // «Фото вступления» отделяет заставку от остановок; без него сохраняется обычный выбор по региону
     const opening = t.introPlace
       ? (t.introPoint ? Promise.resolve(t.introPoint) : tourGeocode(t.introPlace, t.point, t.region, t.cityPoint).catch(() => null))
@@ -2913,9 +2943,12 @@ async function playTourStep() {
     // точка — в свободной части кадра: справа панель, внизу слева слайд-шоу; на телефоне сверху
     // панель и под ней слайд-шоу 16:9 — точка посередине между ними и кнопками внизу
     const narrow = matchMedia("(max-width: 600px)").matches;
-    const freeTop = tourPanel.getBoundingClientRect().bottom + 8 + ((innerWidth - 20) * 9) / 16;
+    // телефон: сверху панель, внизу альбом над лентой и нижней строкой — точка посередине между ними
+    const freeTop = tourPanel.getBoundingClientRect().bottom + 8;
+    const freeBottom = innerHeight - 94
+      - (albumOff ? 0 : ((innerWidth - 20) * 9) / 16) - 8;
     map.flyTo({ center: sec.point, zoom: Math.max(14, Math.min(map.getZoom(), 15)), duration: 3000,
-      offset: narrow ? [0, Math.round((freeTop + innerHeight - 100) / 2 - innerHeight / 2)] : [190, -100] });
+      offset: narrow ? [0, Math.round((freeTop + freeBottom) / 2 - innerHeight / 2)] : [190, -100] });
     await new Promise((r) => { map.once("moveend", r); setTimeout(r, 4000); });
     if (!alive()) return;
     await speakText(stopNarration(sec));
@@ -2986,6 +3019,7 @@ function renderTourPlayer() {
 // слайд-шоу: свои снимки ближе 1 км, потом Commons вокруг точки; смена раз в 5 с с растворением
 async function showSlides(point) {
   clearInterval(slideTimer);
+  if (albumOff) return 0;
   const key = point.join(",");
   const play = tourPlay;
   let slides = tourSlideCache.get(key);
@@ -3190,7 +3224,10 @@ function renderVoiceSettings() {
   if (!list.length) select.append(Object.assign(document.createElement("option"), { textContent: "русских голосов нет" }));
   select.disabled = !list.length;
   document.getElementById("voice-rate").value = localStorage.getItem(VOICE_RATE_KEY) || "1";
-  document.getElementById("voice-hint").hidden = list.some((v) => voiceRank(v) < 2);
+  // телефон: голоса — у синтезатора Android, подсказка про Windows не к месту (Грегори, 2026-10-04: «в Edge
+  // на телефоне нет выбора звука»)
+  document.getElementById("voice-hint").hidden = IS_MOBILE || list.some((v) => voiceRank(v) < 2);
+  document.getElementById("voice-hint-phone").hidden = !IS_MOBILE;
 }
 if ("speechSynthesis" in window) speechSynthesis.addEventListener("voiceschanged", renderVoiceSettings);
 
@@ -3270,9 +3307,12 @@ function renderTourPanel(id) {
   setTextBtn();
   setMinBtn();
   const bar = h("div", "tour-bar");
-  // порядок кнопок — по образцу скрина Грегори (2026-10-04), слева → направо: карандаш (если есть
-  // правка), справка, свернуть пункты, свернуть окно, закрыть
-  bar.append(h("div", "tour-player"), h("span", "tour-bar-gap"), edit, tourHelpButton(), textBtn, minBtn, close);
+  const albumBtn = Object.assign(document.createElement("button"), { className: `tour-edit tour-album-btn${albumOff ? "" : " on"}`,
+    title: albumOff ? "Показать альбом фото" : "Скрыть альбом фото", innerHTML: CHIP_ICONS.photos });
+  albumBtn.addEventListener("click", () => setAlbum(albumOff));
+  // порядок после разделителя — по образцу скрина Грегори (2026-10-04), слева → направо: карандаш
+  // (если есть правка), справка, свернуть пункты, свернуть окно, закрыть; альбом — у плеера слева
+  bar.append(h("div", "tour-player"), albumBtn, h("span", "tour-bar-gap"), edit, tourHelpButton(), textBtn, minBtn, close);
   const titleRow = h("div", "tour-title-row");
   const icon = h("span", "tour-row-pin tour-title-icon");
   icon.innerHTML = tourIcon(t);
@@ -3943,9 +3983,10 @@ function renderPhrasebook(id, fromTour = null) {
   updatePbFoldAll();
 }
 
-function openTour(id) {
-  // открытая экскурсия — всегда развёрнутой (Грегори), даже если прошлую свернули «_»
-  localStorage.setItem(TOUR_MIN_KEY, "0");
+function openTour(id, keepMin = false) {
+  // открытая экскурсия — всегда развёрнутой (Грегори), даже если прошлую свернули «_»; свёрнутая во время
+  // аудиогида остаётся свёрнутой при переходах по точкам (и назад ко вступлению) до следующего открытия
+  if (!keepMin) localStorage.setItem(TOUR_MIN_KEY, "0");
   renderTourPanel(id);
   const pts = (tours.get(id)?.sections || []).map((sec) => sec.point).filter(Boolean);
   if (pts.length > 1) {
@@ -5600,7 +5641,12 @@ document.addEventListener("keydown", (evt) => {
   if (evt.key === "Escape") closeAboutModal();
 });
 
-// "Установить на рабочий стол". Версия с этого компьютера (localhost) — кнопка просит сервер
+// Установка — первый раздел ⚙ (Грегори, 2026-10-04): описание слева, кнопки справа, ниже — инструкция
+// по шагам и как удалить. На компьютере ставить из Edge — ради его «естественных» голосов: не в Edge —
+// кнопка «Открыть в Edge» (протокол microsoft-edge: есть в любой Windows 10/11) с ?install, и там окно ⚙
+// открывается само, раздел установки подсвечен. Поставить приложение в другой браузер страница не может —
+// установку подтверждает сам Edge.
+// "Установить". Версия с этого компьютера (localhost) — кнопка просит сервер
 // start.bat запустить install_desktop_shortcut.vbs: ярлыки на start.bat в Chrome и Edge (Грегори:
 // установка из браузера ставила веб-версию или была неактивна, а локальную не ставила — сама
 // страница ярлык к start.bat создать не может). Веб-версия (GitHub Pages) — обычная установка
@@ -5608,16 +5654,40 @@ document.addEventListener("keydown", (evt) => {
 // установлено, браузер его не присылает — тогда подсказка, а не немая серая кнопка
 const isLocal = ["localhost", "127.0.0.1"].includes(location.hostname);
 const installHint = el("about-install-hint");
+const IS_EDGE = !!navigator.userAgentData?.brands?.some((b) => /Edge/.test(b.brand)) || /Edg\//.test(navigator.userAgent);
+const IS_WINDOWS = /Windows/.test(navigator.userAgent);
+const INSTALLED = matchMedia("(display-mode: standalone), (display-mode: window-controls-overlay)").matches;
 let deferredInstallPrompt = null;
+// тексты — для людей, без подробностей (Грегори: «так не пойдёт, мы же пишем для людей»)
 if (isLocal) {
   el("install-btn").disabled = false;
   el("install-btn").title = "Ярлыки «Travel Earth» (Chrome) и «Travel Earth (Edge)» на рабочем столе — запускают start.bat";
-  installHint.innerHTML = "Ярлыки запускают <code>start.bat</code> этой папки — сервер поднимется сам.";
-} else if (matchMedia("(display-mode: standalone), (display-mode: window-controls-overlay)").matches) {
-  installHint.textContent = "Приложение уже установлено — это его окно.";
+  el("install-lead").textContent = "Ярлык «Travel Earth (Edge)» на рабочий стол — с хорошими голосами Microsoft Edge.";
+} else if (INSTALLED) {
+  el("install-lead").textContent = "Программа установлена.";
+} else if (IS_MOBILE) {
+  el("install-lead").textContent = "Значок «Travel Earth» на экран телефона.";
+  el("install-btn").querySelector("img").src = "icons/icon-32.png"; // на телефоне Edge ни при чём
 } else {
-  installHint.innerHTML = "Если кнопка неактивна — веб-версия уже установлена: «Travel Earth» есть в меню Пуск. "
-    + "Версия с этого компьютера ставится из папки проекта: <code>install_desktop_shortcut.vbs</code>.";
+  el("install-lead").textContent = "Ярлык «Travel Earth» на рабочий стол — программа откроется в Microsoft Edge, с хорошими голосами для экскурсий. Даже если у вас другой основной браузер.";
+  // не в Edge — одна кнопка «Установить», она открывает Edge; там «Установить» уже ставит
+  if (!IS_EDGE && IS_WINDOWS) {
+    const url = new URL(location.href);
+    url.search = "?install";
+    url.hash = "";
+    el("edge-open-btn").href = `microsoft-edge:${url}`;
+    el("edge-open-btn").hidden = false;
+    el("install-btn").hidden = true;
+  }
+  installHint.textContent = IS_EDGE ? "Если кнопка серая — программа уже установлена." : "";
+}
+// пришли по «Открыть в Edge» — сразу окно ⚙ с подсвеченной установкой
+if (new URLSearchParams(location.search).has("install") && !INSTALLED) {
+  history.replaceState(null, "", location.pathname);
+  map.once("load", () => {
+    openAboutModal();
+    el("install-section").classList.add("flash");
+  });
 }
 window.addEventListener("beforeinstallprompt", (evt) => {
   evt.preventDefault();
@@ -5646,4 +5716,17 @@ window.addEventListener("appinstalled", () => {
 
 if ("serviceWorker" in navigator) {
   navigator.serviceWorker.register("sw.js").catch(() => {});
+}
+
+// GitHub Pages разрешает браузеру держать index.html до 10 минут — телефон показывал старую версию
+// после выкладки (Грегори, 2026-10-04). При запуске берём index.html мимо кэша (cache: "reload" заодно
+// обновляет кэш) и, если в нём другая ?v=, перезагружаемся; раз за сеанс на версию — без петли
+const APP_VERSION = new URL(document.currentScript?.src || location.href).searchParams.get("v");
+if (APP_VERSION && !isLocal) {
+  fetch(location.pathname, { cache: "reload" }).then((r) => r.text()).then((html) => {
+    const latest = html.match(/app\.js\?v=(\w+)/)?.[1];
+    if (!latest || latest === APP_VERSION || sessionStorage.getItem("travel-earth.reloaded") === latest) return;
+    sessionStorage.setItem("travel-earth.reloaded", latest);
+    location.reload();
+  }).catch(() => {});
 }

@@ -972,17 +972,85 @@ span.tour-flag {
   cursor: default;
 }
 
-.about-install-btn {
-  width: 100%;
+/* установка — первый раздел ⚙: описание слева, кнопки справа */
+.install-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.install-lead {
+  flex: 1;
+}
+
+.install-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: none;
+}
+
+.install-btn {
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
+  white-space: nowrap;
+  text-decoration: none;
 }
 
-.about-install-btn img {
+.install-btn[hidden] {
+  display: none;
+}
+
+.install-logo {
   width: 18px;
   height: 18px;
+  vertical-align: -4px;
+  margin-right: 4px;
+}
+
+.install-btn .install-logo {
+  margin: 0;
+}
+
+.install-howto {
+  margin: 0 0 12px;
+  font-size: 0.85rem;
+}
+
+.install-howto summary {
+  cursor: pointer;
+  color: var(--accent, #8ab4f8);
+}
+
+.install-howto ol {
+  margin: 8px 0;
+  padding-left: 20px;
+  line-height: 1.5;
+}
+
+.install-howto li {
+  margin-bottom: 6px;
+}
+
+.install-section.flash {
+  animation: install-flash 1.6s ease-out 2;
+  border-radius: 8px;
+}
+
+@keyframes install-flash {
+  from { background: rgba(138, 180, 248, 0.25); }
+  to { background: transparent; }
+}
+
+.modal-content a.install-btn {
+  color: var(--text);
+}
+
+.is-mobile .desktop-only,
+html:not(.is-mobile) .phone-only {
+  display: none;
 }
 
 /* настройки: мои фото */
@@ -1676,17 +1744,27 @@ button.tour-sec-title:hover {
   width: 150px;
 }
 
-/* узкий экран: лента — над нижней строкой (шкала, ⓘ, плитка карт), до столбика кнопок справа;
-   карточка снимка — над лентой */
+/* узкий экран (Грегори, 2026-10-04): лента — в самом низу во всю ширину, поверх плитки карт, шкалы,
+   ⓘ и кнопок (z-index выше переключателя карт, а он — вне контейнера карты, поэтому лента переносится
+   в body); пять снимков в ряд; карточка снимка — над лентой */
 @media (max-width: 600px) {
   .photo-strip {
-    right: 60px;
-    bottom: 108px;
-    max-width: calc(100vw - 70px);
+    right: 10px;
+    width: auto;
+    max-width: none;
+    z-index: 11;
+  }
+
+  .photo-strip .photo-strip-item {
+    width: calc((100vw - 32px) / 5);
+  }
+
+  .photo-strip.scrolls::after {
+    width: 0;
   }
 
   body.has-photo-strip .maplibregl-popup.photo-sheet {
-    bottom: 192px;
+    bottom: 94px;
   }
 }
 
@@ -2055,4 +2133,36 @@ body.has-photo-strip .map-status {
 .no-folders .folders-only,
 .no-folders .access-bar {
   display: none;
+}
+
+/* крестик альбома (слайд-шоу) */
+.tour-slides-close {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 1;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: 22px;
+  line-height: 30px;
+  cursor: pointer;
+}
+
+.tour-album-btn:not(.on) {
+  opacity: 0.55;
+}
+
+/* телефон: альбом (слайд-шоу) — внизу, над лентой фото или плиткой карт, всегда на одной высоте — не
+   прыгает, когда появляется лента (Грегори, 2026-10-04); панель сверху своего размера не меняет, карта
+   с остановкой — между ними */
+@media (max-width: 600px) {
+  .tour-slides {
+    top: auto !important;
+    bottom: 94px;
+  }
 }
