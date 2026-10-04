@@ -5565,3 +5565,16 @@ window.addEventListener("appinstalled", () => {
 if ("serviceWorker" in navigator) {
   navigator.serviceWorker.register("sw.js").catch(() => {});
 }
+
+// GitHub Pages разрешает браузеру держать index.html до 10 минут — телефон показывал старую версию
+// после выкладки (Грегори, 2026-10-04). При запуске берём index.html мимо кэша (cache: "reload" заодно
+// обновляет кэш) и, если в нём другая ?v=, перезагружаемся; раз за сеанс на версию — без петли
+const APP_VERSION = new URL(document.currentScript?.src || location.href).searchParams.get("v");
+if (APP_VERSION && !isLocal) {
+  fetch(location.pathname, { cache: "reload" }).then((r) => r.text()).then((html) => {
+    const latest = html.match(/app\.js\?v=(\w+)/)?.[1];
+    if (!latest || latest === APP_VERSION || sessionStorage.getItem("travel-earth.reloaded") === latest) return;
+    sessionStorage.setItem("travel-earth.reloaded", latest);
+    location.reload();
+  }).catch(() => {});
+}
