@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5/dist/maplibre-gl.css">
-<link rel="stylesheet" href="style.css?v=202610041800">
+<link rel="stylesheet" href="style.css?v=202610041900">
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icons/icon-32.png" sizes="32x32">
 <link rel="icon" href="icons/icon-192.png" sizes="192x192">
@@ -69,6 +69,40 @@
       <h2>Настройки и о программе</h2>
       <button id="about-close-btn" class="modal-close" title="Закрыть"><svg viewBox="0 0 24 24" width="20" height="20"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" fill="none"/></svg></button>
     </div>
+    <!-- установка — первой (Грегори, 2026-10-04: «кнопка установки не на месте; описание, справа кнопка;
+         ставить из Edge — ради хорошей озвучки; упомянуть, что программа прописывается в реестре») -->
+    <section id="install-section" class="install-section">
+      <h3 class="settings-title">Установка</h3>
+      <div class="install-row">
+        <p id="install-lead" class="about-text install-lead"></p>
+        <div class="install-actions">
+          <a id="edge-open-btn" class="text-btn install-btn edge-open-btn" hidden><img class="install-logo" src="icons/edge.svg" alt="">Открыть в Edge</a>
+          <button id="install-btn" class="text-btn install-btn" disabled><img class="install-logo" src="icons/icon-32.png" alt="">Установить</button>
+        </div>
+      </div>
+      <p id="about-install-hint" class="about-install-hint"></p>
+      <details class="install-howto desktop-only">
+        <summary>Как установить и как удалить — по шагам</summary>
+        <ol>
+          <li>Откройте программу в <img class="install-logo" src="icons/edge.svg" alt=""><b>Microsoft Edge</b> — кнопка «Открыть в Edge» выше (Edge есть в каждой Windows 10 и 11, даже если основной браузер другой). Почему Edge: только в нём есть «естественные» русские голоса Microsoft (Svetlana, Dmitry) — экскурсии читаются живым голосом, а не роботом.</li>
+          <li>В Edge нажмите «Установить» здесь же, в ⚙ — или в адресной строке значок «Приложение доступно», или меню <b>⋯</b> → <b>Приложения</b> → <b>Установить Travel Earth</b>.</li>
+          <li>Подтвердите. Появится отдельное окно <img class="install-logo" src="icons/icon-32.png" alt=""><b>Travel Earth</b> и значок в меню «Пуск» (можно закрепить на панели задач и на рабочем столе). Запускать дальше — этим значком; открывается всегда в Edge, какой бы браузер ни был основным.</li>
+          <li>В ⚙ выберите голос с пометкой «хороший» (Svetlana или Dmitry Online) и нажмите «Проверить».</li>
+        </ol>
+        <p class="about-text"><b>Удаление.</b> Установленная программа прописывается в Windows (в реестре) как обычное приложение — просто удалить ярлык с рабочего стола недостаточно, её нужно <b>деинсталлировать</b>: <b>Параметры</b> → <b>Приложения</b> → <b>Установленные приложения</b> (в Windows 10 — «Приложения и возможности») → <b>Travel Earth</b> → <b>Удалить</b>. Или в окне самой программы: меню <b>⋯</b> вверху → <b>Удалить Travel Earth</b>.</p>
+      </details>
+      <details class="install-howto phone-only">
+        <summary>Как установить на телефон — по шагам</summary>
+        <ol>
+          <li>Откройте сайт в <img class="install-logo" src="icons/chrome.svg" alt=""><b>Chrome</b> (в Edge на телефоне голоса для чтения часто не работают).</li>
+          <li>Нажмите «Установить» выше — или меню <b>⋮</b> → <b>Добавить на главный экран</b> → <b>Установить</b>.</li>
+          <li>На экране телефона появится значок <img class="install-logo" src="icons/icon-32.png" alt=""><b>Travel Earth</b>.</li>
+          <li>Голос — из Android: смотрите подсказку в разделе голоса ниже.</li>
+        </ol>
+        <p class="about-text"><b>Удаление.</b> Долгое нажатие на значок → <b>Удалить</b> (или Настройки → Приложения → Travel Earth → Удалить).</p>
+      </details>
+    </section>
+    <hr class="about-divider">
     <div class="folders-only"><!-- папки с диска — только на компьютере -->
     <h3 class="settings-title">Мои фото на этом компьютере</h3>
     <p class="about-text">Папка с фотографиями — каждая папка со снимками станет альбомом на глобусе по координатам из снимков. Фото остаются на диске и никуда не отправляются; выбор папки запоминается только в этом браузере.</p>
@@ -117,18 +151,12 @@
     <p class="about-text">Эта страница полностью сгенерирована ИИ-помощником Claude.</p>
     <p class="about-text">Больше — на канале <a href="https://www.youtube.com/@Gregory-Flow" target="_blank" rel="noopener">Gregory Flow</a>.</p>
     <hr class="about-divider">
-    <hr class="about-divider">
-    <p id="about-install-hint" class="about-install-hint"></p>
     <p class="about-credits">Сделано на основе открытых инструментов: <a href="https://maplibre.org/" target="_blank" rel="noopener">MapLibre GL JS</a> (глобус и карта), карты — <a href="https://carto.com/basemaps" target="_blank" rel="noopener">CARTO</a> и <a href="https://openfreemap.org/" target="_blank" rel="noopener">OpenFreeMap</a> по данным <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>, спутниковые снимки — Esri World Imagery, высоты — AWS Terrain Tiles и <a href="https://github.com/onthegomap/maplibre-contour" target="_blank" rel="noopener">maplibre-contour</a>, маршруты — <a href="https://waymarkedtrails.org" target="_blank" rel="noopener">Waymarked Trails</a>, значки у троп и пляжи — <a href="https://qlever.dev" target="_blank" rel="noopener">QLever</a> (OpenStreetMap), фото — <a href="https://commons.wikimedia.org" target="_blank" rel="noopener">Wikimedia Commons</a> и <a href="https://www.mapillary.com" target="_blank" rel="noopener">Mapillary</a>, свои фото читает <a href="https://github.com/MikeKovarik/exifr" target="_blank" rel="noopener">exifr</a>, поиск и адреса — Nominatim, описания — Википедия и Викиданные, места — векторные тайлы OpenFreeMap и OpenStreetMap API, шрифт — Google Fonts (Poppins).</p>
-    <button id="install-btn" class="text-btn about-install-btn" title="Установить на рабочий стол" disabled>
-      <img src="icons/icon-32.png" alt="">
-      Установить на рабочий стол
-    </button>
   </div>
 </div>
 
 <script src="https://unpkg.com/maplibre-gl@5/dist/maplibre-gl.js"></script>
 <script src="https://unpkg.com/maplibre-contour@0.1.1/dist/index.min.js"></script>
-<script src="app.js?v=202610041800"></script>
+<script src="app.js?v=202610041900"></script>
 </body>
 </html>
