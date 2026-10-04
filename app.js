@@ -2306,6 +2306,10 @@ function tourIcon(t) {
   return group ? placeIcon(group.d) : TOUR_PIN;
 }
 
+// флаг страны (список экскурсий) и значок языка (список и панель «Языки») — общие для обоих списков
+const countryFlag = (c) => (COUNTRY_CODES[c.toLowerCase()] ? `<img class="tour-flag" alt="" src="https://flagcdn.com/w40/${COUNTRY_CODES[c.toLowerCase()]}.png">` : `<span class="tour-flag"></span>`);
+const rowChevron = (open) => `<span class="tour-row-chevron${open ? " open" : ""}">${CHEVRON_ICON}</span>`;
+
 function setTourMode(on) {
   tourMode = on;
   const input = el("search-input");
@@ -2376,15 +2380,6 @@ function renderTourList() {
     groupKeys.push(`c:${country}`);
     for (const [city, ts] of cities) if (city && ts.length > 1) groupKeys.push(`g:${country}/${city}`);
   }
-  // языки — группа на язык (см. блок «Языки» ниже)
-  const langs = [...phrasebooks.values()].filter((pb) => !q || [pb.title, ...pb.countries].join(" ").toLowerCase().includes(q));
-  const byLang = new Map();
-  for (const pb of langs) {
-    const name = phrasebookLanguage(pb);
-    if (!byLang.has(name)) byLang.set(name, []);
-    byLang.get(name).push(pb);
-  }
-  if (!q && byLang.size) groupKeys.push("langs", ...[...byLang.keys()].map((n) => `lg:${n}`));
   const rows = [];
   const row = (key, cls, html, onClick) => {
     const r = Object.assign(document.createElement("button"), { className: `tour-row ${cls}`, innerHTML: html });
@@ -2393,29 +2388,37 @@ function renderTourList() {
     rows.push(r);
     return r;
   };
-  const flag = (c) => (COUNTRY_CODES[c.toLowerCase()] ? `<img class="tour-flag" alt="" src="https://flagcdn.com/w40/${COUNTRY_CODES[c.toLowerCase()]}.png">` : `<span class="tour-flag"></span>`);
-  const chevron = (open) => `<span class="tour-row-chevron${open ? " open" : ""}">${CHEVRON_ICON}</span>`;
+  const flag = countryFlag, chevron = rowChevron;
   const tourRow = (t) => row(`t:${t.id}`, "tour-row-item",
     `<span class="tour-row-pin">${tourIcon(t)}</span><span class="tour-row-text"><span class="tour-row-title">${escapeHtml(t.title)}</span>`
     + `<span class="tour-row-sub">${escapeHtml([t.kind, t.region].filter(Boolean).join(" · "))}</span></span>`, () => chooseTour(t));
   const toggle = (key) => () => { tourOpen.has(key) ? tourOpen.delete(key) : tourOpen.add(key); tourCursor = key; renderTourList(); };
-  // верхняя строка: «?» — подсказка, справа — свернуть/развернуть все. Это не строки списка:
-  // стрелками по ним не ходят и рамкой не выделяются (Грегори: «область стрелки выделять не надо»)
+  // верхняя строка: слева — «Языки» (переход в отдельное окно со списком языков), справа —
+  // свернуть/развернуть все и «?». Это не строки списка: стрелками по ним не ходят и рамкой
+  // не выделяются (Грегори: «область стрелки выделять не надо»). «Развернуть все»/«Справка» —
+  // без подписи, только значком (Грегори, 2026-10-04: «надпись "Развернуть все" нужно убрать»;
+  // помимо неё убрана и подпись у «Справки» — тот же приём)
   const top = Object.assign(document.createElement("div"), { className: "tour-list-top" });
-  const helpBtn = Object.assign(document.createElement("button"), { className: `tour-list-tool${tourListHelp ? " on" : ""}`,
-    title: "Как задать группы и значки", innerHTML: `${INFO_ICON}<span>Справка</span>` });
-  helpBtn.addEventListener("click", () => { tourListHelp = !tourListHelp; renderTourList(); });
-  top.append(helpBtn);
+  const langsBtn = Object.assign(document.createElement("button"), { className: "tour-list-tool tour-list-langs",
+    title: "Языки: разговорники по странам", innerHTML: `${LANG_ICON}<span>Языки</span>` });
+  langsBtn.addEventListener("click", renderLanguagesList);
+  top.append(langsBtn);
+  const right = Object.assign(document.createElement("div"), { className: "tour-list-top-right" });
   if (groupKeys.length && !q) {
     const allOpen = groupKeys.every((k) => tourOpen.has(k));
-    const allBtn = Object.assign(document.createElement("button"), { className: "tour-list-tool",
-      innerHTML: `<span>${allOpen ? "Свернуть все" : "Развернуть все"}</span>${allOpen ? UNFOLD_ICON : FOLD_ICON}` });
+    const allBtn = Object.assign(document.createElement("button"), { className: "tour-list-tool tour-list-foldall",
+      title: allOpen ? "Свернуть все" : "Развернуть все", innerHTML: allOpen ? UNFOLD_ICON : FOLD_ICON });
     allBtn.addEventListener("click", () => {
       if (allOpen) for (const k of groupKeys) tourOpen.delete(k); else for (const k of groupKeys) tourOpen.add(k);
       renderTourList();
     });
-    top.append(allBtn);
+    right.append(allBtn);
   }
+  const helpBtn = Object.assign(document.createElement("button"), { className: `tour-list-tool${tourListHelp ? " on" : ""}`,
+    title: "Как задать группы и значки", innerHTML: INFO_ICON });
+  helpBtn.addEventListener("click", () => { tourListHelp = !tourListHelp; renderTourList(); });
+  right.append(helpBtn);
+  top.append(right);
   rows.push(top);
   if (tourListHelp) rows.push(tourListHelpBox());
   for (const country of [...tree.keys()].sort((a, b) => a.localeCompare(b, "ru"))) {
@@ -2443,43 +2446,102 @@ function renderTourList() {
       if (gOpen) for (const t of ts) tourRow(t).classList.add("in-group");
     }
   }
-  // «Языки» — отдельным блоком под странами (Грегори), внутри — группа на язык (Грегори: «структурируй
-  // языки по группам»): флаг первой страны (нет стран — региона из «Язык:»), в группе — разговорник,
-  // словарь, общие фразы
-  if (langs.length) {
-    const lOpen = !!q || tourOpen.has("langs");
-    row("langs", "tour-row-country tour-row-langs", `<span class="tour-flag tour-lang-icon">${LANG_ICON}</span><span class="tour-row-name">Языки</span>`
-      + `<span class="tour-row-count">${byLang.size}</span>${chevron(lOpen)}`, toggle("langs"));
-    if (lOpen) {
-      for (const name of [...byLang.keys()].sort((a, b) => a.localeCompare(b, "ru"))) {
-        const books = byLang.get(name).sort((a, b) => phrasebookRank(a) - phrasebookRank(b) || a.title.localeCompare(b.title, "ru"));
-        const gk = `lg:${name}`;
-        const gOpen = !!q || tourOpen.has(gk);
-        const first = books.find((pb) => pb.countries.length) || books[0];
-        const langFlag = first.countries.length ? flag(first.countries[0])
-          : `<img class="tour-flag" alt="" src="https://flagcdn.com/w40/${(first.lang.split("-")[1] || "").toLowerCase()}.png">`;
-        row(gk, "tour-row-group in-country", `${langFlag}<span class="tour-row-name">${escapeHtml(name)}</span>`
-          + `<span class="tour-row-count">${books.length}</span>${chevron(gOpen)}`, toggle(gk));
-        if (!gOpen) continue;
-        for (const pb of books) {
-          row(`l:${pb.id}`, "tour-row-item in-group", `<span class="tour-row-pin">${LANG_ICON}</span><span class="tour-row-text"><span class="tour-row-title">${escapeHtml(phrasebookKind(pb))}</span>`
-            + `<span class="tour-row-sub">${escapeHtml(pb.countries.join(", "))}</span></span>`, () => {
-            tourList.hidden = true;
-            tourCursor = null;
-            renderPhrasebook(pb.id);
-            startPhrasePlay(); // разговорник — тоже сразу звучит
-            checkSpeechStarted();
-          });
-        }
-      }
-    }
-  }
   if (!rows.length) {
     rows.push(Object.assign(document.createElement("div"), { className: "tour-list-empty", textContent: tours.size ? "Ничего не нашлось"
       : tourDir ? "В папке экскурсий нет файлов" : "Экскурсии загружаются…" }));
   }
   tourList.replaceChildren(...rows);
   markTourCursor();
+}
+
+// «Языки» — отдельное окно, третье после списка экскурсий и самой экскурсии (Грегори, 2026-10-04:
+// «кнопка Языки открывает новое окно, уже третье… структура окна такая же»): та же шапка с
+// управлением (как у экскурсии), ниже — группы по языкам (как раньше были внутри списка экскурсий),
+// в каждой — разговорник, словарь, общие фразы. Крестик — назад к списку экскурсий
+function renderLanguagesList() {
+  stopTourPlay();
+  stopSpeech();
+  if (tourPanelId) { tourPanelId = null; showTourStopsOf(null); }
+  tourList.hidden = true;
+  tourCursor = null;
+  const h = (tag, cls, text) => Object.assign(document.createElement(tag), { className: cls || "", textContent: text || "" });
+  const byLang = new Map();
+  for (const pb of phrasebooks.values()) {
+    const name = phrasebookLanguage(pb);
+    if (!byLang.has(name)) byLang.set(name, []);
+    byLang.get(name).push(pb);
+  }
+  const groupKeys = [...byLang.keys()].map((n) => `lg:${n}`);
+  const close = Object.assign(document.createElement("button"), { className: "tour-close", title: "Закрыть", textContent: "×" });
+  close.addEventListener("click", closeTourToList);
+  const minBtn = Object.assign(document.createElement("button"), { className: "tour-edit" });
+  const setMinBtn = () => {
+    const min = tourPanel.classList.contains("min");
+    minBtn.innerHTML = min ? EXPAND_ICON : COLLAPSE_ICON;
+    minBtn.title = min ? "Развернуть" : "Свернуть окно";
+  };
+  minBtn.addEventListener("click", () => {
+    const min = !tourPanel.classList.contains("min");
+    tourPanel.classList.toggle("min", min);
+    localStorage.setItem(TOUR_MIN_KEY, min ? "1" : "0");
+    setMinBtn();
+  });
+  const foldAll = Object.assign(document.createElement("button"), { className: "tour-edit" });
+  const setFoldAll = () => {
+    const open = groupKeys.some((k) => tourOpen.has(k));
+    foldAll.innerHTML = open ? FOLD_ICON : UNFOLD_ICON;
+    foldAll.title = open ? "Свернуть все языки" : "Развернуть все языки";
+  };
+  foldAll.addEventListener("click", () => {
+    const open = groupKeys.some((k) => tourOpen.has(k));
+    if (open) for (const k of groupKeys) tourOpen.delete(k); else for (const k of groupKeys) tourOpen.add(k);
+    renderLanguagesList();
+  });
+  const bar = h("div", "tour-bar");
+  bar.append(h("div", "tour-player"), h("span", "tour-bar-gap"), languagesHelpButton(), foldAll, minBtn, close);
+  const titleRow = h("div", "tour-title-row");
+  const icon = h("span", "tour-row-pin tour-title-icon");
+  icon.innerHTML = LANG_ICON;
+  titleRow.append(icon, h("h2", "", "Языки"));
+  const head = h("div", "tour-head");
+  head.append(bar, titleRow, h("div", "tour-player-label"));
+  const rows = [head];
+  const row = (key, cls, html, onClick) => {
+    const r = Object.assign(document.createElement("button"), { className: `tour-row ${cls}`, innerHTML: html });
+    r.dataset.key = key;
+    r.addEventListener("click", onClick);
+    rows.push(r);
+    return r;
+  };
+  const toggle = (key) => () => { tourOpen.has(key) ? tourOpen.delete(key) : tourOpen.add(key); renderLanguagesList(); };
+  for (const name of [...byLang.keys()].sort((a, b) => a.localeCompare(b, "ru"))) {
+    const books = byLang.get(name).sort((a, b) => phrasebookRank(a) - phrasebookRank(b) || a.title.localeCompare(b.title, "ru"));
+    const gk = `lg:${name}`;
+    const gOpen = tourOpen.has(gk);
+    const first = books.find((pb) => pb.countries.length) || books[0];
+    const langFlag = first.countries.length ? countryFlag(first.countries[0])
+      : `<img class="tour-flag" alt="" src="https://flagcdn.com/w40/${(first.lang.split("-")[1] || "").toLowerCase()}.png">`;
+    row(gk, "tour-row-country", `${langFlag}<span class="tour-row-name">${escapeHtml(name)}</span>`
+      + `<span class="tour-row-count">${books.length}</span>${rowChevron(gOpen)}`, toggle(gk));
+    if (!gOpen) continue;
+    for (const pb of books) {
+      row(`l:${pb.id}`, "tour-row-item in-country", `<span class="tour-row-pin">${LANG_ICON}</span><span class="tour-row-text"><span class="tour-row-title">${escapeHtml(phrasebookKind(pb))}</span>`
+        + `<span class="tour-row-sub">${escapeHtml(pb.countries.join(", "))}</span></span>`, () => {
+        renderPhrasebook(pb.id, "languages");
+        startPhrasePlay();
+        checkSpeechStarted();
+      });
+    }
+  }
+  if (byLang.size === 0) rows.push(h("div", "tour-list-empty", "Файлов в папке «Языки» не нашлось"));
+  tourPanel.classList.remove("titles", "editing", "phrasebook");
+  tourPanel.classList.add("lang-list");
+  tourPanel.classList.toggle("min", localStorage.getItem(TOUR_MIN_KEY) === "1");
+  setMinBtn();
+  setFoldAll();
+  tourPanel.replaceChildren(...rows);
+  tourPanel.hidden = false;
+  tourPanel.scrollTop = 0;
 }
 
 function markTourCursor() {
@@ -2706,7 +2768,12 @@ function closeTourToList() {
   setTimeout(() => {
     tourList.hidden = false;
     renderTourList();
-    el("search-input").focus();
+    // на телефоне фокус на текстовое поле поднимает клавиатуру (Грегори, 2026-10-04: «при закрытии
+    // окна на телефоне не должна выскакивать клавиатура»); там фокусируем «Свернуть пункты» —
+    // первую кнопку списка, а не поле поиска
+    const narrow = matchMedia("(max-width: 600px)").matches;
+    const target = narrow ? tourList.querySelector(".tour-list-foldall") || tourList.querySelector(".tour-list-langs") : null;
+    (target || el("search-input")).focus();
   });
 }
 
@@ -3203,7 +3270,9 @@ function renderTourPanel(id) {
   setTextBtn();
   setMinBtn();
   const bar = h("div", "tour-bar");
-  bar.append(h("div", "tour-player"), h("span", "tour-bar-gap"), textBtn, tourHelpButton(), edit, minBtn, close);
+  // порядок кнопок — по образцу скрина Грегори (2026-10-04), слева → направо: карандаш (если есть
+  // правка), справка, свернуть пункты, свернуть окно, закрыть
+  bar.append(h("div", "tour-player"), h("span", "tour-bar-gap"), edit, tourHelpButton(), textBtn, minBtn, close);
   const titleRow = h("div", "tour-title-row");
   const icon = h("span", "tour-row-pin tour-title-icon");
   icon.innerHTML = tourIcon(t);
@@ -3313,7 +3382,7 @@ function renderTourPanel(id) {
     nodes.push(box);
   }
   tourPanel.replaceChildren(...nodes);
-  tourPanel.classList.remove("editing", "phrasebook");
+  tourPanel.classList.remove("editing", "phrasebook", "lang-list");
   tourPanel.hidden = false;
   renderTourPlayer();
 }
@@ -3344,6 +3413,16 @@ const TOUR_HELP = [
   ["## Советы", "раздел без «Место:» — без номера на карте"],
   ["_Черновик.md", "файлы с «_» в начале имени карта не читает"],
 ];
+// первая строка справки — ссылка на сам промт для ИИ (Грегори, 2026-10-04: «в справке первой
+// строкой должно быть — промт экскурсии и ссылка»), дальше — таблица синтаксиса
+function tourHelpPromptLine(path, title) {
+  const line = Object.assign(document.createElement("div"), { className: "tour-help-prompt" });
+  line.append("Промт для ИИ: ");
+  const a = Object.assign(document.createElement("a"), { className: "tour-file-link", href: "#", textContent: title });
+  a.addEventListener("click", (e) => { e.preventDefault(); openRepoFile(path, false); });
+  line.append(a);
+  return line;
+}
 function tourHelpButton() {
   const b = Object.assign(document.createElement("button"), { className: "tour-edit", title: "Как писать файл экскурсии", innerHTML: INFO_ICON });
   b.addEventListener("click", () => {
@@ -3351,6 +3430,7 @@ function tourHelpButton() {
     if (open) { open.remove(); b.classList.remove("on"); return; }
     const box = Object.assign(document.createElement("div"), { className: "tour-help" });
     box.append(Object.assign(document.createElement("div"), { className: "tour-help-title", textContent: "Как писать файл экскурсии (.md или .txt, Блокнот)" }));
+    box.append(tourHelpPromptLine(TOUR_PROMPT, "«Промт экскурсии»"));
     for (const [code, note] of TOUR_HELP) {
       const row = Object.assign(document.createElement("div"), { className: "tour-help-row" });
       row.append(Object.assign(document.createElement("pre"), { textContent: code }),
@@ -3358,6 +3438,21 @@ function tourHelpButton() {
       box.append(row);
     }
     b.closest(".tour-head").after(box);
+    b.classList.add("on");
+  });
+  return b;
+}
+// справка окна «Языки» — только общий промт разговорника (Грегори: «в языке оставить только общий
+// промт, кто захочет — сделает заново по нему»), без ссылки на конкретный открытый файл
+function languagesHelpButton() {
+  const b = Object.assign(document.createElement("button"), { className: "tour-edit", title: "Как писать файл разговорника", innerHTML: INFO_ICON });
+  b.addEventListener("click", () => {
+    const open = tourPanel.querySelector(".tour-help");
+    if (open) { open.remove(); b.classList.remove("on"); return; }
+    const box = Object.assign(document.createElement("div"), { className: "tour-help" });
+    box.append(Object.assign(document.createElement("div"), { className: "tour-help-title", textContent: "Разговорники — файлы папки «Языки» (.md, по файлу на язык)" }));
+    box.append(tourHelpPromptLine(PHRASEBOOK_PROMPT, "«Промт разговорника»"));
+    tourPanel.querySelector(".tour-head").after(box);
     b.classList.add("on");
   });
   return b;
@@ -3496,7 +3591,7 @@ async function editTour(id) {
   const hint = h("div", "tour-file", t.repo ? "Esc — назад. Как писать файл — кнопка «i» вверху"
     : "Ctrl+S — сохранить, Esc — отмена. Как писать файл — кнопка «i» вверху");
   tourPanel.replaceChildren(head, area, bar, hint, fileRow);
-  tourPanel.classList.remove("phrasebook");
+  tourPanel.classList.remove("phrasebook", "lang-list");
   tourPanel.classList.add("editing");
   area.focus();
   area.setSelectionRange(0, 0);
@@ -3722,10 +3817,11 @@ function renderPhrasebook(id, fromTour = null) {
   if (!fromTour && tourPanelId) { tourPanelId = null; showTourStopsOf(null); }
   const h = (tag, cls, text) => Object.assign(document.createElement(tag), { className: cls || "", textContent: text || "" });
   const close = Object.assign(document.createElement("button"), { className: "tour-close",
-    title: fromTour ? "Назад к экскурсии" : "Закрыть", textContent: "×" });
+    title: fromTour === "languages" ? "Назад к языкам" : fromTour ? "Назад к экскурсии" : "Закрыть", textContent: "×" });
   close.addEventListener("click", () => {
     stopPhrasePlay();
-    fromTour && tours.has(fromTour) ? renderTourPanel(fromTour) : closeTourToList();
+    if (fromTour === "languages") renderLanguagesList();
+    else fromTour && tours.has(fromTour) ? renderTourPanel(fromTour) : closeTourToList();
   });
   const head = h("div", "tour-head");
   const foldAll = h("button", "tour-edit pb-fold-all");
@@ -3735,8 +3831,21 @@ function renderPhrasebook(id, fromTour = null) {
     for (const x of secs) x.classList.toggle("shut", open);
     updatePbFoldAll();
   });
+  const minBtn = Object.assign(document.createElement("button"), { className: "tour-edit" });
+  const setMinBtn = () => {
+    const min = tourPanel.classList.contains("min");
+    minBtn.innerHTML = min ? EXPAND_ICON : COLLAPSE_ICON;
+    minBtn.title = min ? "Развернуть" : "Свернуть окно";
+  };
+  minBtn.addEventListener("click", () => {
+    const min = !tourPanel.classList.contains("min");
+    tourPanel.classList.toggle("min", min);
+    localStorage.setItem(TOUR_MIN_KEY, min ? "1" : "0");
+    setMinBtn();
+  });
   const bar = h("div", "tour-bar");
-  bar.append(h("div", "tour-player pb-player"), h("span", "tour-bar-gap"), foldAll, close);
+  // тот же порядок, что у экскурсии и у «Языков»: справка, свернуть пункты, свернуть окно, закрыть
+  bar.append(h("div", "tour-player pb-player"), h("span", "tour-bar-gap"), languagesHelpButton(), foldAll, minBtn, close);
   const titleRow = h("div", "tour-title-row");
   const icon = h("span", "tour-row-pin tour-title-icon");
   icon.innerHTML = LANG_ICON;
@@ -3822,8 +3931,11 @@ function renderPhrasebook(id, fromTour = null) {
   if (pb.path) files.append("Файл: ", link(pb.path, "Править: в Блокноте при запуске через start.bat, иначе на GitHub", pb.path, true), " · ");
   files.append(link("промт для ChatGPT", "Задание для ИИ: разговорник другого языка", PHRASEBOOK_PROMPT, false));
   nodes.push(files);
-  tourPanel.classList.remove("titles", "min", "editing");
+  tourPanel.classList.remove("titles", "editing", "lang-list");
   tourPanel.classList.add("phrasebook");
+  // как у экскурсии и «Языков» — свёрнутость окна помнится, а не сбрасывается на каждое открытие
+  tourPanel.classList.toggle("min", localStorage.getItem(TOUR_MIN_KEY) === "1");
+  setMinBtn();
   tourPanel.replaceChildren(...nodes);
   tourPanel.hidden = false;
   tourPanel.scrollTop = 0;

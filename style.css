@@ -6,6 +6,14 @@
   --light-text: #3c4043;
   --light-muted: #70757a;
   --light-accent: #1a73e8;
+  /* серый нажатых/активных кнопок и чипов — светлее прежнего #aab0b6/#9aa0a6 (Грегори, 2026-10-04:
+     «серый цвет при нажатии всех кнопок можно сделать еще более светлым») */
+  --active-grey: #b7bdc3;
+  --active-grey-dark: #a2a8ae;
+  /* плеер экскурсии/разговорника — «негатив светло-синего» вместо прежнего оранжевого (Грегори,
+     2026-10-04); светло-синий — тот же --accent тёмной темы, он уже «светло-синий» на вид */
+  --player-blue: #4da3ff;
+  --player-blue-dark: #2f8ceb;
   --bg: #1b1b1f;
   --panel: #26262c;
   --accent: #4da3ff;
@@ -257,7 +265,7 @@ html, body {
 /* значок экскурсий в строке поиска — серый, как лупа; включён — с фоном */
 /* нажата — негативом, как включённые чипы (серый фон, белый значок) */
 #search-tour-btn.on {
-  background: #aab0b6;
+  background: var(--active-grey);
   color: #fff;
 }
 
@@ -391,11 +399,18 @@ span.tour-flag {
   filter: drop-shadow(1px 0 0 #fff) drop-shadow(-1px 0 0 #fff) drop-shadow(0 1px 0 #fff) drop-shadow(0 -1px 0 #fff);
 }
 
-/* верхняя строка списка: «Справка» слева, «Свернуть/Развернуть все» справа */
+/* верхняя строка списка: «Языки» слева, свернуть/развернуть все и «Справка» справа (Грегори,
+   2026-10-04: «кнопку инфо сместить вправо, а на её место поднять Языки») */
 .tour-list-top {
   display: flex;
   justify-content: space-between;
   padding: 0 2px 2px;
+}
+
+.tour-list-top-right {
+  display: flex;
+  align-items: center;
+  gap: 2px;
 }
 
 .tour-list-tool {
@@ -663,7 +678,7 @@ span.tour-flag {
 }
 
 .places-btn.active {
-  background: #aab0b6;
+  background: var(--active-grey);
   color: #fff;
 }
 
@@ -730,12 +745,12 @@ span.tour-flag {
 
 /* включённый фильтр — негативом, чтобы не забыть его выключить */
 .chip.active {
-  background: #aab0b6;
+  background: var(--active-grey);
   color: #fff;
 }
 
 .chip.active:hover {
-  background: #9aa0a6;
+  background: var(--active-grey-dark);
 }
 
 /* "Магазины": название включает/выключает, стрелка открывает выбор профиля */
@@ -785,7 +800,7 @@ span.tour-flag {
 }
 
 .chip-split.active:hover {
-  background: #9aa0a6; /* темнее базового активного (#aab0b6) — тот же приём, что .chip.active:hover */
+  background: var(--active-grey-dark); /* темнее базового активного (--active-grey) — тот же приём, что .chip.active:hover */
 }
 
 .chip-icon {
@@ -1089,6 +1104,14 @@ span.tour-flag {
   margin-bottom: 6px;
 }
 
+/* первая строка справки — ссылка на промт для ИИ (Грегори, 2026-10-04: «в справке первой строкой
+   должно быть — промт экскурсии и ссылка») */
+.tour-help-prompt {
+  margin-bottom: 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid #e0e0e0;
+}
+
 .tour-help-row {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -1108,9 +1131,11 @@ span.tour-flag {
   color: #5f6368;
 }
 
+/* инфо и карандаш в «нажатом» виде — тот же серый-негатив, что у остальных кнопок (Грегори:
+   «нажатие инфо должно быть таким же, как и все наши кнопки, с инверсией серого») */
 .tour-edit.on {
-  background: #f1f3f4;
-  color: #ef6c00;
+  background: var(--active-grey);
+  color: #fff;
 }
 
 .tour-edit {
@@ -1173,10 +1198,12 @@ span.tour-flag {
   font-size: 0.78rem;
 }
 
-/* обзорная экскурсия: плеер под шапкой и слайд-шоу */
+/* обзорная экскурсия: плеер под шапкой и слайд-шоу — негатив светло-синего вместо прежнего
+   оранжевого тона-подсветки (Грегори, 2026-10-04: «плеер можно везде сделать на негативе
+   светло-синего»): включено — сплошная заливка и белый значок, как у остальных активных кнопок */
 .tour-play.on {
-  background: #fff3e0;
-  color: #ef6c00;
+  background: var(--player-blue);
+  color: #fff;
 }
 
 /* шапка панели: строка кнопок (плеер слева, остальные справа), под ней название во всю ширину */
@@ -1195,7 +1222,7 @@ span.tour-flag {
   display: flex;
   align-items: center;
   gap: 2px;
-  color: #8a3c00;
+  color: var(--player-blue-dark);
 }
 
 .tour-player .tour-edit:disabled {
@@ -1205,8 +1232,8 @@ span.tour-flag {
 }
 
 .tour-player .tour-edit.on {
-  background: #fff3e0;
-  color: #ef6c00;
+  background: var(--player-blue);
+  color: #fff;
 }
 
 .tour-title-row {
@@ -1221,7 +1248,7 @@ span.tour-flag {
 }
 
 .tour-player-label {
-  color: #8a3c00;
+  color: var(--player-blue-dark);
   min-width: 0;
   margin-left: 6px;
   font-size: 0.8rem;
@@ -1697,7 +1724,7 @@ button.tour-sec-title:hover {
 }
 
 .photo-strip-item.hover::after {
-  border-color: #9aa0a6;
+  border-color: var(--active-grey-dark);
 }
 
 .photo-strip-item.active::after {
@@ -1877,7 +1904,7 @@ body.has-photo-strip .map-status {
 }
 
 .geo-btn.on .geo-center {
-  fill: #aab0b6;
+  fill: var(--active-grey);
 }
 
 .geo-btn.follow .geo-center {
