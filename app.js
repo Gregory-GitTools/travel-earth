@@ -974,8 +974,12 @@ function selectPhoto(f, { popup = true } = {}) {
 // лента внизу: загруженные снимки в кадре, слева направо как на карте; снимки, ушедшие
 // из кадра, из ленты убираются. Элементы переиспользуются — прокрутка ленты не сбрасывается
 const photoStrip = Object.assign(document.createElement("div"), { className: "photo-strip", hidden: true });
-// внутри контейнера карты — чтобы кнопки в углах MapLibre (z-index 2) были поверх ленты
-map.getContainer().append(photoStrip);
+// внутри контейнера карты — чтобы кнопки в углах MapLibre (z-index 2) были поверх ленты; на телефоне —
+// в body: там лента сама поверх всего, в том числе плитки карт (#map с position: fixed — свой слой)
+const narrowStrip = matchMedia("(max-width: 600px)");
+const placePhotoStrip = () => (narrowStrip.matches ? document.body : map.getContainer()).append(photoStrip);
+placePhotoStrip();
+narrowStrip.addEventListener("change", placePhotoStrip);
 const photoStripItems = new Map(); // "photo/123" → кнопка
 let photoStripList = []; // снимки ленты по порядку — для галереи
 photoStrip.addEventListener("wheel", (e) => {
@@ -2870,7 +2874,7 @@ async function playTourStep() {
     const narrow = matchMedia("(max-width: 600px)").matches;
     // телефон: сверху панель, внизу альбом над лентой и нижней строкой — точка посередине между ними
     const freeTop = tourPanel.getBoundingClientRect().bottom + 8;
-    const freeBottom = innerHeight - (document.body.classList.contains("has-photo-strip") ? 94 : 108)
+    const freeBottom = innerHeight - 94
       - (albumOff ? 0 : ((innerWidth - 20) * 9) / 16) - 8;
     map.flyTo({ center: sec.point, zoom: Math.max(14, Math.min(map.getZoom(), 15)), duration: 3000,
       offset: narrow ? [0, Math.round((freeTop + freeBottom) / 2 - innerHeight / 2)] : [190, -100] });
