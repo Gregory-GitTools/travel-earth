@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5/dist/maplibre-gl.css">
-<link rel="stylesheet" href="style.css?v=202610041900">
+<link rel="stylesheet" href="style.css?v=202610041930">
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icons/icon-32.png" sizes="32x32">
 <link rel="icon" href="icons/icon-192.png" sizes="192x192">
@@ -76,30 +76,28 @@
       <div class="install-row">
         <p id="install-lead" class="about-text install-lead"></p>
         <div class="install-actions">
-          <a id="edge-open-btn" class="text-btn install-btn edge-open-btn" hidden><img class="install-logo" src="icons/edge.svg" alt="">Открыть в Edge</a>
-          <button id="install-btn" class="text-btn install-btn" disabled><img class="install-logo" src="icons/icon-32.png" alt="">Установить</button>
+          <a id="edge-open-btn" class="text-btn install-btn" hidden><img class="install-logo" src="icons/edge.svg" alt="">Установить</a>
+          <button id="install-btn" class="text-btn install-btn" disabled><img class="install-logo" src="icons/edge.svg" alt="">Установить</button>
         </div>
       </div>
       <p id="about-install-hint" class="about-install-hint"></p>
       <details class="install-howto desktop-only">
-        <summary>Как установить и как удалить — по шагам</summary>
+        <summary>Подробнее</summary>
         <ol>
-          <li>Откройте программу в <img class="install-logo" src="icons/edge.svg" alt=""><b>Microsoft Edge</b> — кнопка «Открыть в Edge» выше (Edge есть в каждой Windows 10 и 11, даже если основной браузер другой). Почему Edge: только в нём есть «естественные» русские голоса Microsoft (Svetlana, Dmitry) — экскурсии читаются живым голосом, а не роботом.</li>
-          <li>В Edge нажмите «Установить» здесь же, в ⚙ — или в адресной строке значок «Приложение доступно», или меню <b>⋯</b> → <b>Приложения</b> → <b>Установить Travel Earth</b>.</li>
-          <li>Подтвердите. Появится отдельное окно <img class="install-logo" src="icons/icon-32.png" alt=""><b>Travel Earth</b> и значок в меню «Пуск» (можно закрепить на панели задач и на рабочем столе). Запускать дальше — этим значком; открывается всегда в Edge, какой бы браузер ни был основным.</li>
-          <li>В ⚙ выберите голос с пометкой «хороший» (Svetlana или Dmitry Online) и нажмите «Проверить».</li>
+          <li>Нажмите «Установить». Откроется <img class="install-logo" src="icons/edge.svg" alt="">Microsoft Edge — он есть в каждой Windows.</li>
+          <li>В Edge снова нажмите «Установить» и подтвердите. Отметьте «Создать ярлык на рабочем столе».</li>
+          <li>На рабочем столе появится ярлык «Travel Earth». Дальше запускайте программу им.</li>
         </ol>
-        <p class="about-text"><b>Удаление.</b> Установленная программа прописывается в Windows (в реестре) как обычное приложение — просто удалить ярлык с рабочего стола недостаточно, её нужно <b>деинсталлировать</b>: <b>Параметры</b> → <b>Приложения</b> → <b>Установленные приложения</b> (в Windows 10 — «Приложения и возможности») → <b>Travel Earth</b> → <b>Удалить</b>. Или в окне самой программы: меню <b>⋯</b> вверху → <b>Удалить Travel Earth</b>.</p>
+        <p class="about-text"><b>Как удалить.</b> Программа записывается в Windows как обычная, поэтому удалить только ярлык мало. Пуск → Параметры → Приложения → Travel Earth → Удалить.</p>
       </details>
       <details class="install-howto phone-only">
-        <summary>Как установить на телефон — по шагам</summary>
+        <summary>Подробнее</summary>
         <ol>
-          <li>Откройте сайт в <img class="install-logo" src="icons/chrome.svg" alt=""><b>Chrome</b> (в Edge на телефоне голоса для чтения часто не работают).</li>
-          <li>Нажмите «Установить» выше — или меню <b>⋮</b> → <b>Добавить на главный экран</b> → <b>Установить</b>.</li>
-          <li>На экране телефона появится значок <img class="install-logo" src="icons/icon-32.png" alt=""><b>Travel Earth</b>.</li>
-          <li>Голос — из Android: смотрите подсказку в разделе голоса ниже.</li>
+          <li>Откройте сайт в <img class="install-logo" src="icons/chrome.svg" alt="">Chrome.</li>
+          <li>Нажмите «Установить» или меню ⋮ → «Добавить на главный экран».</li>
+          <li>На экране появится значок «Travel Earth».</li>
         </ol>
-        <p class="about-text"><b>Удаление.</b> Долгое нажатие на значок → <b>Удалить</b> (или Настройки → Приложения → Travel Earth → Удалить).</p>
+        <p class="about-text"><b>Как удалить.</b> Долгое нажатие на значок → «Удалить».</p>
       </details>
     </section>
     <hr class="about-divider">
@@ -157,6 +155,6 @@
 
 <script src="https://unpkg.com/maplibre-gl@5/dist/maplibre-gl.js"></script>
 <script src="https://unpkg.com/maplibre-contour@0.1.1/dist/index.min.js"></script>
-<script src="app.js?v=202610041900"></script>
+<script src="app.js?v=202610041930"></script>
 </body>
 </html>

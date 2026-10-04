@@ -5546,29 +5546,28 @@ const IS_EDGE = !!navigator.userAgentData?.brands?.some((b) => /Edge/.test(b.bra
 const IS_WINDOWS = /Windows/.test(navigator.userAgent);
 const INSTALLED = matchMedia("(display-mode: standalone), (display-mode: window-controls-overlay)").matches;
 let deferredInstallPrompt = null;
-const EDGE_IMG = `<img class="install-logo" src="icons/edge.svg" alt="">`;
+// тексты — для людей, без подробностей (Грегори: «так не пойдёт, мы же пишем для людей»)
 if (isLocal) {
   el("install-btn").disabled = false;
   el("install-btn").title = "Ярлыки «Travel Earth» (Chrome) и «Travel Earth (Edge)» на рабочем столе — запускают start.bat";
-  el("install-lead").textContent = "Версия с этого компьютера: ярлыки на рабочем столе запускают start.bat этой папки — сервер поднимется сам. "
-    + "Ярлык «Travel Earth (Edge)» — с хорошими голосами Edge.";
+  el("install-lead").textContent = "Ярлык «Travel Earth (Edge)» на рабочий стол — с хорошими голосами Microsoft Edge.";
 } else if (INSTALLED) {
-  el("install-lead").innerHTML = IS_MOBILE ? "Приложение установлено — это его окно."
-    : `Приложение установлено — это его окно${IS_EDGE ? ` в ${EDGE_IMG}Edge` : ""}. Удаляется как обычная программа — см. «по шагам» ниже.`;
+  el("install-lead").textContent = "Программа установлена.";
 } else if (IS_MOBILE) {
-  el("install-lead").textContent = "Поставьте Travel Earth значком на экран телефона — откроется во весь экран, без адресной строки.";
+  el("install-lead").textContent = "Значок «Travel Earth» на экран телефона.";
+  el("install-btn").querySelector("img").src = "icons/icon-32.png"; // на телефоне Edge ни при чём
 } else {
-  el("install-lead").innerHTML = IS_EDGE
-    ? `Вы в ${EDGE_IMG}<b>Microsoft Edge</b> — то, что нужно: экскурсии читаются его живыми голосами. Нажмите «Установить» — Travel Earth станет отдельной программой со значком в меню «Пуск».`
-    : `Лучше устанавливать из ${EDGE_IMG}<b>Microsoft Edge</b> — только в нём хорошая озвучка экскурсий (голоса Svetlana и Dmitry), какой бы браузер ни был основным. Нажмите «Открыть в Edge», там — «Установить».`;
+  el("install-lead").textContent = "Ярлык «Travel Earth» на рабочий стол — программа откроется в Microsoft Edge, с хорошими голосами для экскурсий. Даже если у вас другой основной браузер.";
+  // не в Edge — одна кнопка «Установить», она открывает Edge; там «Установить» уже ставит
   if (!IS_EDGE && IS_WINDOWS) {
     const url = new URL(location.href);
     url.search = "?install";
     url.hash = "";
     el("edge-open-btn").href = `microsoft-edge:${url}`;
     el("edge-open-btn").hidden = false;
+    el("install-btn").hidden = true;
   }
-  installHint.innerHTML = "Если «Установить» неактивна — в этом браузере программа уже установлена (есть в меню «Пуск»).";
+  installHint.textContent = IS_EDGE ? "Если кнопка серая — программа уже установлена." : "";
 }
 // пришли по «Открыть в Edge» — сразу окно ⚙ с подсвеченной установкой
 if (new URLSearchParams(location.search).has("install") && !INSTALLED) {
@@ -5584,7 +5583,6 @@ window.addEventListener("beforeinstallprompt", (evt) => {
   deferredInstallPrompt = evt;
   el("install-btn").disabled = false;
   installHint.textContent = "";
-  if (!IS_EDGE && !IS_MOBILE) el("install-btn").title = "Установить в этот браузер — без голосов Edge";
 });
 el("install-btn").addEventListener("click", async () => {
   if (isLocal) {
