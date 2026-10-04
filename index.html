@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5/dist/maplibre-gl.css">
-<link rel="stylesheet" href="style.css?v=202610041930">
+<link rel="stylesheet" href="style.css?v=202610042000">
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icons/icon-32.png" sizes="32x32">
 <link rel="icon" href="icons/icon-192.png" sizes="192x192">
@@ -81,23 +81,33 @@
         </div>
       </div>
       <p id="about-install-hint" class="about-install-hint"></p>
+      <!-- кнопка «Установить» делает всё сама; здесь — то же вручную (Грегори, 2026-10-04) -->
       <details class="install-howto desktop-only">
-        <summary>Подробнее</summary>
+        <summary>Установка и удаление программы вручную</summary>
+        <p class="about-text"><b>Установить</b></p>
         <ol>
-          <li>Нажмите «Установить». Откроется <img class="install-logo" src="icons/edge.svg" alt="">Microsoft Edge — он есть в каждой Windows.</li>
-          <li>В Edge снова нажмите «Установить» и подтвердите. Отметьте «Создать ярлык на рабочем столе».</li>
-          <li>На рабочем столе появится ярлык «Travel Earth». Дальше запускайте программу им.</li>
+          <li>Откройте в <img class="install-logo" src="icons/edge.svg" alt="">Microsoft Edge адрес <b>gregory-gittools.github.io/travel-earth</b></li>
+          <li>Меню <b>⋯</b> справа вверху → <b>Приложения</b> → <b>Установить Travel Earth</b>.</li>
+          <li>Подтвердите и отметьте «Создать ярлык на рабочем столе».</li>
         </ol>
-        <p class="about-text"><b>Как удалить.</b> Программа записывается в Windows как обычная, поэтому удалить только ярлык мало. Пуск → Параметры → Приложения → Travel Earth → Удалить.</p>
+        <p class="about-text"><b>Удалить</b></p>
+        <ol>
+          <li>Пуск → <b>Параметры</b> → <b>Приложения</b>.</li>
+          <li>Найдите <b>Travel Earth</b> → <b>Удалить</b>.</li>
+        </ol>
+        <p class="about-install-hint">Удалить только ярлык с рабочего стола мало — программа записана в Windows.</p>
       </details>
       <details class="install-howto phone-only">
-        <summary>Подробнее</summary>
+        <summary>Установка и удаление программы вручную</summary>
+        <p class="about-text"><b>Установить</b></p>
         <ol>
-          <li>Откройте сайт в <img class="install-logo" src="icons/chrome.svg" alt="">Chrome.</li>
-          <li>Нажмите «Установить» или меню ⋮ → «Добавить на главный экран».</li>
-          <li>На экране появится значок «Travel Earth».</li>
+          <li>Откройте в <img class="install-logo" src="icons/chrome.svg" alt="">Chrome адрес <b>gregory-gittools.github.io/travel-earth</b></li>
+          <li>Меню <b>⋮</b> → <b>Добавить на главный экран</b> → <b>Установить</b>.</li>
         </ol>
-        <p class="about-text"><b>Как удалить.</b> Долгое нажатие на значок → «Удалить».</p>
+        <p class="about-text"><b>Удалить</b></p>
+        <ol>
+          <li>Долгое нажатие на значок Travel Earth → <b>Удалить</b>.</li>
+        </ol>
       </details>
     </section>
     <hr class="about-divider">
@@ -155,6 +165,6 @@
 
 <script src="https://unpkg.com/maplibre-gl@5/dist/maplibre-gl.js"></script>
 <script src="https://unpkg.com/maplibre-contour@0.1.1/dist/index.min.js"></script>
-<script src="app.js?v=202610041930"></script>
+<script src="app.js?v=202610042000"></script>
 </body>
 </html>
