@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5/dist/maplibre-gl.css">
-<link rel="stylesheet" href="style.css?v=202610041730">
+<link rel="stylesheet" href="style.css?v=202610041800">
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icons/icon-32.png" sizes="32x32">
 <link rel="icon" href="icons/icon-192.png" sizes="192x192">
@@ -105,6 +105,7 @@
       <button id="voice-test" class="text-btn">Проверить</button>
     </div>
     <p id="voice-hint" class="about-install-hint" hidden>Хороших русских голосов не нашлось. Лучше всего звучат «естественные» голоса Edge (Microsoft Svetlana или Dmitry Online) и «Google русский» в Chrome; в Windows можно добавить русский голос: Параметры → Время и язык → Речь → Добавить голоса.</p>
+    <p id="voice-hint-phone" class="about-install-hint" hidden>На телефоне голос берётся из Android, а не из браузера (Edge на телефоне голосов сайту часто не даёт — лучше Chrome). Улучшить: Настройки → Специальные возможности (или Система → Язык и ввод) → Синтез речи → движок «Распознавание и синтез речи от Google» → ⚙ → Установить голосовые данные → Русский → выбрать голос и скачать. Потом перезапустить Chrome.</p>
     <hr class="about-divider">
     <div class="about-brand">
       <img src="icons/icon-512.png" alt="Travel Earth" class="about-logo">
@@ -128,6 +129,6 @@
 
 <script src="https://unpkg.com/maplibre-gl@5/dist/maplibre-gl.js"></script>
 <script src="https://unpkg.com/maplibre-contour@0.1.1/dist/index.min.js"></script>
-<script src="app.js?v=202610041730"></script>
+<script src="app.js?v=202610041800"></script>
 </body>
 </html>

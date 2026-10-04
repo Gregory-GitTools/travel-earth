@@ -3156,7 +3156,10 @@ function renderVoiceSettings() {
   if (!list.length) select.append(Object.assign(document.createElement("option"), { textContent: "русских голосов нет" }));
   select.disabled = !list.length;
   document.getElementById("voice-rate").value = localStorage.getItem(VOICE_RATE_KEY) || "1";
-  document.getElementById("voice-hint").hidden = list.some((v) => voiceRank(v) < 2);
+  // телефон: голоса — у синтезатора Android, подсказка про Windows не к месту (Грегори, 2026-10-04: «в Edge
+  // на телефоне нет выбора звука»)
+  document.getElementById("voice-hint").hidden = IS_MOBILE || list.some((v) => voiceRank(v) < 2);
+  document.getElementById("voice-hint-phone").hidden = !IS_MOBILE;
 }
 if ("speechSynthesis" in window) speechSynthesis.addEventListener("voiceschanged", renderVoiceSettings);
 
