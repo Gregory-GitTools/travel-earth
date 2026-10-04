@@ -1649,17 +1649,26 @@ button.tour-sec-title:hover {
   width: 150px;
 }
 
-/* узкий экран: лента — над нижней строкой (шкала, ⓘ, плитка карт), до столбика кнопок справа;
-   карточка снимка — над лентой */
+/* узкий экран (Грегори, 2026-10-04): лента — в самом низу, в линию с плиткой карт, до неё, поверх
+   шкалы, ⓘ и кнопок; снимки уже — пять в ряд; карточка снимка — над лентой */
 @media (max-width: 600px) {
   .photo-strip {
-    right: 60px;
-    bottom: 108px;
-    max-width: calc(100vw - 70px);
+    right: 96px;
+    width: auto;
+    max-width: none;
+    z-index: 3;
+  }
+
+  .photo-strip .photo-strip-item {
+    width: calc((100vw - 118px) / 5);
+  }
+
+  .photo-strip.scrolls::after {
+    width: 0;
   }
 
   body.has-photo-strip .maplibregl-popup.photo-sheet {
-    bottom: 192px;
+    bottom: 94px;
   }
 }
 
@@ -2028,4 +2037,40 @@ body.has-photo-strip .map-status {
 .no-folders .folders-only,
 .no-folders .access-bar {
   display: none;
+}
+
+/* крестик альбома (слайд-шоу) */
+.tour-slides-close {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 1;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: 22px;
+  line-height: 30px;
+  cursor: pointer;
+}
+
+.tour-album-btn:not(.on) {
+  opacity: 0.55;
+}
+
+/* телефон: альбом (слайд-шоу) — внизу, над лентой фото (она в самом низу) или над нижней строкой
+   (Грегори, 2026-10-04: «фото спускаем вниз»); панель сверху своего размера не меняет, карта с
+   остановкой — между ними */
+@media (max-width: 600px) {
+  .tour-slides {
+    top: auto !important;
+    bottom: 108px;
+  }
+
+  body.has-photo-strip .tour-slides {
+    bottom: 94px;
+  }
 }

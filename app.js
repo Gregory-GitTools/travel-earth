@@ -1951,7 +1951,6 @@ function selectTourStop(tour, n) {
     if (on) {
       sec.classList.add("open");
       sec.classList.remove("shut");
-      tourPanel.classList.remove("min");
       sec.scrollIntoView({ block: "nearest", behavior: "smooth" });
     }
   }
@@ -2728,7 +2727,28 @@ const STOP_ICON = `<svg viewBox="0 0 24 24" width="18" height="18"><path fill="c
 const PLAY_BIG_ICON = `<svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M8 5v14l11-7z"/></svg>`;
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const tourSlides = Object.assign(document.createElement("div"), { className: "tour-slides", hidden: true });
-tourSlides.innerHTML = `<img alt=""><img alt=""><div class="tour-slides-caption"></div>`;
+tourSlides.innerHTML = `<img alt=""><img alt=""><div class="tour-slides-caption"></div><button class="tour-slides-close" title="Закрыть альбом">×</button>`;
+// Альбом (слайд-шоу) можно закрыть крестиком и включить снова кнопкой в панели экскурсии (Грегори,
+// 2026-10-04: «закрыть его нет никакой возможности»). Выбор запоминается. На телефоне закрытый альбом
+// отдаёт своё место панели: она растягивается до 2/3 экрана, ниже — карта с остановками
+const ALBUM_KEY = "travel-earth.tour-album";
+let albumOff = localStorage.getItem(ALBUM_KEY) === "off";
+document.documentElement.classList.toggle("album-off", albumOff);
+function setAlbum(on) {
+  albumOff = !on;
+  localStorage.setItem(ALBUM_KEY, on ? "on" : "off");
+  document.documentElement.classList.toggle("album-off", albumOff);
+  const btn = tourPanel.querySelector(".tour-album-btn");
+  btn?.classList.toggle("on", on);
+  if (btn) btn.title = on ? "Скрыть альбом фото" : "Показать альбом фото";
+  if (!on) { hideSlides(); return; }
+  // включили во время аудиогида — сразу фото текущей остановки (или вступления)
+  const t = tourPlay && tours.get(tourPlay.id);
+  const point = tourPlay?.i >= 0 ? tourPlay.stops[tourPlay.i]?.point : t && tourHome(t);
+  if (point) showSlides(point);
+}
+tourSlides.querySelector(".tour-slides-close").addEventListener("click", (e) => { e.stopPropagation(); setAlbum(false); });
+tourSlides.querySelector(".tour-slides-close").addEventListener("dblclick", (e) => e.stopPropagation());
 document.body.append(tourSlides);
 const tourSlideCache = new Map(); // "lon,lat" → [{ url, caption }]
 let slideTimer = 0;
@@ -2791,8 +2811,9 @@ function startTourPlay(id, from = 0) {
   for (const b of document.querySelectorAll(".speaking")) b.classList.remove("speaking");
   // все остановки с «Место:» — даже если место ещё ищется: найдётся, когда до неё дойдёт рассказ
   const stops = t.sections.filter((sec) => sec.n);
-  tourPlay = { id, stops, i: from, paused: false, run: {} };
-  tourPanel.classList.remove("min");
+  // панель уже открыта на этой экскурсии (▶ в шапке) — свёрнутой и остаётся
+  const keepMin = tourPanelId === id && !tourPanel.hidden;
+  tourPlay = { id, stops, i: from, paused: false, run: {}, keepMin };
   playTourStep();
 }
 
@@ -2815,7 +2836,8 @@ async function playTourStep() {
   const t = tours.get(play.id);
   if (play.i < 0) {
     // вступление: вся поездка в кадре и сразу картинки — пока они грузятся, начинается рассказ
-    openTour(play.id);
+    openTour(play.id, play.keepMin || play.started);
+    play.started = true;
     // «Фото вступления» отделяет заставку от остановок; без него сохраняется обычный выбор по региону
     const opening = t.introPlace
       ? (t.introPoint ? Promise.resolve(t.introPoint) : tourGeocode(t.introPlace, t.point, t.region, t.cityPoint).catch(() => null))
@@ -2846,9 +2868,12 @@ async function playTourStep() {
     // точка — в свободной части кадра: справа панель, внизу слева слайд-шоу; на телефоне сверху
     // панель и под ней слайд-шоу 16:9 — точка посередине между ними и кнопками внизу
     const narrow = matchMedia("(max-width: 600px)").matches;
-    const freeTop = tourPanel.getBoundingClientRect().bottom + 8 + ((innerWidth - 20) * 9) / 16;
+    // телефон: сверху панель, внизу альбом над лентой и нижней строкой — точка посередине между ними
+    const freeTop = tourPanel.getBoundingClientRect().bottom + 8;
+    const freeBottom = innerHeight - (document.body.classList.contains("has-photo-strip") ? 94 : 108)
+      - (albumOff ? 0 : ((innerWidth - 20) * 9) / 16) - 8;
     map.flyTo({ center: sec.point, zoom: Math.max(14, Math.min(map.getZoom(), 15)), duration: 3000,
-      offset: narrow ? [0, Math.round((freeTop + innerHeight - 100) / 2 - innerHeight / 2)] : [190, -100] });
+      offset: narrow ? [0, Math.round((freeTop + freeBottom) / 2 - innerHeight / 2)] : [190, -100] });
     await new Promise((r) => { map.once("moveend", r); setTimeout(r, 4000); });
     if (!alive()) return;
     await speakText(stopNarration(sec));
@@ -2919,6 +2944,7 @@ function renderTourPlayer() {
 // слайд-шоу: свои снимки ближе 1 км, потом Commons вокруг точки; смена раз в 5 с с растворением
 async function showSlides(point) {
   clearInterval(slideTimer);
+  if (albumOff) return 0;
   const key = point.join(",");
   const play = tourPlay;
   let slides = tourSlideCache.get(key);
@@ -3203,7 +3229,10 @@ function renderTourPanel(id) {
   setTextBtn();
   setMinBtn();
   const bar = h("div", "tour-bar");
-  bar.append(h("div", "tour-player"), h("span", "tour-bar-gap"), textBtn, tourHelpButton(), edit, minBtn, close);
+  const albumBtn = Object.assign(document.createElement("button"), { className: `tour-edit tour-album-btn${albumOff ? "" : " on"}`,
+    title: albumOff ? "Показать альбом фото" : "Скрыть альбом фото", innerHTML: CHIP_ICONS.photos });
+  albumBtn.addEventListener("click", () => setAlbum(albumOff));
+  bar.append(h("div", "tour-player"), albumBtn, h("span", "tour-bar-gap"), textBtn, tourHelpButton(), edit, minBtn, close);
   const titleRow = h("div", "tour-title-row");
   const icon = h("span", "tour-row-pin tour-title-icon");
   icon.innerHTML = tourIcon(t);
@@ -3831,9 +3860,10 @@ function renderPhrasebook(id, fromTour = null) {
   updatePbFoldAll();
 }
 
-function openTour(id) {
-  // открытая экскурсия — всегда развёрнутой (Грегори), даже если прошлую свернули «_»
-  localStorage.setItem(TOUR_MIN_KEY, "0");
+function openTour(id, keepMin = false) {
+  // открытая экскурсия — всегда развёрнутой (Грегори), даже если прошлую свернули «_»; свёрнутая во время
+  // аудиогида остаётся свёрнутой при переходах по точкам (и назад ко вступлению) до следующего открытия
+  if (!keepMin) localStorage.setItem(TOUR_MIN_KEY, "0");
   renderTourPanel(id);
   const pts = (tours.get(id)?.sections || []).map((sec) => sec.point).filter(Boolean);
   if (pts.length > 1) {
