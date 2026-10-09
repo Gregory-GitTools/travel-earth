@@ -11,9 +11,10 @@
   --active-grey: #b7bdc3;
   --active-grey-dark: #a2a8ae;
   /* плеер экскурсии/разговорника — «негатив светло-синего» вместо прежнего оранжевого (Грегори,
-     2026-10-04); светло-синий — тот же --accent тёмной темы, он уже «светло-синий» на вид */
-  --player-blue: #4da3ff;
-  --player-blue-dark: #2f8ceb;
+     2026-10-04), сдвинут на тон светлее (Грегори, 2026-10-09: «синий немного посветлей») —
+     --player-blue-dark занял место прежнего --player-blue, совпадавшего с --accent тёмной темы */
+  --player-blue: #6ab4ff;
+  --player-blue-dark: #4da3ff;
   --bg: #1b1b1f;
   --panel: #26262c;
   --accent: #4da3ff;
@@ -267,6 +268,14 @@ html, body {
 #search-tour-btn.on {
   background: var(--active-grey);
   color: #fff;
+}
+
+/* без этого при наведении на включённую кнопку выигрывала .search-box button:hover (тот же
+   приоритет у класса, но позже в файле) — фон светлел почти до белого и подсказка срабатывала
+   без видимой реакции (Грегори, 2026-10-09: «кнопка карты не реагирует на наведение»); с ID в
+   селекторе это правило всегда сильнее независимо от порядка */
+#search-tour-btn.on:hover {
+  background: var(--active-grey-dark);
 }
 
 /* список экскурсий: под строкой поиска, до кнопки «Слои», фон полупрозрачный */
@@ -680,6 +689,10 @@ span.tour-flag {
 .places-btn.active {
   background: var(--active-grey);
   color: #fff;
+}
+
+.places-btn.active:hover {
+  background: var(--active-grey-dark);
 }
 
 /* панель «Места и слои»: две колонки чипов под кнопкой — места слева, слои справа (2026-10-04,
@@ -1222,6 +1235,28 @@ html:not(.is-mobile) .phone-only {
   background: #f1f3f4;
 }
 
+/* у .tour-edit.on и .tour-edit:hover одинаковый приоритет (0,2,0) — без явного .on:hover наведение
+   на включённую кнопку выигрывало по порядку в файле и сбрасывало серый почти до белого, а белый
+   значок на этом фоне пропадал из виду (Грегори, 2026-10-09: «серый негатив совсем не посветлел,
+   зато при наведении становится просто белым… кнопка инфо просто пропадает»); с третьим классом
+   в селекторе это правило сильнее независимо от порядка в файле */
+.tour-edit.on:hover {
+  background: var(--active-grey-dark);
+}
+
+/* инфо и альбом/фотоаппарат — только подсказка при наведении, тон вообще не меняется (Грегори,
+   2026-10-09: «на кнопке инфо при наведении тон не менять», «на фотоаппарате при наведении
+   выдавать только подсказку, тон не менять») — перекрывает оба правила выше для этих двух кнопок */
+.tour-help-btn:hover,
+.tour-album-btn:hover {
+  background: transparent;
+}
+
+.tour-help-btn.on:hover,
+.tour-album-btn.on:hover {
+  background: var(--active-grey);
+}
+
 /* правка файла экскурсии в панели */
 .tour-panel.editing {
   display: flex;
@@ -1302,6 +1337,20 @@ html:not(.is-mobile) .phone-only {
 .tour-player .tour-edit.on {
   background: var(--player-blue);
   color: #fff;
+}
+
+/* тот же сброс тона при наведении, что у .tour-edit.on (см. выше) — только синим плеера */
+.tour-player .tour-edit.on:hover {
+  background: var(--player-blue-dark);
+}
+
+/* подпись «Языки» с иконкой слева в строке кнопок — у этой панели нет плеера, поэтому она
+   занимает его обычное место (Грегори, 2026-10-09, см. renderLanguagesList) */
+.tour-list-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
 }
 
 .tour-title-row {

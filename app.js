@@ -2504,14 +2504,17 @@ function renderLanguagesList() {
     if (open) for (const k of groupKeys) tourOpen.delete(k); else for (const k of groupKeys) tourOpen.add(k);
     renderLanguagesList();
   });
+  // у этой панели нет плеера — слева в строке кнопок вместо пустого места ставим значок и
+  // название «Языки» прямо в строку заголовков (Грегори, 2026-10-09: «поднять надпись и иконку
+  // в строку заголовков»), иначе 4 кнопки справа выглядят оторванными от края панели
   const bar = h("div", "tour-bar");
-  bar.append(h("div", "tour-player"), h("span", "tour-bar-gap"), languagesHelpButton(), foldAll, minBtn, close);
-  const titleRow = h("div", "tour-title-row");
+  const label = h("div", "tour-list-label");
   const icon = h("span", "tour-row-pin tour-title-icon");
   icon.innerHTML = LANG_ICON;
-  titleRow.append(icon, h("h2", "", "Языки"));
+  label.append(icon, h("h2", "", "Языки"));
+  bar.append(label, h("span", "tour-bar-gap"), languagesHelpButton(), foldAll, minBtn, close);
   const head = h("div", "tour-head");
-  head.append(bar, titleRow, h("div", "tour-player-label"));
+  head.append(bar, h("div", "tour-player-label"));
   const rows = [head];
   const row = (key, cls, html, onClick) => {
     const r = Object.assign(document.createElement("button"), { className: `tour-row ${cls}`, innerHTML: html });
@@ -3463,11 +3466,14 @@ function tourHelpPromptLine(path, title) {
   line.append(a);
   return line;
 }
+// tour-help-btn — отдельный класс сверх tour-edit, чтобы навести на неё без тона (Грегори,
+// 2026-10-09: «на кнопке инфо при наведении тон не менять», см. CSS .tour-help-btn:hover)
 function tourHelpButton() {
-  const b = Object.assign(document.createElement("button"), { className: "tour-edit", title: "Как писать файл экскурсии", innerHTML: INFO_ICON });
+  const b = Object.assign(document.createElement("button"), { className: "tour-edit tour-help-btn", title: "Как писать файл экскурсии", innerHTML: INFO_ICON });
   b.addEventListener("click", () => {
     const open = tourPanel.querySelector(".tour-help");
     if (open) { open.remove(); b.classList.remove("on"); return; }
+    stopTourPlay(); // открыли справку — воспроизведение экскурсии мешает читать (Грегори, 2026-10-09)
     const box = Object.assign(document.createElement("div"), { className: "tour-help" });
     box.append(Object.assign(document.createElement("div"), { className: "tour-help-title", textContent: "Как писать файл экскурсии (.md или .txt, Блокнот)" }));
     box.append(tourHelpPromptLine(TOUR_PROMPT, "«Промт экскурсии»"));
@@ -3479,21 +3485,25 @@ function tourHelpButton() {
     }
     b.closest(".tour-head").after(box);
     b.classList.add("on");
+    box.querySelector(".tour-help-prompt a")?.focus(); // фокус сразу на ссылку с промтом (Грегори)
   });
   return b;
 }
 // справка окна «Языки» — только общий промт разговорника (Грегори: «в языке оставить только общий
 // промт, кто захочет — сделает заново по нему»), без ссылки на конкретный открытый файл
 function languagesHelpButton() {
-  const b = Object.assign(document.createElement("button"), { className: "tour-edit", title: "Как писать файл разговорника", innerHTML: INFO_ICON });
+  const b = Object.assign(document.createElement("button"), { className: "tour-edit tour-help-btn", title: "Как писать файл разговорника", innerHTML: INFO_ICON });
   b.addEventListener("click", () => {
     const open = tourPanel.querySelector(".tour-help");
     if (open) { open.remove(); b.classList.remove("on"); return; }
+    stopPhrasePlay(); // открыли справку — проигрывание фразы мешает читать (Грегори, 2026-10-09); в
+    // списке «Языки» плеера нет, вызов безопасен и просто ничего не делает
     const box = Object.assign(document.createElement("div"), { className: "tour-help" });
     box.append(Object.assign(document.createElement("div"), { className: "tour-help-title", textContent: "Разговорники — файлы папки «Языки» (.md, по файлу на язык)" }));
     box.append(tourHelpPromptLine(PHRASEBOOK_PROMPT, "«Промт разговорника»"));
     tourPanel.querySelector(".tour-head").after(box);
     b.classList.add("on");
+    box.querySelector(".tour-help-prompt a")?.focus(); // фокус сразу на ссылку с промтом (Грегори)
   });
   return b;
 }
@@ -4131,7 +4141,8 @@ function toggleOverlay(id) {
 }
 
 // по логике кнопки "Места": столбик чипов открыт, пока снова не нажать "Слои" — можно
-// спокойно перещёлкать несколько слоёв; кнопка серая, пока столбик открыт (см. updatePlacesBtn)
+// спокойно перещёлкать несколько слоёв; кнопка серая, пока включён хоть один слой — открыт
+// столбик или закрыт, не важно (см. updatePlacesBtn)
 function renderOverlayMenu() {
   // при первом вызове категории мест ещё не объявлены — кнопку обновить после загрузки скрипта
   queueMicrotask(updatePlacesBtn);
@@ -4338,12 +4349,17 @@ function setActivePoi(chipId, poi) {
 // Места и слои — одна панель с двумя колонками под одной кнопкой справа вверху (Грегори,
 // 2026-10-01: «слои и места сольются в одну панель, кнопка-бутерброд со значком слоёв — на
 // телефоне всё поместится»).
-// Кнопка "Места" — обычная инфо-кнопка: серый негатив только пока открыта сама панель, как у
-// остальных инфо-кнопок (Грегори, 2026-10-05: «негатив только у инфо — светло-серый, у плеера —
-// светло-синий»). Раньше серела и при включённом фильтре/слое со свёрнутой панелью — убрано,
-// чтобы не путать «показываю инфо» с «есть активный фильтр».
+// Кнопка "Места" реагирует не на открытие панели и не на клик по себе, а только на включённые
+// слои (Грегори, 2026-10-09: «кнопка слои на нажатие не реагирует, она реагирует на нажатие любой
+// кнопки слоя. Если ни один слой не включён — кнопка белая и при открытой панели, и при
+// закрытой»): серый негатив, пока хоть один слой из столбика включён, независимо от того,
+// открыта панель или свёрнута. Экскурсии (hidden-слой, у него свой значок в строке поиска) и
+// фильтр мест (activePoi) в этот расчёт не входят — это отдельные индикаторы. Обновляется сразу
+// при переключении любого чипа слоя (см. toggleOverlay → renderOverlayMenu), поэтому выключение
+// последнего слоя гасит кнопку сразу, ещё при открытой панели, а не только после её закрытия.
 function updatePlacesBtn() {
-  el("places-btn").classList.toggle("active", !el("menu-panel").hidden);
+  const overlays = OVERLAYS.some((o) => !o.hidden && activeOverlays.has(o.id));
+  el("places-btn").classList.toggle("active", overlays);
 }
 
 function chipLabel(button, icon, text) {
