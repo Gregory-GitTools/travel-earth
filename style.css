@@ -278,15 +278,66 @@ html, body {
   background: var(--active-grey-dark);
 }
 
-/* список экскурсий: под строкой поиска, до кнопки «Слои», фон полупрозрачный */
+/* «Языки» в строке поиска — между лупой и «Экскурсиями» (Грегори, 2026-10-10); тот же приём
+   серого негатива, что у search-tour-btn, тот же сброс тона при наведении (см. выше) */
+#lang-list-btn.on {
+  background: var(--active-grey);
+  color: #fff;
+}
+
+#lang-list-btn.on:hover {
+  background: var(--active-grey-dark);
+}
+
+/* список экскурсий: под строкой поиска, до кнопки «Слои». Те же отступы, что у .tour-panel —
+   так шапка (.tour-head, margin: 0 -16px) ложится точно по краям, как у окна «Языки» (Грегори,
+   2026-10-10: «окно Экскурсии оформить на подобие окна Языки»). Фон непрозрачный — тоже его
+   пожелание («прозрачность окна это не удачный вариант, делаем все окна не прозрачные») */
 .tour-list {
   top: 50px;
   z-index: 1;
-  max-height: calc(100vh - 180px);
-  background: rgba(255, 255, 255, 0.5);
-  backdrop-filter: blur(10px);
+  max-height: 85vh; /* потолок для resize (Грегори, 2026-10-10: «можно было окно растягивать»),
+    а не для панели — изначально она короче, как раньше */
+  min-height: 120px;
+  padding: 0 16px 18px;
+  background: var(--light-panel);
   scrollbar-width: thin;
   scrollbar-color: #c4c7c5 transparent;
+  resize: vertical; /* тот же движок, что у .tour-panel; ширина уже задана left/right:0 */
+}
+
+/* всё окно свёрнуто — остаётся шапка (как у .tour-panel.min) */
+.tour-list.min {
+  overflow: hidden;
+  padding-bottom: 0;
+}
+
+.tour-list.min > :not(.tour-head) {
+  display: none;
+}
+
+.tour-list.min .tour-head {
+  border-bottom: none;
+}
+
+/* полоса прокрутки в Chrome/Safari (телефон и компьютер) — тот же светло-серый тонкий вид, что
+   задан для Firefox через scrollbar-width/-color выше. На телефоне системная полоса была почти
+   чёрной и слишком узкой, чтобы в неё попасть пальцем (Грегори, 2026-10-10); border + background-
+   clip вместо сплошной ширины — зазор по краям, палец цепляет её увереннее */
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: #c4c7c5;
+  border: 2px solid transparent;
+  border-radius: 6px;
+  background-clip: content-box;
 }
 
 .tour-row {
@@ -408,41 +459,9 @@ span.tour-flag {
   filter: drop-shadow(1px 0 0 #fff) drop-shadow(-1px 0 0 #fff) drop-shadow(0 1px 0 #fff) drop-shadow(0 -1px 0 #fff);
 }
 
-/* верхняя строка списка: «Языки» слева, свернуть/развернуть все и «Справка» справа (Грегори,
-   2026-10-04: «кнопку инфо сместить вправо, а на её место поднять Языки») */
-.tour-list-top {
-  display: flex;
-  justify-content: space-between;
-  padding: 0 2px 2px;
-}
-
-.tour-list-top-right {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-}
-
-.tour-list-tool {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 4px 8px;
-  border: none;
-  border-radius: 14px;
-  background: transparent;
-  color: var(--light-muted);
-  font: inherit;
-  font-size: 0.78rem;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.tour-list-tool:hover,
-.tour-list-tool.on {
-  background: rgba(255, 255, 255, 0.75);
-  color: var(--light-text);
-}
-
+/* шапка окна «Экскурсии» теперь той же разметки, что у «Языки» — .tour-head/.tour-bar/.tour-edit
+   (Грегори, 2026-10-10: «окно Экскурсии оформить на подобие окна Языки»); «Языки» сама переехала
+   в строку поиска (#lang-list-btn), поэтому здесь больше нет отдельных .tour-list-top/-tool */
 .tour-list-help {
   margin: 0 4px 8px;
   padding: 8px 10px;
@@ -1124,20 +1143,24 @@ html:not(.is-mobile) .phone-only {
   position: fixed;
   top: calc(var(--top-inset) + 62px);
   left: 10px;
-  max-height: calc(100vh - var(--top-inset) - 62px - 120px);
+  max-height: 90vh; /* не впритык к прежнему пределу (Грегори, 2026-10-10: «можно было окно
+    растягивать») — настоящий потолок для resize, а не для самой панели: контент обычно короче */
   z-index: 9; /* под строкой поиска: открытый список экскурсий ложится поверх */
   width: 340px;
+  min-width: 240px;
+  min-height: 160px;
   max-width: calc(100vw - 20px);
   overflow-y: auto;
   padding: 0 16px 18px; /* сверху без отступа — шапка прилегает к краю, щели над ней нет */
-  background: rgba(255, 255, 255, 0.5);
-  backdrop-filter: blur(10px);
+  background: var(--light-panel); /* сплошной, без прозрачности (Грегори, 2026-10-10: «прозрачность
+    окна это не удачный вариант, делаем все окна не прозрачные») */
   color: #222;
   border-radius: 12px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
   font-size: 0.86rem;
   line-height: 1.45;
   scrollbar-width: thin;
+  resize: vertical; /* движок в углу — тянуть/сжимать; начальный размер не трогаем (Грегори) */
 }
 
 /* шапка панели — одной строкой и не прокручивается (Грегори) */
@@ -1150,9 +1173,8 @@ html:not(.is-mobile) .phone-only {
   gap: 2px;
   margin: 0 -16px;
   padding: 10px 10px 10px 16px;
-  /* почти непрозрачная: прокрученный под шапку текст не просвечивает */
-  background: rgba(255, 255, 255, 0.94);
-  backdrop-filter: blur(10px);
+  background: var(--light-panel); /* сплошной — прокрученный под шапку текст не просвечивает, и
+    заодно не прозрачный (Грегори, 2026-10-10) */
   border-bottom: 1px solid #eee;
 }
 
@@ -1262,6 +1284,7 @@ html:not(.is-mobile) .phone-only {
   display: flex;
   flex-direction: column;
   height: calc(100vh - 182px); /* правке — вся высота до ленты внизу */
+  resize: none; /* своя фиксированная высота — ручной resize ей мешал бы */
 }
 
 .tour-editor {

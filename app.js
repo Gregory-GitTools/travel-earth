@@ -2400,33 +2400,49 @@ function renderTourList() {
     `<span class="tour-row-pin">${tourIcon(t)}</span><span class="tour-row-text"><span class="tour-row-title">${escapeHtml(t.title)}</span>`
     + `<span class="tour-row-sub">${escapeHtml([t.kind, t.region].filter(Boolean).join(" · "))}</span></span>`, () => chooseTour(t));
   const toggle = (key) => () => { tourOpen.has(key) ? tourOpen.delete(key) : tourOpen.add(key); tourCursor = key; renderTourList(); };
-  // верхняя строка: слева — «Языки» (переход в отдельное окно со списком языков), справа —
-  // свернуть/развернуть все и «?». Это не строки списка: стрелками по ним не ходят и рамкой
-  // не выделяются (Грегори: «область стрелки выделять не надо»). «Развернуть все»/«Справка» —
-  // без подписи, только значком (Грегори, 2026-10-04: «надпись "Развернуть все" нужно убрать»;
-  // помимо неё убрана и подпись у «Справки» — тот же приём)
-  const top = Object.assign(document.createElement("div"), { className: "tour-list-top" });
-  const langsBtn = Object.assign(document.createElement("button"), { className: "tour-list-tool tour-list-langs",
-    title: "Языки: разговорники по странам", innerHTML: `${LANG_ICON}<span>Языки</span>` });
-  langsBtn.addEventListener("click", renderLanguagesList);
-  top.append(langsBtn);
-  const right = Object.assign(document.createElement("div"), { className: "tour-list-top-right" });
+  // шапка окна — того же вида, что у «Языки» (Грегори, 2026-10-10: «окно Экскурсии оформить на
+  // подобие окна Языки»; кнопка «Языки» сама переехала выше, в строку поиска, см. index.html и
+  // lang-list-btn): значок с названием слева, инструменты справа, свернуть и закрыть — как у
+  // настоящего окна (которого раньше тут не было вовсе). «Развернуть все»/«Справка» — без подписи,
+  // только значком (Грегори, 2026-10-04: «надпись "Развернуть все" нужно убрать»)
+  const head = Object.assign(document.createElement("div"), { className: "tour-head" });
+  const bar = Object.assign(document.createElement("div"), { className: "tour-bar" });
+  const label = Object.assign(document.createElement("div"), { className: "tour-list-label" });
+  const titleIcon = Object.assign(document.createElement("span"), { className: "tour-row-pin tour-title-icon", innerHTML: TOUR_HEAD_ICON });
+  label.append(titleIcon, Object.assign(document.createElement("h2"), { textContent: "Экскурсии" }));
+  const minBtn = Object.assign(document.createElement("button"), { className: "tour-edit" });
+  const setMinBtn = () => {
+    const min = tourList.classList.contains("min");
+    minBtn.innerHTML = min ? EXPAND_ICON : COLLAPSE_ICON;
+    minBtn.title = min ? "Развернуть" : "Свернуть окно";
+  };
+  minBtn.addEventListener("click", () => {
+    const min = !tourList.classList.contains("min");
+    tourList.classList.toggle("min", min);
+    localStorage.setItem(TOUR_LIST_MIN_KEY, min ? "1" : "0");
+    setMinBtn();
+  });
+  const close = Object.assign(document.createElement("button"), { className: "tour-close", title: "Закрыть", textContent: "×" });
+  close.addEventListener("click", () => setTourMode(false));
+  bar.append(label, Object.assign(document.createElement("span"), { className: "tour-bar-gap" }));
   if (groupKeys.length && !q) {
     const allOpen = groupKeys.every((k) => tourOpen.has(k));
-    const allBtn = Object.assign(document.createElement("button"), { className: "tour-list-tool tour-list-foldall",
+    const allBtn = Object.assign(document.createElement("button"), { className: "tour-edit",
       title: allOpen ? "Свернуть все" : "Развернуть все", innerHTML: allOpen ? UNFOLD_ICON : FOLD_ICON });
     allBtn.addEventListener("click", () => {
       if (allOpen) for (const k of groupKeys) tourOpen.delete(k); else for (const k of groupKeys) tourOpen.add(k);
       renderTourList();
     });
-    right.append(allBtn);
+    bar.append(allBtn);
   }
-  const helpBtn = Object.assign(document.createElement("button"), { className: `tour-list-tool${tourListHelp ? " on" : ""}`,
+  const helpBtn = Object.assign(document.createElement("button"), { className: `tour-edit${tourListHelp ? " on" : ""}`,
     title: "Как задать группы и значки", innerHTML: INFO_ICON });
   helpBtn.addEventListener("click", () => { tourListHelp = !tourListHelp; renderTourList(); });
-  right.append(helpBtn);
-  top.append(right);
-  rows.push(top);
+  bar.append(helpBtn, minBtn, close);
+  head.append(bar);
+  setMinBtn();
+  tourList.classList.toggle("min", localStorage.getItem(TOUR_LIST_MIN_KEY) === "1");
+  rows.push(head);
   if (tourListHelp) rows.push(tourListHelpBox());
   for (const country of [...tree.keys()].sort((a, b) => a.localeCompare(b, "ru"))) {
     const cities = tree.get(country);
@@ -2759,6 +2775,16 @@ new ResizeObserver(() => {
   if (bottom) document.documentElement.style.setProperty("--tour-panel-bottom", `${Math.round(bottom)}px`);
   else document.documentElement.style.removeProperty("--tour-panel-bottom");
 }).observe(tourPanel);
+// кнопка «Языки» в строке поиска — светится, пока открыто именно окно «Языки» (а не экскурсия и
+// не правка файла); подписка на сам tourPanel вместо точечных вызовов из каждой функции рендера
+// (Грегори, 2026-10-10: «кнопку Языки перенесём ещё выше, в окно поиска»)
+new MutationObserver(() => {
+  el("lang-list-btn").classList.toggle("on", !tourPanel.hidden && tourPanel.classList.contains("lang-list"));
+}).observe(tourPanel, { attributes: true, attributeFilter: ["class", "hidden"] });
+el("lang-list-btn").addEventListener("click", () => {
+  if (!tourPanel.hidden && tourPanel.classList.contains("lang-list")) { closeTourToList(); return; }
+  renderLanguagesList();
+});
 
 function closeTourPanel() {
   stopTourPlay();
@@ -2782,7 +2808,7 @@ function closeTourToList() {
     // окна на телефоне не должна выскакивать клавиатура»); там фокусируем «Свернуть пункты» —
     // первую кнопку списка, а не поле поиска
     const narrow = matchMedia("(max-width: 600px)").matches;
-    const target = narrow ? tourList.querySelector(".tour-list-foldall") || tourList.querySelector(".tour-list-langs") : null;
+    const target = narrow ? tourList.querySelector(".tour-head .tour-edit") : null;
     (target || el("search-input")).focus();
   });
 }
@@ -3239,6 +3265,9 @@ if ("speechSynthesis" in window) speechSynthesis.addEventListener("voiceschanged
 // раскрывает/сворачивает только его; вторая кнопка сворачивает всю панель до шапки. Выбор
 // запоминается (localStorage). Выделенная остановка всегда раскрыта
 const TOUR_TEXT_KEY = "travel-earth.tour-text", TOUR_MIN_KEY = "travel-earth.tour-min", TOUR_AUDIO_KEY = "travel-earth.tour-audio";
+// своё "свёрнуто" у окна «Экскурсии» — отдельное от TOUR_MIN_KEY (окно самой экскурсии/«Языки»),
+// иначе сворачивание одного окна неожиданно сворачивало бы и другое (Грегори, 2026-10-10)
+const TOUR_LIST_MIN_KEY = "travel-earth.tour-list-min";
 const FOLD_ICON = `<svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M7.41 18.59 8.83 20 12 16.83 15.17 20l1.41-1.41L12 14l-4.59 4.59zm9.18-13.18L15.17 4 12 7.17 8.83 4 7.41 5.41 12 10l4.59-4.59z"/></svg>`;
 const UNFOLD_ICON = `<svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M12 5.83 15.17 9l1.41-1.41L12 3 7.41 7.59 8.83 9 12 5.83zm0 12.34L8.83 15l-1.41 1.41L12 21l4.59-4.59L15.17 15 12 18.17z"/></svg>`;
 const COLLAPSE_ICON = `<svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M19 13H5v-2h14v2z"/></svg>`;
@@ -3665,6 +3694,8 @@ async function editTour(id) {
 const REPO_LANGS = "Языки";
 const PHRASEBOOK_PROMPT = `${REPO_LANGS}/_Промт — как написать разговорник.md`;
 const LANG_ICON = `<svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="m12.87 15.07-2.54-2.51.03-.03A17.52 17.52 0 0 0 14.07 6H17V4h-7V2H8v2H1v2h11.17C11.5 7.92 10.44 9.75 9 11.35 8.07 10.32 7.3 9.19 6.69 8h-2c.73 1.63 1.73 3.17 2.98 4.56l-5.09 5.02L4 19l5-5 3.11 3.11.76-2.04zM18.5 10h-2L12 22h2l1.12-3h4.75L21 22h2l-4.5-12zm-2.62 7 1.62-4.33L19.12 17h-3.24z"/></svg>`;
+// значок шапки окна «Экскурсии» — та же сложенная карта, что на кнопке в строке поиска (CHIP_ICONS.tours)
+const TOUR_HEAD_ICON = `<svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M20.5 3l-.16.03L15 5.1 9 3 3.36 4.9c-.21.07-.36.25-.36.48V20.5c0 .28.22.5.5.5l.16-.03L9 18.9l6 2.1 5.64-1.9c.21-.07.36-.25.36-.48V3.5c0-.28-.22-.5-.5-.5zM15 19l-6-2.11V5l6 2.11V19z"/></svg>`;
 const phrasebooks = new Map();
 
 function parsePhrasebook(text, name) {
