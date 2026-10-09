@@ -2689,6 +2689,7 @@ function setTourStatus(text) {
 async function readTours(handle, repo = false) {
   if (!repo) tourDir = handle;
   const seen = new Set();
+  const toLoad = []; // новые/изменённые файлы — сами читаем и разбираем ниже, параллельно
   const walk = async (dir, path) => {
     for await (const [name, h] of dir.entries()) {
       if (name.startsWith("_") || name.startsWith(".")) continue;
@@ -2698,20 +2699,29 @@ async function readTours(handle, repo = false) {
         if (repo && tours.get(id) && !tours.get(id).repo) continue;
         seen.add(id);
         if (repo && tours.get(id)?.mtime === h.meta.lastModified) continue;
-        const file = await h.getFile();
-        if (tours.get(id)?.mtime === file.lastModified && tours.get(id).repo === repo) continue;
-        const bytes = await file.arrayBuffer();
-        let text;
-        try { text = new TextDecoder("utf-8", { fatal: true }).decode(bytes); } catch { text = new TextDecoder("windows-1251").decode(bytes); }
-        tours.set(id, { id, file: name, handle: h, repo, mtime: repo ? h.meta.lastModified : file.lastModified, ...parseTour(text, name) });
+        toLoad.push({ id, name, h });
       }
     }
   };
   try { await walk(handle, handle.name); } catch { setTourStatus("Папка недоступна"); return; }
   for (const [id, t] of tours) if (!seen.has(id) && t.repo === repo) tours.delete(id);
+  // на телефоне (репозиторий) это сеть — экскурсий уже ~20+, читались по одной: список выглядел
+  // «замороженным» при первом открытии, пока вся папка не прочитается (Грегори, 2026-10-10: «на
+  // телефоне он не прогружается сразу... приходится повторно открывать»). Теперь файлы читаются
+  // параллельно, и открытый список растёт по мере готовности каждого — не нужно переоткрывать
+  await Promise.all(toLoad.map(async ({ id, name, h }) => {
+    let file;
+    try { file = await h.getFile(); } catch { return; }
+    if (tours.get(id)?.mtime === file.lastModified && tours.get(id).repo === repo) return;
+    const bytes = await file.arrayBuffer();
+    let text;
+    try { text = new TextDecoder("utf-8", { fatal: true }).decode(bytes); } catch { text = new TextDecoder("windows-1251").decode(bytes); }
+    const t = { id, file: name, handle: h, repo, mtime: repo ? h.meta.lastModified : file.lastModified, ...parseTour(text, name) };
+    let n = 0; for (const sec of t.sections) sec.n = sec.place ? ++n : 0; // номера — только у остановок с местом, по порядку
+    tours.set(id, t);
+    updateTourFinder();
+  }));
   const list = [...tours.values()];
-  // номера — только у остановок с местом, по порядку
-  for (const t of list) { let n = 0; for (const sec of t.sections) sec.n = sec.place ? ++n : 0; }
   refreshTours();
   updateTourFinder();
   setTourStatus(`Экскурсий: ${list.length}`);
@@ -3731,12 +3741,25 @@ function parsePhrasebook(text, name) {
   return pb;
 }
 
+// открытый список «Языки» — тоже перерисовать, как только разговорник прочитался (его раньше
+// не было вовсе: список молчал до самого конца чтения папки — та же причина, что у readTours)
+function updateLangFinder() {
+  if (!tourPanel.hidden && tourPanel.classList.contains("lang-list")) renderLanguagesList();
+}
 async function readPhrasebooks(dir) {
+  const toLoad = [];
   for await (const [name, h] of dir.entries()) {
     if (h.kind !== "file" || name.startsWith("_") || name.startsWith(".") || !TOUR_TEXT_RE.test(name)) continue;
-    const text = await h.getFile().then((f) => f.text()).catch(() => "");
-    if (text) phrasebooks.set(name, { id: name, path: h.repoPath, ...parsePhrasebook(text, name) });
+    toLoad.push({ name, h });
   }
+  // читаем параллельно, не по одному — на телефоне (сеть) список не рос, пока не прочитается
+  // вся папка; теперь открытый список пополняется по ходу чтения
+  await Promise.all(toLoad.map(async ({ name, h }) => {
+    const text = await h.getFile().then((f) => f.text()).catch(() => "");
+    if (!text) return;
+    phrasebooks.set(name, { id: name, path: h.repoPath, ...parsePhrasebook(text, name) });
+    updateLangFinder();
+  }));
   updateTourFinder();
   if (tourPanelId && !tourEditing && !tourPanel.classList.contains("phrasebook")) renderTourPanel(tourPanelId);
 }
