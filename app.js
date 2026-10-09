@@ -2320,7 +2320,8 @@ const rowChevron = (open) => `<span class="tour-row-chevron${open ? " open" : ""
 function setTourMode(on) {
   tourMode = on;
   const input = el("search-input");
-  el("search-tour-btn").classList.toggle("on", on);
+  // значок кнопки — через syncTourButtons (см. ниже, подписан на tourList/tourPanel): он решает
+  // по тому, что реально показано, а не по tourMode (который переживает перезапуск сам по себе)
   el("search-tour-btn").title = on ? "Скрыть экскурсии и вернуться к поиску мест" : "Экскурсии: показать на карте, найти, список по странам";
   input.placeholder = on ? "Найти экскурсию" : "Поиск места";
   input.value = "";
@@ -2785,12 +2786,64 @@ new ResizeObserver(() => {
   if (bottom) document.documentElement.style.setProperty("--tour-panel-bottom", `${Math.round(bottom)}px`);
   else document.documentElement.style.removeProperty("--tour-panel-bottom");
 }).observe(tourPanel);
+// «зуммер» списка экскурсий и панели — крупная метка по центру нижнего края вместо родного
+// уголка resize, который не оттащить пальцем и не стилизовать (Грегори, 2026-10-10: «зуммер
+// оказался в низу и тоже очень маленький. Нужно намного больше и по центру нижнего края окна»).
+// Метка — fixed-элемент сама по себе, не ребёнок панели: renderTourList/renderTourPanel и
+// соседи зовут replaceChildren(...) и стёрли бы её при каждой перерисовке, будь она внутри
+function attachResizeHandle(panel) {
+  const handle = Object.assign(document.createElement("div"), { className: "panel-resize-handle" });
+  document.body.append(handle);
+  const reposition = () => {
+    const show = !panel.hidden && !panel.classList.contains("min");
+    const r = show ? panel.getBoundingClientRect() : null;
+    handle.hidden = !show || !r.height;
+    if (handle.hidden) return;
+    handle.style.left = `${r.left + r.width / 2}px`;
+    handle.style.top = `${r.bottom}px`;
+  };
+  new ResizeObserver(reposition).observe(panel);
+  new MutationObserver(reposition).observe(panel, { attributes: true, attributeFilter: ["hidden", "class", "style"] });
+  window.addEventListener("resize", reposition);
+  reposition();
+  handle.addEventListener("pointerdown", (e) => {
+    e.preventDefault();
+    const startY = e.clientY;
+    const startHeight = panel.getBoundingClientRect().height;
+    const cs = getComputedStyle(panel);
+    const min = parseFloat(cs.minHeight) || 0;
+    const max = parseFloat(cs.maxHeight) || Infinity;
+    handle.classList.add("dragging");
+    handle.setPointerCapture(e.pointerId);
+    const onMove = (ev) => {
+      panel.style.height = `${Math.min(max, Math.max(min, startHeight + ev.clientY - startY))}px`;
+    };
+    const onUp = () => {
+      handle.classList.remove("dragging");
+      handle.removeEventListener("pointermove", onMove);
+    };
+    handle.addEventListener("pointermove", onMove);
+    handle.addEventListener("pointerup", onUp, { once: true });
+  });
+}
+attachResizeHandle(tourList);
+attachResizeHandle(tourPanel);
 // кнопка «Языки» в строке поиска — светится, пока открыто именно окно «Языки» (а не экскурсия и
-// не правка файла); подписка на сам tourPanel вместо точечных вызовов из каждой функции рендера
-// (Грегори, 2026-10-10: «кнопку Языки перенесём ещё выше, в окно поиска»)
-new MutationObserver(() => {
-  el("lang-list-btn").classList.toggle("on", !tourPanel.hidden && tourPanel.classList.contains("lang-list"));
-}).observe(tourPanel, { attributes: true, attributeFilter: ["class", "hidden"] });
+// не правка файла); подписка на сам tourPanel и tourList вместо точечных вызовов из каждой
+// функции рендера (Грегори, 2026-10-10: «кнопку Языки перенесём ещё выше, в окно поиска»).
+// Активна только кнопка показанного окна — tourMode сам по себе не означает, что окно открыто
+// (он восстанавливается при запуске вместе со слоем «Экскурсии» на карте, см. ниже, когда ни
+// список, ни панель ещё не видны), поэтому одна функция решает за оба значка (Грегори,
+// 2026-10-10 позже: «исключим возможность одновременного выделения двух кнопок... активной
+// должна быть кнопка активного окна»)
+function syncTourButtons() {
+  const showingLang = !tourPanel.hidden && tourPanel.classList.contains("lang-list");
+  el("lang-list-btn").classList.toggle("on", showingLang);
+  el("search-tour-btn").classList.toggle("on", !tourList.hidden || (!tourPanel.hidden && !showingLang));
+}
+const tourBtnSync = new MutationObserver(syncTourButtons);
+tourBtnSync.observe(tourPanel, { attributes: true, attributeFilter: ["class", "hidden"] });
+tourBtnSync.observe(tourList, { attributes: true, attributeFilter: ["hidden"] });
 el("lang-list-btn").addEventListener("click", () => {
   if (!tourPanel.hidden && tourPanel.classList.contains("lang-list")) { closeTourToList(); return; }
   renderLanguagesList();
@@ -5417,10 +5470,11 @@ el("search-btn").addEventListener("click", () => {
   if (tourList.hidden) { tourList.hidden = false; renderTourList(); } else cur?.click();
 });
 el("search-tour-btn").addEventListener("click", () => setTourMode(!tourMode));
-// после перезапуска кнопка — как была (слой «Экскурсии» помнится в списке включённых слоёв)
+// после перезапуска режим поиска — как был (слой «Экскурсии» помнится в списке включённых
+// слоёв), но значок кнопки не включаем сам по себе — окно (список/панель) ещё не открыто, а
+// активной должна быть кнопка именно открытого окна (Грегори, 2026-10-10), не режима поиска
 if (activeOverlays.has("tours")) {
   tourMode = true;
-  el("search-tour-btn").classList.add("on");
   el("search-input").placeholder = "Найти экскурсию";
 }
 el("search-clear-btn").addEventListener("click", () => {
