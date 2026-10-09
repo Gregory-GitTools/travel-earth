@@ -2840,6 +2840,14 @@ function syncTourButtons() {
   const showingLang = !tourPanel.hidden && tourPanel.classList.contains("lang-list");
   el("lang-list-btn").classList.toggle("on", showingLang);
   el("search-tour-btn").classList.toggle("on", !tourList.hidden || (!tourPanel.hidden && !showingLang));
+  // «Слои» и правые окна (Экскурсии/Языки) теперь не уживаются вместе (Грегори, 2026-10-10
+  // продолжение: «при открытии любой панели справа, закрывать слои») — как только показалось
+  // одно из правых окон, прячем «Места и слои»; обратное направление (открытие слоёв прячет
+  // правые окна) — в обработчике клика places-btn ниже, этот наблюдатель его не трогает
+  if ((!tourList.hidden || !tourPanel.hidden) && !el("menu-panel").hidden) {
+    el("menu-panel").hidden = true;
+    updatePlacesBtn();
+  }
 }
 const tourBtnSync = new MutationObserver(syncTourButtons);
 tourBtnSync.observe(tourPanel, { attributes: true, attributeFilter: ["class", "hidden"] });
@@ -4539,6 +4547,14 @@ el("places-btn").addEventListener("click", () => {
   el("menu-panel").hidden = !open;
   updatePlacesBtn();
   if (!open) el("shop-menu").hidden = true;
+  // открытие «Слоёв» закрывает окна Экскурсии/Языки справа — обратное направление в
+  // syncTourButtons() (Грегори, 2026-10-10 продолжение: «при нажатии на слои, закрывать правую
+  // панель»); closeTourPanel() тут, а не closeTourToList() — тот после закрытия сам заново
+  // открыл бы список, если включён режим поиска экскурсий, а нужно закрыть оба окна целиком
+  if (open) {
+    if (!tourList.hidden) setTourMode(false);
+    if (!tourPanel.hidden) closeTourPanel();
+  }
 });
 
 // короткое сообщение flashStatus несколько секунд не перебивается подсказками мест
@@ -5462,7 +5478,14 @@ el("search-input").addEventListener("focus", () => {
 document.addEventListener("click", (evt) => {
   // строка списка экскурсий, по которой щёлкнули, к этому моменту уже перерисована (вне DOM)
   if (!evt.target.isConnected) return;
-  if (!evt.target.closest(".search-wrap")) { clearSearchResults(); tourList.hidden = true; }
+  // «зуммер» — fixed-элемент вне .search-wrap (см. attachResizeHandle выше), поэтому отпускание
+  // мыши на нём само попадало под «клик мимо» и список схлопывался тут же после растягивания
+  // (Грегори, 2026-10-10 продолжение: «нижний ползунок... сильно ограничен в передвижении» — на
+  // деле не ограничен, а список закрывался при отпускании)
+  if (!evt.target.closest(".search-wrap") && !evt.target.closest(".panel-resize-handle")) {
+    clearSearchResults();
+    tourList.hidden = true;
+  }
 });
 el("search-btn").addEventListener("click", () => {
   if (!tourMode) { runSearch(); return; }

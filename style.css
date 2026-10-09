@@ -169,7 +169,10 @@ html, body {
   display: flex;
   align-items: flex-start;
   gap: 8px;
-  z-index: 10;
+  /* выше переключателя карт/ленты фото (оба 10-11) — список Экскурсий открывается отсюда и не
+     должен прятаться под ними, когда растянут зуммером вниз (Грегори, 2026-10-10 продолжение:
+     «нужно что бы эти окна были по верх всего») */
+  z-index: 15;
   pointer-events: none; /* пустое место панели не должно мешать тащить карту */
 }
 
@@ -317,8 +320,14 @@ html, body {
      края окна»); см. .panel-resize-handle и attachResizeHandle() в app.js */
 }
 
-/* всё окно свёрнуто — остаётся шапка (как у .tour-panel.min) */
+/* всё окно свёрнуто — остаётся шапка (как у .tour-panel.min). height:auto перекрывает высоту,
+   заданную инлайново перетаскиванием «зуммера» (panel.style.height) — без этого свёрнутое окно
+   после resize оставалось пустой высокой коробкой вместо одной строки шапки (Грегори, 2026-10-10
+   продолжение: «сворачивались вместе с панелью в линию»); min-height:0 — без него свёрнутое окно
+   всё равно не опускалось ниже базового min-height:120px (та же причина, другое свойство) */
 .tour-list.min {
+  height: auto !important;
+  min-height: 0;
   overflow: hidden;
   padding-bottom: 0;
 }
@@ -335,9 +344,12 @@ html, body {
    задан для Firefox через scrollbar-width/-color выше. На телефоне системная полоса была почти
    чёрной и слишком узкой, чтобы в неё попасть пальцем (Грегори, 2026-10-10); border + background-
    clip вместо сплошной ширины — зазор по краям, палец цепляет её увереннее */
+/* шире прежних 10px — тонкая с виду полоса (border + background-clip ниже оставляют зазор по
+   краям) по-прежнему была мала, чтобы уверенно попасть пальцем/курсором (Грегори, 2026-10-10
+   продолжение: «полоса прокрутки... по-прежнему очень узкая») */
 *::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
+  width: 16px;
+  height: 16px;
 }
 
 *::-webkit-scrollbar-track {
@@ -346,8 +358,8 @@ html, body {
 
 *::-webkit-scrollbar-thumb {
   background: #c4c7c5;
-  border: 2px solid transparent;
-  border-radius: 6px;
+  border: 4px solid transparent;
+  border-radius: 8px;
   background-clip: content-box;
 }
 
@@ -657,32 +669,40 @@ span.tour-flag {
   color: var(--light-muted);
 }
 
+/* теперь живёт внутри .search-box, самым правым (Грегори, 2026-10-10 продолжение: «язык поиска
+   приберём тоже в окно поиска, пусть остаётся самым правым») — своя высота 34px и зазор слева,
+   как у круглых кнопок рядом, а не во всю высоту строки поиска. #lang-btn (id), а не .lang-btn —
+   иначе более специфичный общий `.search-box button` (класс+тег) забивал бы ширину/радиус/фон */
 .lang-wrap {
   position: relative;
   flex-shrink: 0;
+  margin-left: 2px;
 }
 
-.lang-btn {
-  height: 44px;
-  padding: 0 14px;
+#lang-btn {
+  width: auto;
+  height: 34px;
+  padding: 0 12px;
   border: none;
-  border-radius: 22px;
-  background: var(--light-panel);
+  border-radius: 17px;
+  background: transparent;
   color: var(--light-text);
   font: inherit;
   font-size: 0.9rem;
   cursor: pointer;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
 }
 
-.lang-btn:hover {
+#lang-btn:hover {
   background: var(--light-hover);
 }
 
 .lang-menu {
   position: absolute;
-  top: 50px;
-  left: 0;
+  top: 44px;
+  /* кнопка теперь самая правая в строке поиска — left:0 раскрывал бы меню вправо за пределы
+     узкой search-wrap/экрана на телефоне; right:0 держит его внутри строки поиска */
+  right: 0;
+  left: auto;
   display: flex;
   flex-direction: column;
   min-width: 190px;
@@ -1206,7 +1226,10 @@ html:not(.is-mobile) .phone-only {
   left: 10px;
   max-height: 90vh; /* не впритык к прежнему пределу (Грегори, 2026-10-10: «можно было окно
     растягивать») — настоящий потолок для resize, а не для самой панели: контент обычно короче */
-  z-index: 9; /* под строкой поиска: открытый список экскурсий ложится поверх */
+  /* выше переключателя карт/ленты фото, как .top-bar (Грегори, 2026-10-10 продолжение: «эти
+     окна были по верх всего») — список экскурсий (внутри .top-bar, z-index:15) по-прежнему
+     ложится поверх при открытии, порядок между ними самими тут ни при чём */
+  z-index: 15;
   width: 340px;
   min-width: 240px;
   min-height: 160px;
@@ -1522,15 +1545,16 @@ html:not(.is-mobile) .phone-only {
   }
 }
 
-/* выделенная остановка (щелчок на карте или в панели) */
+/* выделенная остановка (щелчок на карте или в панели) — тон темнее обычного номера, но из той
+   же красной семьи (--tour-red-dark), не отдельный несвязанный розовый, как раньше */
 .tour-section.current {
   margin-left: -8px;
   padding-left: 6px;
-  border-left: 2px solid #e91e63;
+  border-left: 2px solid var(--tour-red-dark);
 }
 
 .tour-section.current .tour-num {
-  background: #e91e63;
+  background: var(--tour-red-dark);
 }
 
 .tour-path-ask {
@@ -1682,7 +1706,11 @@ html:not(.is-mobile) .phone-only {
 }
 
 /* вся экскурсия свёрнута — остаётся шапка */
+/* height:auto — та же причина, что у .tour-list.min выше (сброс высоты, заданной зуммером);
+   min-height:0 — тот же базовый min-height:160px (.tour-panel) иначе не даёт сжаться до шапки */
 .tour-panel.min {
+  height: auto !important;
+  min-height: 0;
   bottom: auto;
   overflow: hidden;
   padding-bottom: 0;
@@ -1717,6 +1745,9 @@ button.tour-sec-title:hover {
   color: #ef6c00;
 }
 
+/* тот же красный, что у значков на карте (TOUR_ICON_COLOR/--tour-red) — раньше был отдельный
+   оранжевый, никак не связанный с картой (Грегори, 2026-10-10: «цвет карты сильно отличается
+   от цвета номера пункта экскурсии») */
 .tour-num {
   flex: none;
   display: inline-grid;
@@ -1724,7 +1755,7 @@ button.tour-sec-title:hover {
   width: 24px;
   height: 24px;
   border-radius: 50%;
-  background: #ef6c00;
+  background: var(--tour-red);
   color: #fff;
   font-size: 0.92rem;
   font-weight: 700;
@@ -1837,13 +1868,28 @@ button.tour-sec-title:hover {
     left: 10px;
     right: 10px;
     width: auto;
-    max-height: 32vh;
+    /* было 32vh — зуммеру было почти некуда тянуть («ползунок... сильно ограничен в передвижении»,
+       Грегори, 2026-10-10 продолжение); теперь можно растянуть почти до самого низа экрана */
+    max-height: calc(100vh - var(--top-inset) - 70px);
   }
 
   .tour-panel.editing {
     top: calc(var(--top-inset) + 64px);
     height: auto;
     max-height: none;
+  }
+
+  /* список экскурсий был привязан шириной к search-wrap (узкому, сжатому ради кнопок языка/мест
+     рядом) — заметно уже окна «Языки»/открытой экскурсии (Грегори, 2026-10-10 продолжение: «ширина
+     перечня экскурсий на телефоне сильно уже других окон»); тот же fixed-приём, что у .tour-panel
+     выше, вместо унаследованного от .search-results absolute-позиционирования внутри узкого блока */
+  .tour-list {
+    position: fixed;
+    top: calc(var(--top-inset) + 62px);
+    left: 10px;
+    right: 10px;
+    width: auto;
+    max-height: calc(100vh - var(--top-inset) - 70px);
   }
 }
 

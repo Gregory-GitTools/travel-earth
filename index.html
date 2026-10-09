@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5/dist/maplibre-gl.css">
-<link rel="stylesheet" href="style.css?v=202610101700">
+<link rel="stylesheet" href="style.css?v=202610102100">
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icons/icon-32.png" sizes="32x32">
 <link rel="icon" href="icons/icon-192.png" sizes="192x192">
@@ -40,13 +40,15 @@
       <button id="search-tour-btn" title="Экскурсии: поиск и список по странам">
         <svg viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M20.5 3l-.16.03L15 5.1 9 3 3.36 4.9c-.21.07-.36.25-.36.48V20.5c0 .28.22.5.5.5l.16-.03L9 18.9l6 2.1 5.64-1.9c.21-.07.36-.25.36-.48V3.5c0-.28-.22-.5-.5-.5zM15 19l-6-2.11V5l6 2.11V19z"/></svg>
       </button>
+      <!-- язык подписей карты — тоже в окно поиска, самым правым (Грегори, 2026-10-10 продолжение:
+           «давай язык поиска приберём тоже в окно поиска. Пусть остаётся самым правым») -->
+      <div class="lang-wrap">
+        <button id="lang-btn" class="lang-btn" title="Язык подписей на карте"><span id="lang-btn-label"></span> ▾</button>
+        <div id="lang-menu" class="lang-menu" hidden></div>
+      </div>
     </div>
     <div id="search-results" class="search-results" hidden></div>
     <div id="tour-list" class="search-results tour-list" hidden></div>
-  </div>
-  <div class="lang-wrap">
-    <button id="lang-btn" class="lang-btn" title="Язык подписей на карте"><span id="lang-btn-label"></span> ▾</button>
-    <div id="lang-menu" class="lang-menu" hidden></div>
   </div>
   <div class="places-wrap">
     <button id="places-btn" class="places-btn" title="Места и слои: рестораны, транспорт, тропы, фото, рельеф…">
@@ -170,6 +172,6 @@
 
 <script src="https://unpkg.com/maplibre-gl@5/dist/maplibre-gl.js"></script>
 <script src="https://unpkg.com/maplibre-contour@0.1.1/dist/index.min.js"></script>
-<script src="app.js?v=202610101700"></script>
+<script src="app.js?v=202610102100"></script>
 </body>
 </html>
