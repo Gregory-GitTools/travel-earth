@@ -2930,11 +2930,17 @@ function attachCustomScrollbar(panel) {
     // мимо скруглённого угла — «верхняя часть полосы... уходит куда-то вверх», «у крестика видны
     // фантомы» (Грегори, 2026-10-11); CORNER — тот же радиус, трек теперь вставлен внутрь него.
     // Плюс небольшой отступ от самого края (EDGE_GAP), а не впритык («с самого края полосу надо
-    // убирать»)
+    // убирать»). Этого хватило для скруглений, но сверху трек всё равно начинался всего в CORNER
+    // от верха панели — а шапка (.tour-head, position:sticky) намного выше 12px, так что трек
+    // наезжал прямо на неё и ездил по крестику («ползунок... заходит на заголовок, елозит прям по
+    // крестику», Грегори, продолжение этого же раунда) — теперь верхний отступ берётся по реальной
+    // высоте шапки, трек начинается строго под ней
     const CORNER = 12, EDGE_GAP = 3;
-    const trackH = r.height - CORNER * 2;
+    const head = panel.querySelector(".tour-head");
+    const topInset = Math.max(CORNER, head ? head.getBoundingClientRect().height : 0);
+    const trackH = r.height - topInset - CORNER;
     track.style.left = `${r.right - 16 - EDGE_GAP}px`;
-    track.style.top = `${r.top + CORNER}px`;
+    track.style.top = `${r.top + topInset}px`;
     track.style.height = `${trackH}px`;
     const thumbH = Math.max(24, (panel.clientHeight / panel.scrollHeight) * trackH);
     const maxScroll = panel.scrollHeight - panel.clientHeight;
