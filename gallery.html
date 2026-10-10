@@ -143,9 +143,29 @@
   }
   .tour-toggle.on { background: #333; }
   .caption-text { font-size: 0.85rem; color: #ddd; font-style: italic; margin-top: 4px; }
+
+  /* как в index.html: открытое из установленного приложения окно тоже без системного заголовка
+     (window-controls-overlay наследуется дочерними окнами того же PWA) — без этой полоски его
+     было нечем перетащить на другой монитор (Грегори, 2026-10-11: «окно альбома не сдвинуть») */
+  .titlebar-drag { display: none; }
+  @media (display-mode: window-controls-overlay) {
+    .titlebar-drag {
+      display: block;
+      position: fixed;
+      left: env(titlebar-area-x, 0);
+      top: env(titlebar-area-y, 0);
+      width: env(titlebar-area-width, 100%);
+      height: env(titlebar-area-height, 33px);
+      app-region: drag;
+      -webkit-app-region: drag;
+      z-index: 20;
+    }
+    body { padding-top: env(titlebar-area-height, 33px); }
+  }
 </style>
 </head>
 <body>
+<div class="titlebar-drag"></div>
 <div class="bar">
   <div class="caption"><div class="title"></div><div class="meta"></div><div class="caption-text" hidden></div></div>
   <button class="tour-toggle" hidden>Экскурсия</button>

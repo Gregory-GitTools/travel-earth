@@ -25,9 +25,30 @@
   .meta { font-size: 0.78rem; color: #aaa; }
   .meta a { color: #8ab4f8; }
   #viewer { position: relative; min-height: 0; }
+
+  /* как в index.html/gallery.html: окно без системного заголовка (window-controls-overlay
+     наследуется дочерними окнами того же PWA) — без этой полоски его было нечем перетащить
+     на другой монитор (Грегори, 2026-10-11: «окно альбома не сдвинуть» — то же самое и у окна
+     просмотра снимков улиц) */
+  .titlebar-drag { display: none; }
+  @media (display-mode: window-controls-overlay) {
+    .titlebar-drag {
+      display: block;
+      position: fixed;
+      left: env(titlebar-area-x, 0);
+      top: env(titlebar-area-y, 0);
+      width: env(titlebar-area-width, 100%);
+      height: env(titlebar-area-height, 33px);
+      app-region: drag;
+      -webkit-app-region: drag;
+      z-index: 20;
+    }
+    body { padding-top: env(titlebar-area-height, 33px); }
+  }
 </style>
 </head>
 <body>
+<div class="titlebar-drag"></div>
 <div class="bar"><div class="title">Снимок улицы</div><div class="meta"></div></div>
 <div id="viewer"></div>
 <script src="https://unpkg.com/mapillary-js@4.1.2/dist/mapillary.js"></script>
