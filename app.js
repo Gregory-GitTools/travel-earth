@@ -2867,13 +2867,26 @@ function attachResizeHandle(panel) {
     const cs = getComputedStyle(panel);
     // раньше тут была CSS min-height (160px у .tour-panel) — тот предел задуман для обычного вида
     // окна, а не для руки на зуммере: тащить вверх дальше не получалось, упиралось примерно в
-    // шапку + первый абзац (Грегори: «движок окна выше не поднимается первого абзаца»). Для
-    // перетаскивания — свой, намного меньший пол: высота самой шапки (.tour-head, sticky), ниже
-    // которой тянуть уже некуда (overflow-y:auto у панели сам обрежет остальное) — отдельная
-    // кнопка «свернуть» по-прежнему даёт полный минимальный вид в одну строку
+    // шапку + первый абзац (Грегори: «движок окна выше не поднимается первого абзаца»). Следующий
+    // пол — вся шапка (.tour-head, все 2-3 строки: кнопки + название + метка плеера) — тоже
+    // оказался выше желаемого (Грегори, 2026-10-10 продолжение: «можно окно сжимать ползунком ещё
+    // сильнее?», тянул до строки кнопок и упирался в «Разговорник: …»/«О языке» под ней). Теперь
+    // пол — по нижнему краю именно строки кнопок (.tour-bar), без названия и метки плеера под
+    // ней — так же туго, как у кнопки «свернуть» (которая вообще прячет эти строки через
+    // .tour-panel.min), но без переключения в .min; overflow-y:auto у панели обрежет всё, что ниже
     const head = panel.querySelector(".tour-head");
-    const min = head ? head.getBoundingClientRect().height : (parseFloat(cs.minHeight) || 0);
+    const bar = head?.querySelector(".tour-bar");
+    const min = bar ? bar.getBoundingClientRect().bottom - head.getBoundingClientRect().top + 4
+      : head ? head.getBoundingClientRect().height : (parseFloat(cs.minHeight) || 0);
     const max = parseFloat(cs.maxHeight) || Infinity;
+    // CSS min-height (160px у .tour-panel, 120px у .tour-list — для обычного ненатянутого вида)
+    // всё это время перекрывала собой любой меньший `min`, посчитанный выше, — Math.max() в onMove
+    // не помогает, если сама CSS-граница всё равно не даёт реально сжаться ниже неё: пол «молча»
+    // оставался 160/120px вместо задуманных ~40px (Грегори, 2026-10-10 продолжение: «можно окно
+    // сжимать ползунком ещё сильнее?»). Снимаем её прямо здесь, инлайново, только когда тянут
+    // зуммер — обычный (не перетянутый) вид по-прежнему высотой «по контенту», потому что сам
+    // inline height в этом случае не выставлен
+    panel.style.minHeight = "0";
     handle.classList.add("dragging");
     handle.setPointerCapture(e.pointerId);
     const onMove = (ev) => {
@@ -2889,6 +2902,63 @@ function attachResizeHandle(panel) {
 }
 attachResizeHandle(tourList);
 attachResizeHandle(tourPanel);
+// собственный ползунок прокрутки поверх .tour-list/.tour-panel — только на тач-устройствах
+// (pointer: coarse). Стилизованный ::-webkit-scrollbar* (см. style.css) там не рисуется вовсе —
+// браузер показывает только системную полосу, почти незаметную (Грегори, 2026-10-10 продолжение:
+// «на телефоне полосы прокрутки не видно»). На компьютере (мышь, pointer: fine) родная полоса уже
+// стилизована и видна — трогать её не нужно. Элемент — fixed и вне панели по той же причине, что
+// и .panel-resize-handle: replaceChildren() при каждой перерисовке стирает только детей панели
+function attachCustomScrollbar(panel) {
+  if (!window.matchMedia("(pointer: coarse)").matches) return;
+  const track = Object.assign(document.createElement("div"), { className: "panel-scrollbar-track" });
+  const thumb = Object.assign(document.createElement("div"), { className: "panel-scrollbar-thumb" });
+  track.append(thumb);
+  document.body.append(track);
+  const reposition = () => {
+    const show = !panel.hidden && !panel.classList.contains("min");
+    const overflow = show && panel.scrollHeight - panel.clientHeight > 1;
+    track.hidden = !overflow;
+    if (!overflow) return;
+    const r = panel.getBoundingClientRect();
+    track.style.left = `${r.right - 16}px`;
+    track.style.top = `${r.top}px`;
+    track.style.height = `${r.height}px`;
+    const thumbH = Math.max(24, (panel.clientHeight / panel.scrollHeight) * r.height);
+    const maxScroll = panel.scrollHeight - panel.clientHeight;
+    const thumbY = (panel.scrollTop / maxScroll) * (r.height - thumbH);
+    thumb.style.height = `${thumbH}px`;
+    thumb.style.transform = `translateY(${thumbY}px)`;
+  };
+  new ResizeObserver(reposition).observe(panel);
+  new MutationObserver(reposition).observe(panel, {
+    attributes: true, attributeFilter: ["hidden", "class", "style"], childList: true, subtree: true,
+  });
+  window.addEventListener("resize", reposition);
+  panel.addEventListener("scroll", reposition);
+  reposition();
+  thumb.addEventListener("pointerdown", (e) => {
+    e.preventDefault();
+    const startY = e.clientY;
+    const startScrollTop = panel.scrollTop;
+    const trackH = track.getBoundingClientRect().height;
+    const thumbH = thumb.getBoundingClientRect().height;
+    const maxScroll = panel.scrollHeight - panel.clientHeight;
+    thumb.classList.add("dragging");
+    thumb.setPointerCapture(e.pointerId);
+    const onMove = (ev) => {
+      const delta = ((ev.clientY - startY) * maxScroll) / (trackH - thumbH || 1);
+      panel.scrollTop = Math.min(maxScroll, Math.max(0, startScrollTop + delta));
+    };
+    const onUp = () => {
+      thumb.classList.remove("dragging");
+      thumb.removeEventListener("pointermove", onMove);
+    };
+    thumb.addEventListener("pointermove", onMove);
+    thumb.addEventListener("pointerup", onUp, { once: true });
+  });
+}
+attachCustomScrollbar(tourList);
+attachCustomScrollbar(tourPanel);
 // кнопка «Языки» в строке поиска — светится, пока открыто именно окно «Языки» (а не экскурсия и
 // не правка файла); подписка на сам tourPanel и tourList вместо точечных вызовов из каждой
 // функции рендера (Грегори, 2026-10-10: «кнопку Языки перенесём ещё выше, в окно поиска»).

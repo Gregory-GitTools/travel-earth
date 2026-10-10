@@ -420,6 +420,33 @@ html, body {
   background: var(--active-grey-dark);
 }
 
+/* ползунок-дублёр для .tour-list/.tour-panel на тач-устройствах — ::-webkit-scrollbar* выше
+   стилизует полосу только там, где браузер вообще рисует кастомную полосу (компьютерный Chrome/
+   Safari); мобильный Chrome/Safari эти псевдо-элементы игнорируют и показывает только тонкую
+   системную, которую видно плохо или не видно совсем (Грегори, 2026-10-10 продолжение: «на
+   телефоне полосы прокрутки не видно») — там, где нет мыши (pointer: coarse), JS включает этот
+   свой fixed-ползунок вместо системного; см. attachCustomScrollbar() в app.js. Трек той же
+   толщины (16px), что и зарезервированный scrollbar-gutter, палец — 8px с зазором по краям, тот
+   же вид, что и у одобренного ::-webkit-scrollbar-thumb */
+.panel-scrollbar-track {
+  position: fixed;
+  width: 16px;
+  z-index: 20;
+  touch-action: none;
+}
+
+.panel-scrollbar-thumb {
+  position: absolute;
+  left: 4px;
+  width: 8px;
+  border-radius: 4px;
+  background: #c4c7c5;
+}
+
+.panel-scrollbar-thumb.dragging {
+  background: #9aa0a6;
+}
+
 .tour-row {
   display: flex;
   align-items: center;
@@ -1493,14 +1520,17 @@ html:not(.is-mobile) .phone-only {
 
 /* кнопка «идёт озвучка» — была синей (--player-blue, как и остальной плеер), Грегори не смог
    привыкнуть: «не могу привыкнуть к синей кнопки озвучить. Пусть будет светло-серая» — светло-
-   серый такой же, как у обычных info-кнопок (--active-grey), а не у плеера */
+   серый такой же, как у обычных info-кнопок (--active-grey), а не у плеера. Сам цвет и иконку
+   (говорящее лицо) Грегори одобрил, но попросил инверсию: не заливка значка (белый на сером
+   кружке, как у остальных «негативных» активных кнопок — языки/экскурсии/слои), а серый значок
+   на обычном прозрачном фоне («иконка красивая, цвет отличный... делай инверсию») */
 .tour-player .tour-edit.on {
-  background: var(--active-grey);
-  color: #fff;
+  background: transparent;
+  color: var(--active-grey);
 }
 
 .tour-player .tour-edit.on:hover {
-  background: var(--active-grey-dark);
+  background: var(--light-hover);
 }
 
 /* подпись «Языки» с иконкой слева в строке кнопок — у этой панели нет плеера, поэтому она
@@ -1781,28 +1811,22 @@ html:not(.is-mobile) .phone-only {
   display: none;
 }
 
-/* та же максимальная «сворачиваемость», что и у .tour-list.min выше — но здесь шапка (в отличие
-   от .tour-list, уже однострочной — см. .tour-list-label в renderTourList/renderLanguagesList)
-   состоит из двух строк: .tour-bar (кнопки) и .tour-title-row (значок+название), у экскурсии ещё
-   и .tour-player-label под ними. Свёрнутая — сводим их в одну строку, как у «Языки» (Грегори,
-   2026-10-10 продолжение: «можно свернуть ещё выше, прям в толщину самого ползунка, вместе с
-   заголовком?»); .tour-player-label прячем совсем — лишняя третья строка, свёрнутому виду ни к
-   чему (плеер и так виден в .tour-bar значком) */
+/* сворачиваем шапку до одной строки — только .tour-bar (кнопки), без .tour-title-row и
+   .tour-player-label. Раньше заголовок вставлялся в ту же строку (order:-1, Грегори, 2026-10-10
+   продолжение: «вместе с заголовком?») — но в этой строке кнопкам и так тесно (плеер + правка +
+   справка + свернуть + закрыть), и заголовок выталкивал «назад» (кнопку плеера |<) за пределы
+   видимого (Грегори, 2026-10-10 продолжение: «пропадает кнопка назад... не будем помещать
+   заголовок или значок... панель должна оставаться неизменной, как в развёрнутом окне») — теперь
+   .tour-bar в свёрнутом виде ничем не отличается от развёрнутого, просто единственная видимая
+   строка шапки */
 .tour-panel.min .tour-head {
-  flex-direction: row;
-  align-items: center;
   border-bottom: none;
   padding-top: 4px;
   padding-bottom: 4px;
 }
 
 .tour-panel.min .tour-title-row {
-  order: -1; /* название — первым, перед кнопками, как в обычной шапке окна */
-  flex: 1;
-}
-
-.tour-panel.min .tour-bar {
-  flex: none;
+  display: none;
 }
 
 .tour-panel.min .tour-player-label {
