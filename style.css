@@ -342,8 +342,12 @@ html, body {
   display: none;
 }
 
+/* свёрнутое окно — тоньше самого заголовка в развёрнутом виде (Грегори, 2026-10-10 продолжение:
+   «сворачиваемость окна по максимуму... прям в одну линию»), не просто без рамки снизу */
 .tour-list.min .tour-head {
   border-bottom: none;
+  padding-top: 4px;
+  padding-bottom: 4px;
 }
 
 /* полоса прокрутки в Chrome/Safari (телефон и компьютер) — тот же светло-серый тонкий вид, что
@@ -1728,8 +1732,11 @@ html:not(.is-mobile) .phone-only {
   display: none;
 }
 
+/* та же максимальная «сворачиваемость», что и у .tour-list.min выше */
 .tour-panel.min .tour-head {
   border-bottom: none;
+  padding-top: 4px;
+  padding-bottom: 4px;
 }
 
 .tour-sec-title {

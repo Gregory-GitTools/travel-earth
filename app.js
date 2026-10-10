@@ -2570,7 +2570,11 @@ function renderLanguagesList() {
   }
   if (byLang.size === 0) rows.push(h("div", "tour-list-empty", "Файлов в папке «Языки» не нашлось"));
   tourPanel.classList.remove("titles", "editing", "phrasebook");
-  tourPanel.classList.add("lang-list");
+  // lang-list — именно обзорный список языков (для крестика/повторного клика по кнопке «Языки»);
+  // lang-flow — весь путь внутри «Языки», включая открытый из него разговорник (см. renderPhrasebook
+  // ниже) — по нему кнопка «Языки» остаётся подсвеченной, а «Экскурсии» не перехватывает подсветку
+  // (Грегори, 2026-10-10 продолжение: «кнопка перескакивает с языка на экскурсию»)
+  tourPanel.classList.add("lang-list", "lang-flow");
   tourPanel.classList.toggle("min", localStorage.getItem(TOUR_MIN_KEY) === "1");
   setMinBtn();
   setFoldAll();
@@ -2845,7 +2849,9 @@ attachResizeHandle(tourPanel);
 // 2026-10-10 позже: «исключим возможность одновременного выделения двух кнопок... активной
 // должна быть кнопка активного окна»)
 function syncTourButtons() {
-  const showingLang = !tourPanel.hidden && tourPanel.classList.contains("lang-list");
+  // lang-flow — не только обзорный список, но и разговорник, открытый из него (см. renderLanguagesList/
+  // renderPhrasebook): иначе кнопка «Языки» гасла, а «Экскурсии» зажигалась при переходе внутрь языка
+  const showingLang = !tourPanel.hidden && tourPanel.classList.contains("lang-flow");
   el("lang-list-btn").classList.toggle("on", showingLang);
   el("search-tour-btn").classList.toggle("on", !tourList.hidden || (!tourPanel.hidden && !showingLang));
   // «Слои» и правые окна (Экскурсии/Языки) теперь не уживаются вместе (Грегори, 2026-10-10
@@ -3533,7 +3539,7 @@ function renderTourPanel(id) {
     nodes.push(box);
   }
   tourPanel.replaceChildren(...nodes);
-  tourPanel.classList.remove("editing", "phrasebook", "lang-list");
+  tourPanel.classList.remove("editing", "phrasebook", "lang-list", "lang-flow");
   tourPanel.hidden = false;
   renderTourPlayer();
 }
@@ -3749,7 +3755,7 @@ async function editTour(id) {
   const hint = h("div", "tour-file", t.repo ? "Esc — назад. Как писать файл — кнопка «i» вверху"
     : "Ctrl+S — сохранить, Esc — отмена. Как писать файл — кнопка «i» вверху");
   tourPanel.replaceChildren(head, area, bar, hint, fileRow);
-  tourPanel.classList.remove("phrasebook", "lang-list");
+  tourPanel.classList.remove("phrasebook", "lang-list", "lang-flow");
   tourPanel.classList.add("editing");
   area.focus();
   area.setSelectionRange(0, 0);
@@ -4105,6 +4111,7 @@ function renderPhrasebook(id, fromTour = null) {
   files.append(link("промт для ChatGPT", "Задание для ИИ: разговорник другого языка", PHRASEBOOK_PROMPT, false));
   nodes.push(files);
   tourPanel.classList.remove("titles", "editing", "lang-list");
+  if (fromTour !== "languages") tourPanel.classList.remove("lang-flow");
   tourPanel.classList.add("phrasebook");
   // как у экскурсии и «Языков» — свёрнутость окна помнится, а не сбрасывается на каждое открытие
   tourPanel.classList.toggle("min", localStorage.getItem(TOUR_MIN_KEY) === "1");
