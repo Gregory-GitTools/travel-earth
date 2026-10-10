@@ -1977,11 +1977,20 @@ function selectTourStop(tour, n) {
   if (map.getLayer("ov-tour-sel")) map.setFilter("ov-tour-sel", tourSelFilter());
   for (const sec of tourPanel.querySelectorAll(".tour-section[data-n]")) {
     const on = tourSel?.tour === tourPanelId && Number(sec.dataset.n) === tourSel?.n;
+    const wasCurrent = sec.classList.contains("current");
     sec.classList.toggle("current", on);
     if (on) {
       sec.classList.add("open");
       sec.classList.remove("shut");
       sec.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    } else if (wasCurrent) {
+      // этот пункт сама функция принудительно раскрыла, когда он был «текущим» (подсветка
+      // остановки при навигации/воспроизведении) — при снятии подсветки раскрытие тоже снимаем,
+      // но только своё: пункт, который пользователь открыл руками через кнопку-шеврон (не был
+      // .current), этим не трогаем. Без этой строки кнопка списка в режиме «titles» выглядела
+      // нерабочей — остановка, звучавшая последней, не сворачивалась даже после Стоп (Грегори,
+      // 2026-10-11: «осталась кнопка списка в окне экскурсий»)
+      sec.classList.remove("open");
     }
   }
 }
@@ -3157,6 +3166,10 @@ function stopTourPlay() {
   stopSpeech();
   hideSlides();
   renderTourPlayer();
+  // «текущая» остановка (подсветка + принудительно открытая в режиме «список») раньше переживала
+  // сам Стоп — closeTourPanel() уже сбрасывал выделение при закрытии панели, теперь то же
+  // происходит при любой настоящей остановке воспроизведения, не только при закрытии окна целиком
+  selectTourStop(null);
 }
 
 async function playTourStep() {
