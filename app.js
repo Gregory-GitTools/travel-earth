@@ -2440,7 +2440,7 @@ function renderTourList() {
     localStorage.setItem(TOUR_LIST_MIN_KEY, min ? "1" : "0");
     setMinBtn();
   });
-  const close = Object.assign(document.createElement("button"), { className: "tour-close", title: "Закрыть", textContent: "×" });
+  const close = Object.assign(document.createElement("button"), { className: "tour-close", title: "Закрыть", innerHTML: CLOSE_ICON });
   close.addEventListener("click", () => setTourMode(false));
   bar.append(label, Object.assign(document.createElement("span"), { className: "tour-bar-gap" }));
   if (groupKeys.length && !q) {
@@ -2522,7 +2522,7 @@ function renderLanguagesList() {
     byLang.get(name).push(pb);
   }
   const groupKeys = [...byLang.keys()].map((n) => `lg:${n}`);
-  const close = Object.assign(document.createElement("button"), { className: "tour-close", title: "Закрыть", textContent: "×" });
+  const close = Object.assign(document.createElement("button"), { className: "tour-close", title: "Закрыть", innerHTML: CLOSE_ICON });
   close.addEventListener("click", closeTourToList);
   const minBtn = Object.assign(document.createElement("button"), { className: "tour-edit" });
   const setMinBtn = () => {
@@ -3371,13 +3371,22 @@ const TOUR_TEXT_KEY = "travel-earth.tour-text", TOUR_MIN_KEY = "travel-earth.tou
 // своё "свёрнуто" у окна «Экскурсии» — отдельное от TOUR_MIN_KEY (окно самой экскурсии/«Языки»),
 // иначе сворачивание одного окна неожиданно сворачивало бы и другое (Грегори, 2026-10-10)
 const TOUR_LIST_MIN_KEY = "travel-earth.tour-list-min";
-const FOLD_ICON = `<svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M7.41 18.59 8.83 20 12 16.83 15.17 20l1.41-1.41L12 14l-4.59 4.59zm9.18-13.18L15.17 4 12 7.17 8.83 4 7.41 5.41 12 10l4.59-4.59z"/></svg>`;
-const UNFOLD_ICON = `<svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M12 5.83 15.17 9l1.41-1.41L12 3 7.41 7.59 8.83 9 12 5.83zm0 12.34L8.83 15l-1.41 1.41L12 21l4.59-4.59L15.17 15 12 18.17z"/></svg>`;
+// была пара мелких шевронов «уголком друг к другу» (18x18, два наконечника) — не разглядеть,
+// куда они повёрнуты (Грегори, 2026-10-10 продолжение: «одну стрелку вместо знака "рыды". Две
+// мелкие стрелки, которые не разглядишь куда повёрнуты»). Теперь одна крупная стрелка — как у
+// уже одобренного COLLAPSE_ICON/EXPAND_ICON ниже («стрелка большая, хорошая») — но с короткой
+// чёрточкой над/под ней, чтобы не путать со сворачиванием всей панели: чёрточка — это
+// сворачиваемый текст, а стрелка показывает, в какую сторону он уезжает
+const FOLD_ICON = `<svg viewBox="0 0 24 24" width="22" height="22"><path fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" d="M5 13l7-6 7 6M8 19h8"/></svg>`;
+const UNFOLD_ICON = `<svg viewBox="0 0 24 24" width="22" height="22"><path fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" d="M5 11l7 6 7-6M8 5h8"/></svg>`;
 // один крупный шеврон вверх/вниз вместо прежней пары мелких разностильных значков — стрелка
 // вверх значит «свернуть», вниз значит «развернуть» (Грегори, 2026-10-10 продолжение: «сам
 // значок мелкий и не однозначный. Может обойдёмся одной, но большой стрелкой вверх/вниз?»)
 const COLLAPSE_ICON = `<svg viewBox="0 0 24 24" width="22" height="22"><path fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" d="M5 15l7-7 7 7"/></svg>`;
 const EXPAND_ICON = `<svg viewBox="0 0 24 24" width="22" height="22"><path fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" d="M5 9l7 7 7-7"/></svg>`;
+// крестик-крестик того же начертания, что и стрелки выше — раньше был простой текстовый символ
+// «×» (Грегори, 2026-10-10 продолжение: «хочется, чтобы и квадрат, и крестик тоже не отставали»)
+const CLOSE_ICON = `<svg viewBox="0 0 24 24" width="22" height="22"><path fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" d="M6 6l12 12M18 6 6 18"/></svg>`;
 const CHEVRON_ICON = `<svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M16.59 8.59 12 13.17 7.41 8.59 6 10l6 6 6-6z"/></svg>`;
 // значок папки у строки группы экскурсий в списке (Грегори, 2026-10-04): у страны есть флаг, у
 // группы в ней — ничего, отличить от одиночной экскурсии можно было только по жирному капсу
@@ -3407,7 +3416,7 @@ function renderTourPanel(id) {
     return b;
   };
   tourEditing = false;
-  const close = Object.assign(document.createElement("button"), { className: "tour-close", title: "Закрыть", textContent: "×" });
+  const close = Object.assign(document.createElement("button"), { className: "tour-close", title: "Закрыть", innerHTML: CLOSE_ICON });
   close.addEventListener("click", closeTourToList);
   const edit = Object.assign(document.createElement("button"), { className: "tour-edit", title: "Править файл экскурсии", innerHTML: EDIT_ICON });
   edit.addEventListener("click", () => editTour(id));
@@ -4017,7 +4026,7 @@ function renderPhrasebook(id, fromTour = null) {
   if (!fromTour && tourPanelId) { tourPanelId = null; showTourStopsOf(null); }
   const h = (tag, cls, text) => Object.assign(document.createElement(tag), { className: cls || "", textContent: text || "" });
   const close = Object.assign(document.createElement("button"), { className: "tour-close",
-    title: fromTour === "languages" ? "Назад к языкам" : fromTour ? "Назад к экскурсии" : "Закрыть", textContent: "×" });
+    title: fromTour === "languages" ? "Назад к языкам" : fromTour ? "Назад к экскурсии" : "Закрыть", innerHTML: CLOSE_ICON });
   close.addEventListener("click", () => {
     stopPhrasePlay();
     if (fromTour === "languages") renderLanguagesList();
