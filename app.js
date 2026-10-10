@@ -259,7 +259,18 @@ function renderLanguageMenu() {
 
 el("lang-btn").addEventListener("click", (evt) => {
   evt.stopPropagation();
-  el("lang-menu").hidden = !el("lang-menu").hidden;
+  const opening = el("lang-menu").hidden;
+  el("lang-menu").hidden = !opening;
+  // этот список не знал о других окнах — Экскурсии/Языки/Слои все z-index:15 и позже в DOM, чем
+  // .top-bar (где живёт этот список), так что реально перекрывали его целиком, хотя сам он
+  // оставался технически «открыт» (Грегори, 2026-10-10 продолжение: «окно списка языков должно
+  // обладать схожими свойствами с другими окнами и при нажатии закрывать все окна, а не
+  // прятаться за них») — теперь ведёт себя как остальные кнопки верхней строки поиска
+  if (opening) {
+    if (!tourList.hidden) setTourMode(false);
+    if (!tourPanel.hidden) closeTourPanel();
+    if (!el("menu-panel").hidden) { el("menu-panel").hidden = true; updatePlacesBtn(); }
+  }
 });
 document.addEventListener("click", (evt) => {
   if (!el("lang-menu").contains(evt.target)) el("lang-menu").hidden = true;
