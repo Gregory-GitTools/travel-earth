@@ -2444,8 +2444,12 @@ function renderTourList() {
   helpBtn.addEventListener("click", () => { tourListHelp = !tourListHelp; renderTourList(); });
   bar.append(helpBtn, minBtn, close);
   head.append(bar);
-  setMinBtn();
+  // применяем сохранённую свёрнутость ДО синхронизации иконки — иначе при первом открытии
+  // после перезапуска значок показывает «Свернуть», хотя окно уже свёрнуто (Грегори, 2026-10-10
+  // продолжение: «в экскурсиях всегда разворачивает» — значок не совпадал с реальным состоянием
+  // именно при первом открытии; у «Языки»/«Экскурсии»-панели порядок уже был верным)
   tourList.classList.toggle("min", localStorage.getItem(TOUR_LIST_MIN_KEY) === "1");
+  setMinBtn();
   rows.push(head);
   if (tourListHelp) rows.push(tourListHelpBox());
   for (const country of [...tree.keys()].sort((a, b) => a.localeCompare(b, "ru"))) {
