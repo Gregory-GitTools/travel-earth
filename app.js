@@ -2454,20 +2454,27 @@ function renderTourList() {
   const close = Object.assign(document.createElement("button"), { className: "tour-close", title: "Закрыть", innerHTML: CLOSE_ICON });
   close.addEventListener("click", () => setTourMode(false));
   bar.append(label, Object.assign(document.createElement("span"), { className: "tour-bar-gap" }));
+  // инфо перед «свернуть все пункты» — тот же порядок, что у окна «Языки» (helpBtn, foldAll, ...),
+  // раньше тут было наоборот (Грегори: «в окне Экскурсии поменяй местами кнопки инфо и свернуть»)
+  const helpBtn = Object.assign(document.createElement("button"), { className: `tour-edit${tourListHelp ? " on" : ""}`,
+    title: "Как задать группы и значки", innerHTML: INFO_ICON });
+  helpBtn.addEventListener("click", () => { tourListHelp = !tourListHelp; renderTourList(); });
+  bar.append(helpBtn);
   if (groupKeys.length && !q) {
     const allOpen = groupKeys.every((k) => tourOpen.has(k));
+    // иконка была перепутана с подписью: allOpen → заголовок "Свернуть все", но рисовалась стрелка
+    // "развернуть" (вниз) вместо "свернуть" (вверх) — та же пара FOLD_ICON/UNFOLD_ICON в окне
+    // «Языки» (setFoldAll ниже) сделана верно, тут было наоборот (Грегори: «логика кнопки свернуть
+    // не правильная»)
     const allBtn = Object.assign(document.createElement("button"), { className: "tour-edit",
-      title: allOpen ? "Свернуть все" : "Развернуть все", innerHTML: allOpen ? UNFOLD_ICON : FOLD_ICON });
+      title: allOpen ? "Свернуть все" : "Развернуть все", innerHTML: allOpen ? FOLD_ICON : UNFOLD_ICON });
     allBtn.addEventListener("click", () => {
       if (allOpen) for (const k of groupKeys) tourOpen.delete(k); else for (const k of groupKeys) tourOpen.add(k);
       renderTourList();
     });
     bar.append(allBtn);
   }
-  const helpBtn = Object.assign(document.createElement("button"), { className: `tour-edit${tourListHelp ? " on" : ""}`,
-    title: "Как задать группы и значки", innerHTML: INFO_ICON });
-  helpBtn.addEventListener("click", () => { tourListHelp = !tourListHelp; renderTourList(); });
-  bar.append(helpBtn, minBtn, close);
+  bar.append(minBtn, close);
   head.append(bar);
   // применяем сохранённую свёрнутость ДО синхронизации иконки — иначе при первом открытии
   // после перезапуска значок показывает «Свернуть», хотя окно уже свёрнуто (Грегори, 2026-10-10
@@ -2852,7 +2859,14 @@ function attachResizeHandle(panel) {
     const startY = e.clientY;
     const startHeight = panel.getBoundingClientRect().height;
     const cs = getComputedStyle(panel);
-    const min = parseFloat(cs.minHeight) || 0;
+    // раньше тут была CSS min-height (160px у .tour-panel) — тот предел задуман для обычного вида
+    // окна, а не для руки на зуммере: тащить вверх дальше не получалось, упиралось примерно в
+    // шапку + первый абзац (Грегори: «движок окна выше не поднимается первого абзаца»). Для
+    // перетаскивания — свой, намного меньший пол: высота самой шапки (.tour-head, sticky), ниже
+    // которой тянуть уже некуда (overflow-y:auto у панели сам обрежет остальное) — отдельная
+    // кнопка «свернуть» по-прежнему даёт полный минимальный вид в одну строку
+    const head = panel.querySelector(".tour-head");
+    const min = head ? head.getBoundingClientRect().height : (parseFloat(cs.minHeight) || 0);
     const max = parseFloat(cs.maxHeight) || Infinity;
     handle.classList.add("dragging");
     handle.setPointerCapture(e.pointerId);
@@ -3390,11 +3404,14 @@ const TOUR_LIST_MIN_KEY = "travel-earth.tour-list-min";
 // сворачиваемый текст, а стрелка показывает, в какую сторону он уезжает
 const FOLD_ICON = `<svg viewBox="0 0 24 24" width="22" height="22"><path fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" d="M5 13l7-6 7 6M8 19h8"/></svg>`;
 const UNFOLD_ICON = `<svg viewBox="0 0 24 24" width="22" height="22"><path fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" d="M5 11l7 6 7-6M8 5h8"/></svg>`;
-// один крупный шеврон вверх/вниз вместо прежней пары мелких разностильных значков — стрелка
-// вверх значит «свернуть», вниз значит «развернуть» (Грегори, 2026-10-10 продолжение: «сам
-// значок мелкий и не однозначный. Может обойдёмся одной, но большой стрелкой вверх/вниз?»)
+// один крупный шеврон вверх вместо прежней пары мелких разностильных значков — свернуть (Грегори,
+// 2026-10-10 продолжение: «сам значок мелкий и не однозначный. Может обойдёмся одной, но большой
+// стрелкой вверх/вниз?»). EXPAND_ICON — квадратик (классический значок «развернуть окно», был тут
+// до этой самой правки, на шевроне-вниз его не разглядеть среди остальных стрелок) — тот же
+// квадрат, что был раньше, но в жирном начертании остальных значков (Грегори, следующий раунд:
+// «верни квадратик на место... хочется, чтобы квадрат тоже не отставал»)
 const COLLAPSE_ICON = `<svg viewBox="0 0 24 24" width="22" height="22"><path fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" d="M5 15l7-7 7 7"/></svg>`;
-const EXPAND_ICON = `<svg viewBox="0 0 24 24" width="22" height="22"><path fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" d="M5 9l7 7 7-7"/></svg>`;
+const EXPAND_ICON = `<svg viewBox="0 0 24 24" width="22" height="22"><rect x="5" y="5" width="14" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="2.5"/></svg>`;
 // крестик-крестик того же начертания, что и стрелки выше — раньше был простой текстовый символ
 // «×» (Грегори, 2026-10-10 продолжение: «хочется, чтобы и квадрат, и крестик тоже не отставали»)
 const CLOSE_ICON = `<svg viewBox="0 0 24 24" width="22" height="22"><path fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" d="M6 6l12 12M18 6 6 18"/></svg>`;
