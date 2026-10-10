@@ -2467,7 +2467,12 @@ function renderTourList() {
   helpBtn.addEventListener("click", () => { tourListHelp = !tourListHelp; renderTourList(); });
   bar.append(helpBtn);
   if (groupKeys.length && !q) {
-    const allOpen = groupKeys.every((k) => tourOpen.has(k));
+    // .every() требовал, чтобы были открыты ВСЕ страны разом — открыв одну (Венгрию), значок
+    // оставался «Развернуть все» как ни в чём не бывало, то есть никак не реагировал на раскрытие
+    // (Грегори, 2026-10-10 продолжение: «кнопка не реагирует на раскрытие окна… в окне языков
+    // реагирует»). В «Языки» (setFoldAll ниже) тот же значок всегда был на .some() — реагирует на
+    // первую же открытую группу; выравниваем Экскурсии под уже одобренное поведение «Языки»
+    const allOpen = groupKeys.some((k) => tourOpen.has(k));
     // иконка была перепутана с подписью: allOpen → заголовок "Свернуть все", но рисовалась стрелка
     // "развернуть" (вниз) вместо "свернуть" (вверх) — та же пара FOLD_ICON/UNFOLD_ICON в окне
     // «Языки» (setFoldAll ниже) сделана верно, тут было наоборот (Грегори: «логика кнопки свернуть
@@ -3244,7 +3249,11 @@ function renderTourPlayer() {
   const main = b(play && !play.paused ? TALK_ICON : PLAY_BIG_ICON,
     !play ? "Аудиогид: рассказ с переходами по точкам и слайд-шоу" : play.paused ? "Продолжить" : "Пауза",
     () => (play ? tourPlayPause() : startTourPlay(id, -1)));
-  main.classList.toggle("on", !!play);
+  // «on» (серый кружок+белая иконка) — только пока реально идёт озвучка, не на паузе: раньше
+  // держалось просто на !!play, и пауза (треугольник «продолжить») красилась в тот же активный
+  // вид, что и говорящее лицо — выглядело как «обычный треугольник пропал», хотя по коду он никуда
+  // не делся (Грегори, 2026-10-10 продолжение: «пауза — чёрная фигура... убрали треугольник»)
+  main.classList.toggle("on", !!play && !play.paused);
   bar.replaceChildren(b(PREV_ICON, "Назад", () => tourPlayGo(-1), !play), main,
     b(NEXT_ICON, "Дальше", () => tourPlayGo(1), !play), b(STOP_ICON, "Стоп", stopTourPlay, !play));
   const label = tourPanel.querySelector(".tour-player-label");
@@ -4109,7 +4118,8 @@ function renderPhrasePlayer() {
   const main = b(play && !play.paused ? TALK_ICON : PLAY_BIG_ICON,
     !play ? "Читать все фразы подряд — с первого раскрытого раздела" : play.paused ? "Продолжить" : "Пауза",
     () => (play ? phrasePlayPause() : startPhrasePlay()));
-  main.classList.toggle("on", !!play);
+  // см. тот же комментарий в renderTourPlayer() — «on» только пока реально идёт озвучка, не на паузе
+  main.classList.toggle("on", !!play && !play.paused);
   bar.replaceChildren(b(PREV_ICON, "Назад", () => phrasePlayGo(-1), !play), main,
     b(NEXT_ICON, "Дальше", () => phrasePlayGo(1), !play), b(STOP_ICON, "Стоп", stopPhrasePlay, !play));
   const label = tourPanel.querySelector(".tour-player-label");
