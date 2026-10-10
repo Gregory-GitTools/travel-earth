@@ -1993,8 +1993,9 @@ function selectTourStop(tour, n) {
       sec.classList.remove("open");
     }
   }
+  updateTourTextBtn();
 }
-const TOUR_KEYS = { "место": "place", "регион": "region", "тропа": "trail", "длина": "length", "время": "time",
+const TOUR_KEYS ={ "место": "place", "регион": "region", "тропа": "trail", "длина": "length", "время": "time",
   "сложность": "difficulty", "сезон": "season", "точки": "points", "особенности": "features", "справка": "history",
   "выдержка": "quote", "выдержки": "quote", "источник": "sources", "источники": "sources", "теги": "tags", "идея": "idea", "маршрут": "route", "страна": "country", "город": "city", "тип": "kind", "значок": "icon",
   "фото вступления": "introPlace", "группа": "group" };
@@ -3551,8 +3552,23 @@ function foldButton(box) {
       const open = box.classList.toggle("open");
       box.classList.toggle("shut", !open);
     } else box.classList.toggle("shut");
+    updateTourTextBtn();
   });
   return b;
+}
+
+// шапка экскурсии: стрелка «свернуть/показать текст пунктов» должна реагировать на фактическое
+// состояние пунктов, а не на отдельный флаг режима — ровно как уже делает updatePbFoldAll для
+// разговорника (Грегори, 2026-10-11: «если пункт 1 раскрыт, значит стрелка сразу должна
+// перевернуться... стрелка вниз только когда всё свёрнуто»). Безопасно вызывать откуда угодно —
+// если открыта не экскурсия (кнопки нет в DOM), просто ничего не делает
+function updateTourTextBtn() {
+  const btn = tourPanel.querySelector(".tour-text-btn");
+  if (!btn) return;
+  const titles = tourPanel.classList.contains("titles");
+  const anyOpen = [...tourPanel.querySelectorAll(".tour-section")].some((sec) => (titles ? sec.classList.contains("open") : !sec.classList.contains("shut")));
+  btn.innerHTML = anyOpen ? FOLD_ICON : UNFOLD_ICON;
+  btn.title = anyOpen ? "Свернуть все пункты" : "Показать текст пунктов";
 }
 
 function renderTourPanel(id) {
@@ -3574,25 +3590,28 @@ function renderTourPanel(id) {
   const head = h("div", "tour-head");
   const title = h("h2", "", t.title);
   title.title = t.title;
-  // свернуть: текст пунктов (остаются заголовки) и всю панель (остаётся шапка) — отдельно
-  const textBtn = Object.assign(document.createElement("button"), { className: "tour-edit" });
-  const setTextBtn = () => {
-    const folded = tourPanel.classList.contains("titles");
-    // Round 35 (2026-10-11) сделал эту пару зеркальной по отношению к per-section стрелкам —
-    // Грегори тогда прямо попросил «вверх» для «Показать текст пунктов». Round 36: он увидел эту
-    // кнопку рядом со списком пунктов (у всех свёрнутых пунктов стрелка вниз, а у шапки — вверх,
-    // ровно наоборот) и назвал это «логика кнопки перепутана» — вернули к единому с пунктами
-    // правилу: свёрнуто → стрелка вниз («раскрыть» то же направление, что и у «Об экскурсии»/
-    // дней), развёрнуто → вверх
-    textBtn.innerHTML = folded ? UNFOLD_ICON : FOLD_ICON;
-    textBtn.title = folded ? "Показать текст пунктов" : "Только пункты — свернуть текст";
-  };
+  // свернуть: текст пунктов (остаются заголовки) и всю панель (остаётся шапка) — отдельно.
+  // Round 38 (2026-10-11): стрелка раньше отражала отдельный флаг режима «titles», из-за чего
+  // выглядела «не реагирующей» — текущая остановка плеера раскрыта, а стрелка всё равно показывает
+  // «развернуть» вниз. Грегори: «если пункт 1 раскрыт — стрелка сразу должна перевернуться и
+  // позволить его свернуть, вниз — только когда вообще всё свёрнуто» — теперь стрелка и клик
+  // смотрят на фактическое состояние пунктов через updateTourTextBtn(), как foldAll у разговорника
+  const textBtn = Object.assign(document.createElement("button"), { className: "tour-edit tour-text-btn" });
   textBtn.addEventListener("click", () => {
-    const folded = !tourPanel.classList.contains("titles");
-    tourPanel.classList.toggle("titles", folded);
-    for (const box of tourPanel.querySelectorAll(".tour-section.open")) box.classList.remove("open");
-    localStorage.setItem(TOUR_TEXT_KEY, folded ? "titles" : "full");
-    setTextBtn();
+    const anyOpen = [...tourPanel.querySelectorAll(".tour-section")].some((sec) =>
+      (tourPanel.classList.contains("titles") ? sec.classList.contains("open") : !sec.classList.contains("shut")));
+    if (anyOpen) {
+      // что-то раскрыто — сворачиваем всё: режим «список», снимаем принудительное раскрытие
+      tourPanel.classList.add("titles");
+      for (const box of tourPanel.querySelectorAll(".tour-section.open")) box.classList.remove("open");
+      localStorage.setItem(TOUR_TEXT_KEY, "titles");
+    } else {
+      // всё свёрнуто — раскрываем всё: обычный режим, текст виден у каждого пункта
+      tourPanel.classList.remove("titles");
+      for (const box of tourPanel.querySelectorAll(".tour-section.shut")) box.classList.remove("shut");
+      localStorage.setItem(TOUR_TEXT_KEY, "full");
+    }
+    updateTourTextBtn();
   });
   const minBtn = Object.assign(document.createElement("button"), { className: "tour-edit" });
   const setMinBtn = () => {
@@ -3608,7 +3627,6 @@ function renderTourPanel(id) {
   });
   tourPanel.classList.toggle("titles", localStorage.getItem(TOUR_TEXT_KEY) === "titles");
   tourPanel.classList.toggle("min", localStorage.getItem(TOUR_MIN_KEY) === "1");
-  setTextBtn();
   setMinBtn();
   const bar = h("div", "tour-bar");
   const albumBtn = Object.assign(document.createElement("button"), { className: `tour-edit tour-album-btn${albumOff ? "" : " on"}`,
@@ -3729,6 +3747,7 @@ function renderTourPanel(id) {
   tourPanel.classList.remove("editing", "phrasebook", "lang-list", "lang-flow");
   tourPanel.hidden = false;
   renderTourPlayer();
+  updateTourTextBtn();
 }
 
 // Правка файла прямо в панели: страница не может запустить Блокнот, зато может записать в
@@ -5699,9 +5718,19 @@ document.addEventListener("click", (evt) => {
   }
 });
 el("search-btn").addEventListener("click", () => {
-  if (!tourMode) { runSearch(); return; }
-  const cur = tourList.querySelector(".tour-row.active") || tourList.querySelector(".tour-row-item");
-  if (tourList.hidden) { tourList.hidden = false; renderTourList(); } else cur?.click();
+  // лупа всегда переводит поиск в географический режим — Экскурсии/Языки закрываются и гаснут,
+  // даже если «Языки» открыты без tourMode (кнопка «Языки» сама выключает tourMode при открытии,
+  // см. renderLanguagesList) — закрываем оба безусловно (Грегори, 2026-10-11: «нажатие на лупу...
+  // должно не только искать, но и переводить окно поиска в режим географического поиска,
+  // закрывать окна и снимать выделения с Экскурсии и Языки»)
+  if (tourMode) {
+    const q = el("search-input").value; // setTourMode(false) сам стирает поле поиска — сохраняем запрос
+    setTourMode(false);
+    el("search-input").value = q;
+    el("search-clear-btn").hidden = !q;
+  }
+  if (!tourPanel.hidden) closeTourPanel();
+  runSearch();
 });
 el("search-tour-btn").addEventListener("click", () => setTourMode(!tourMode));
 // «Экскурсии» больше не восстанавливаются после перезапуска (см. activeOverlays.delete("tours")
