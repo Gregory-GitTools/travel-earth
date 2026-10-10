@@ -3035,13 +3035,14 @@ function closeTourToList() {
 let tourPlay = null; // { id, stops, i, paused, run }
 // кнопка «идёт озвучка» — раньше тут были две полоски паузы, теперь лицо говорящего человека +
 // звуковые волны (Грегори: «не могу привыкнуть к синей кнопке озвучить... иконку лучше лицо
-// говорящего человека»); сам PLAY_BIG_ICON (треугольник, запустить) не трогали — жалоба была
-// именно про иконку состояния «сейчас играет», не про «нажми, чтобы начать»
+// говорящего человека»); и там же был PLAY_BIG_ICON (треугольник, «нажми, чтобы начать») —
+// убран совсем, лицо теперь показывается в любом состоянии кнопки (Грегори, 2026-10-10
+// продолжение, про стоп-состояние: «появляется треугольник. я пока не пойму, зачем он нужен.
+// давай оставим только голову»)
 const TALK_ICON = `<svg viewBox="0 0 24 24" width="18" height="18"><circle cx="9" cy="10" r="4" fill="currentColor"/><path fill="currentColor" d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6v1H3v-1z"/><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" d="M16.5 8c1.3 1.1 1.3 5 0 7M19.5 6c2.2 2.1 2.2 8 0 10"/></svg>`;
 const PREV_ICON = `<svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M6 6h2v12H6zm3.5 6 8.5 6V6z"/></svg>`;
 const NEXT_ICON = `<svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="m6 18 8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg>`;
 const STOP_ICON = `<svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M6 6h12v12H6z"/></svg>`;
-const PLAY_BIG_ICON = `<svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M8 5v14l11-7z"/></svg>`;
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const tourSlides = Object.assign(document.createElement("div"), { className: "tour-slides", hidden: true });
 tourSlides.innerHTML = `<img alt=""><img alt=""><div class="tour-slides-caption"></div><button class="tour-slides-close" title="Закрыть альбом">×</button>`;
@@ -3246,11 +3247,11 @@ function renderTourPlayer() {
     x.addEventListener("click", fn);
     return x;
   };
-  // иконка — говорящее лицо всё время, пока сессия озвучки жива (идёт или на паузе), и только
-  // треугольник — когда она по-настоящему не начата/остановлена; раньше было play && !play.paused,
-  // то есть на паузе иконка откатывалась на обычный треугольник — выглядело как «подмена кнопки
-  // озвучки на старт заново» (Грегори, 2026-10-10 продолжение: «треугольник вместо озвучить»)
-  const main = b(play ? TALK_ICON : PLAY_BIG_ICON,
+  // иконка — всегда говорящее лицо, в любом состоянии (идёт/пауза/не начата); раньше не начатая
+  // ещё озвучка показывала треугольник «запустить», но он не нёс смысла рядом с лицом на остальных
+  // состояниях (Грегори, 2026-10-10 продолжение: «я пока не пойму, зачем он нужен. давай оставим
+  // только голову») — треугольник (PLAY_BIG_ICON) убран из этой кнопки насовсем
+  const main = b(TALK_ICON,
     !play ? "Аудиогид: рассказ с переходами по точкам и слайд-шоу" : play.paused ? "Продолжить" : "Пауза",
     () => (play ? tourPlayPause() : startTourPlay(id, -1)));
   // «on» (серый кружок+белая иконка) — только пока реально идёт озвучка, не на паузе: раньше
@@ -4119,9 +4120,8 @@ function renderPhrasePlayer() {
     x.addEventListener("click", fn);
     return x;
   };
-  // см. тот же комментарий в renderTourPlayer() — говорящее лицо всё время живой сессии (идёт
-  // или на паузе), треугольник только когда не начата/остановлена
-  const main = b(play ? TALK_ICON : PLAY_BIG_ICON,
+  // см. тот же комментарий в renderTourPlayer() — всегда говорящее лицо, треугольник убран
+  const main = b(TALK_ICON,
     !play ? "Читать все фразы подряд — с первого раскрытого раздела" : play.paused ? "Продолжить" : "Пауза",
     () => (play ? phrasePlayPause() : startPhrasePlay()));
   // «on» только пока реально идёт озвучка, не на паузе
