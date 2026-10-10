@@ -3246,7 +3246,11 @@ function renderTourPlayer() {
     x.addEventListener("click", fn);
     return x;
   };
-  const main = b(play && !play.paused ? TALK_ICON : PLAY_BIG_ICON,
+  // иконка — говорящее лицо всё время, пока сессия озвучки жива (идёт или на паузе), и только
+  // треугольник — когда она по-настоящему не начата/остановлена; раньше было play && !play.paused,
+  // то есть на паузе иконка откатывалась на обычный треугольник — выглядело как «подмена кнопки
+  // озвучки на старт заново» (Грегори, 2026-10-10 продолжение: «треугольник вместо озвучить»)
+  const main = b(play ? TALK_ICON : PLAY_BIG_ICON,
     !play ? "Аудиогид: рассказ с переходами по точкам и слайд-шоу" : play.paused ? "Продолжить" : "Пауза",
     () => (play ? tourPlayPause() : startTourPlay(id, -1)));
   // «on» (серый кружок+белая иконка) — только пока реально идёт озвучка, не на паузе: раньше
@@ -4115,10 +4119,12 @@ function renderPhrasePlayer() {
     x.addEventListener("click", fn);
     return x;
   };
-  const main = b(play && !play.paused ? TALK_ICON : PLAY_BIG_ICON,
+  // см. тот же комментарий в renderTourPlayer() — говорящее лицо всё время живой сессии (идёт
+  // или на паузе), треугольник только когда не начата/остановлена
+  const main = b(play ? TALK_ICON : PLAY_BIG_ICON,
     !play ? "Читать все фразы подряд — с первого раскрытого раздела" : play.paused ? "Продолжить" : "Пауза",
     () => (play ? phrasePlayPause() : startPhrasePlay()));
-  // см. тот же комментарий в renderTourPlayer() — «on» только пока реально идёт озвучка, не на паузе
+  // «on» только пока реально идёт озвучка, не на паузе
   main.classList.toggle("on", !!play && !play.paused);
   bar.replaceChildren(b(PREV_ICON, "Назад", () => phrasePlayGo(-1), !play), main,
     b(NEXT_ICON, "Дальше", () => phrasePlayGo(1), !play), b(STOP_ICON, "Стоп", stopPhrasePlay, !play));
