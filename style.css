@@ -642,6 +642,14 @@ span.tour-flag {
   background: var(--light-hover);
 }
 
+/* выделение стрелками вверх/вниз из поля поиска — по образцу .tour-row.active
+   (Грегори, 2026-10-11: «переходить из окна поиска в окно списка запросов стрелой вниз») */
+.search-item.active {
+  background: var(--light-hover);
+  outline: 2px solid var(--light-accent);
+  outline-offset: -2px;
+}
+
 .search-item-title {
   font-size: 0.9rem;
 }

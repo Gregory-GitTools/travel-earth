@@ -5555,6 +5555,12 @@ let searchMarker = null;
 // на место, без нового обращения к Nominatim. Показывается в пустой строке поиска
 const SEARCH_HISTORY_KEY = "travel-earth-search-history";
 const SEARCH_HISTORY_SIZE = 20;
+// стрелками вниз/вверх из поля поиска — по списку истории/результатов, как tourCursor
+// у списка экскурсий (Грегори, 2026-10-11: «перейти из окна поиска в окно списка запросов
+// стрелой вниз и двигаться по списку»). Храним display_name строки, а не сам элемент —
+// при перерисовке списка (новый поиск, удаление строки истории) ссылка на старый <button> станет
+// мёртвой, а по ключу можно просто не найти совпадения и остаться без выделения
+let searchCursor = null;
 
 function loadSearchHistory() {
   try { return JSON.parse(localStorage.getItem(SEARCH_HISTORY_KEY)) || []; } catch { return []; }
@@ -5574,6 +5580,7 @@ function rememberSearch(r) {
 function searchItem(r) {
   const item = document.createElement("button");
   item.className = "search-item";
+  item.dataset.key = r.display_name;
   const [title, ...rest] = r.display_name.split(", ");
   item.innerHTML = `<span class="search-item-title"></span><span class="search-item-sub"></span>`;
   item.firstChild.textContent = title;
@@ -5583,6 +5590,7 @@ function searchItem(r) {
 }
 
 function showSearchHistory() {
+  searchCursor = null;
   const history = loadSearchHistory();
   if (el("search-input").value.trim() || !history.length) { clearSearchResults(); return; }
   const clear = document.createElement("button");
@@ -5653,11 +5661,23 @@ function dragHistoryRow(evt, row) {
 
 
 function clearSearchResults() {
+  searchCursor = null;
   el("search-results").replaceChildren();
   el("search-results").hidden = true;
 }
 
+// подсветка строки, выбранной стрелками вверх/вниз из поля поиска — и для свежих результатов
+// Nominatim, и для истории (там .search-item лежит внутри .search-history-row)
+function markSearchCursor() {
+  for (const item of el("search-results").querySelectorAll(".search-item")) {
+    const on = item.dataset.key === searchCursor;
+    item.classList.toggle("active", on);
+    if (on) item.scrollIntoView({ block: "nearest" });
+  }
+}
+
 async function runSearch() {
+  searchCursor = null;
   const q = el("search-input").value.trim();
   if (!q) return;
   const params = new URLSearchParams({ q, format: "jsonv2", limit: "8", "accept-language": uiLanguageCode() });
@@ -5702,8 +5722,21 @@ function showSearchResult(r, title) {
 
 el("search-input").addEventListener("keydown", (evt) => {
   if (tourMode) { tourKeydown(evt); return; }
-  if (evt.key === "Enter") runSearch();
-  if (evt.key === "Escape") clearSearchResults();
+  // стрелками — по списку истории/результатов под полем поиска, так же как tourKeydown
+  // делает это для списка экскурсий (Грегори, 2026-10-11)
+  const items = [...el("search-results").querySelectorAll(".search-item")];
+  const i = items.findIndex((it) => it.dataset.key === searchCursor);
+  if (evt.key === "ArrowDown" && items.length) {
+    evt.preventDefault();
+    searchCursor = items[Math.min(items.length - 1, i + 1)].dataset.key;
+    markSearchCursor();
+  } else if (evt.key === "ArrowUp" && i >= 0) {
+    evt.preventDefault();
+    searchCursor = i > 0 ? items[i - 1].dataset.key : null;
+    markSearchCursor();
+  } else if (evt.key === "Enter") {
+    if (i >= 0) { evt.preventDefault(); items[i].click(); } else runSearch();
+  } else if (evt.key === "Escape") clearSearchResults();
 });
 el("search-input").addEventListener("input", () => {
   el("search-clear-btn").hidden = !el("search-input").value;
