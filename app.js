@@ -2368,6 +2368,12 @@ function chooseTour(t) {
   el("search-input").value = "";
   el("search-clear-btn").hidden = true;
   el("search-input").blur();
+  // «Мои фото» включаются заодно с экскурсиями (см. комментарий в toggleOverlay), но та логика
+  // срабатывает только при переходе «tours» из выключенного состояния во включённое — если список
+  // уже был открыт (tours уже true) и фото выключили вручную, клик по конкретной экскурсии эту
+  // логику не задевал (Грегори: «кликнул на экскурсию, мои фото не активизируются»). Проверяем
+  // здесь напрямую, на каждый выбор экскурсии, а не только на открытие списка
+  if (!activeOverlays.has("myphotos")) toggleOverlay("myphotos");
   // выбранная экскурсия сразу и звучит (Грегори: «запускай озвучку сразу после открытия,
   // останавливай после закрытия»); остановить или перейти — кнопками плеера
   startTourPlay(t.id, -1);
@@ -2952,7 +2958,11 @@ function closeTourToList() {
 // название». Пауза = остановить чтение; продолжение — с начала текущей остановки (пауза
 // онлайн-голосов в Chrome ненадёжна). Любая кнопка «Послушать» или закрытие панели — стоп
 let tourPlay = null; // { id, stops, i, paused, run }
-const PAUSE_ICON = `<svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>`;
+// кнопка «идёт озвучка» — раньше тут были две полоски паузы, теперь лицо говорящего человека +
+// звуковые волны (Грегори: «не могу привыкнуть к синей кнопке озвучить... иконку лучше лицо
+// говорящего человека»); сам PLAY_BIG_ICON (треугольник, запустить) не трогали — жалоба была
+// именно про иконку состояния «сейчас играет», не про «нажми, чтобы начать»
+const TALK_ICON = `<svg viewBox="0 0 24 24" width="18" height="18"><circle cx="9" cy="10" r="4" fill="currentColor"/><path fill="currentColor" d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6v1H3v-1z"/><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" d="M16.5 8c1.3 1.1 1.3 5 0 7M19.5 6c2.2 2.1 2.2 8 0 10"/></svg>`;
 const PREV_ICON = `<svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M6 6h2v12H6zm3.5 6 8.5 6V6z"/></svg>`;
 const NEXT_ICON = `<svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="m6 18 8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg>`;
 const STOP_ICON = `<svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M6 6h12v12H6z"/></svg>`;
@@ -3161,7 +3171,7 @@ function renderTourPlayer() {
     x.addEventListener("click", fn);
     return x;
   };
-  const main = b(play && !play.paused ? PAUSE_ICON : PLAY_BIG_ICON,
+  const main = b(play && !play.paused ? TALK_ICON : PLAY_BIG_ICON,
     !play ? "Аудиогид: рассказ с переходами по точкам и слайд-шоу" : play.paused ? "Продолжить" : "Пауза",
     () => (play ? tourPlayPause() : startTourPlay(id, -1)));
   main.classList.toggle("on", !!play);
@@ -3398,20 +3408,22 @@ const TOUR_TEXT_KEY = "travel-earth.tour-text", TOUR_MIN_KEY = "travel-earth.tou
 const TOUR_LIST_MIN_KEY = "travel-earth.tour-list-min";
 // была пара мелких шевронов «уголком друг к другу» (18x18, два наконечника) — не разглядеть,
 // куда они повёрнуты (Грегори, 2026-10-10 продолжение: «одну стрелку вместо знака "рыды". Две
-// мелкие стрелки, которые не разглядишь куда повёрнуты»). Теперь одна крупная стрелка — как у
-// уже одобренного COLLAPSE_ICON/EXPAND_ICON ниже («стрелка большая, хорошая») — но с короткой
-// чёрточкой над/под ней, чтобы не путать со сворачиванием всей панели: чёрточка — это
-// сворачиваемый текст, а стрелка показывает, в какую сторону он уезжает
+// мелкие стрелки, которые не разглядишь куда повёрнуты»). Теперь одна крупная стрелка, в том же
+// жирном начертании, что и COLLAPSE_ICON/EXPAND_ICON ниже (сам стиль обводки, не форма — та пара
+// стала квадратиком/черточкой, не стрелкой, см. комментарий там) — с короткой чёрточкой над/под
+// ней, чтобы не путать со сворачиванием всей панели: чёрточка — это сворачиваемый текст, а
+// стрелка показывает, в какую сторону он уезжает
 const FOLD_ICON = `<svg viewBox="0 0 24 24" width="22" height="22"><path fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" d="M5 13l7-6 7 6M8 19h8"/></svg>`;
 const UNFOLD_ICON = `<svg viewBox="0 0 24 24" width="22" height="22"><path fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" d="M5 11l7 6 7-6M8 5h8"/></svg>`;
-// один крупный шеврон вверх вместо прежней пары мелких разностильных значков — свернуть (Грегори,
-// 2026-10-10 продолжение: «сам значок мелкий и не однозначный. Может обойдёмся одной, но большой
-// стрелкой вверх/вниз?»). EXPAND_ICON — квадратик (классический значок «развернуть окно», был тут
-// до этой самой правки, на шевроне-вниз его не разглядеть среди остальных стрелок) — тот же
-// квадрат, что был раньше, но в жирном начертании остальных значков (Грегори, следующий раунд:
-// «верни квадратик на место... хочется, чтобы квадрат тоже не отставал»)
-const COLLAPSE_ICON = `<svg viewBox="0 0 24 24" width="22" height="22"><path fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" d="M5 15l7-7 7 7"/></svg>`;
-const EXPAND_ICON = `<svg viewBox="0 0 24 24" width="22" height="22"><rect x="5" y="5" width="14" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="2.5"/></svg>`;
+// кнопка «свернуть окно» (minBtn) — именно эти значки, не стрелка: окно открыто → квадратик,
+// окно свёрнуто → черточка (Грегори, 2026-10-10 продолжение: «кнопка свернуть окно всегда была
+// квадратик и черточка. Открытое окно - квадратик. Свернутое окно - черточка» — предыдущая правка
+// этого же раунда по ошибке поставила сюда шеврон-стрелку, перепутав с соседней парой
+// FOLD_ICON/UNFOLD_ICON выше; названия констант отражают НЕ картинку, а момент показа —
+// COLLAPSE_ICON показывается, пока окно открыто и клик его свернёт (квадратик), EXPAND_ICON —
+// пока свёрнуто и клик развернёт (черточка), см. ниже `min ? EXPAND_ICON : COLLAPSE_ICON`
+const COLLAPSE_ICON = `<svg viewBox="0 0 24 24" width="22" height="22"><rect x="5" y="5" width="14" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="2.5"/></svg>`;
+const EXPAND_ICON = `<svg viewBox="0 0 24 24" width="22" height="22"><path fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" d="M5 12h14"/></svg>`;
 // крестик-крестик того же начертания, что и стрелки выше — раньше был простой текстовый символ
 // «×» (Грегори, 2026-10-10 продолжение: «хочется, чтобы и квадрат, и крестик тоже не отставали»)
 const CLOSE_ICON = `<svg viewBox="0 0 24 24" width="22" height="22"><path fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" d="M6 6l12 12M18 6 6 18"/></svg>`;
@@ -4024,7 +4036,7 @@ function renderPhrasePlayer() {
     x.addEventListener("click", fn);
     return x;
   };
-  const main = b(play && !play.paused ? PAUSE_ICON : PLAY_BIG_ICON,
+  const main = b(play && !play.paused ? TALK_ICON : PLAY_BIG_ICON,
     !play ? "Читать все фразы подряд — с первого раскрытого раздела" : play.paused ? "Продолжить" : "Пауза",
     () => (play ? phrasePlayPause() : startPhrasePlay()));
   main.classList.toggle("on", !!play);

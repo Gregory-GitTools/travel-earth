@@ -1491,14 +1491,16 @@ html:not(.is-mobile) .phone-only {
   background: transparent;
 }
 
+/* кнопка «идёт озвучка» — была синей (--player-blue, как и остальной плеер), Грегори не смог
+   привыкнуть: «не могу привыкнуть к синей кнопки озвучить. Пусть будет светло-серая» — светло-
+   серый такой же, как у обычных info-кнопок (--active-grey), а не у плеера */
 .tour-player .tour-edit.on {
-  background: var(--player-blue);
+  background: var(--active-grey);
   color: #fff;
 }
 
-/* тот же сброс тона при наведении, что у .tour-edit.on (см. выше) — только синим плеера */
 .tour-player .tour-edit.on:hover {
-  background: var(--player-blue-dark);
+  background: var(--active-grey-dark);
 }
 
 /* подпись «Языки» с иконкой слева в строке кнопок — у этой панели нет плеера, поэтому она
