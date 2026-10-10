@@ -271,6 +271,10 @@ el("lang-btn").addEventListener("click", (evt) => {
     if (!tourPanel.hidden) closeTourPanel();
     if (!el("menu-panel").hidden) { el("menu-panel").hidden = true; updatePlacesBtn(); }
   }
+  // фокус — обратно в поле поиска, а не на саму кнопку (Грегори, 2026-10-11, скрин 42.png).
+  // Историю запросов при этом НЕ закрываем: иначе фокус сам же открыл бы её заново (см. focus
+  // ниже) — она просто ложится под список языков, выше которого теперь .lang-menu (z-index в CSS)
+  el("search-input").focus();
 });
 document.addEventListener("click", (evt) => {
   if (!el("lang-menu").contains(evt.target)) el("lang-menu").hidden = true;
@@ -5730,6 +5734,7 @@ el("search-btn").addEventListener("click", () => {
     el("search-clear-btn").hidden = !q;
   }
   if (!tourPanel.hidden) closeTourPanel();
+  el("search-input").focus(); // фокус обратно в поле поиска, а не на саму кнопку (Грегори, 2026-10-11, скрин 42.png)
   runSearch();
 });
 el("search-tour-btn").addEventListener("click", () => setTourMode(!tourMode));
