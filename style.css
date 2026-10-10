@@ -447,6 +447,23 @@ html, body {
   background: #9aa0a6;
 }
 
+/* на тач-устройствах системная полоса (тонкая, своя у ОС) всё равно норовит промелькнуть поверх
+   нашего fixed-ползунка во время скролла — рядом друг с другом они читались как «полоска двойная»
+   (Грегори, 2026-10-11); тут её прячем насовсем, раз свой ползунок уже решает ту же задачу —
+   scrollbar-gutter (зарезервированное место, чтобы кнопки шапки не прыгали) при этом не трогается,
+   он не зависит от видимости самой полосы */
+@media (pointer: coarse) {
+  .tour-list,
+  .tour-panel {
+    scrollbar-width: none;
+  }
+
+  .tour-list::-webkit-scrollbar,
+  .tour-panel::-webkit-scrollbar {
+    display: none;
+  }
+}
+
 .tour-row {
   display: flex;
   align-items: center;

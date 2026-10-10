@@ -2925,12 +2925,20 @@ function attachCustomScrollbar(panel) {
     track.hidden = !overflow;
     if (!overflow) return;
     const r = panel.getBoundingClientRect();
-    track.style.left = `${r.right - 16}px`;
-    track.style.top = `${r.top}px`;
-    track.style.height = `${r.height}px`;
-    const thumbH = Math.max(24, (panel.clientHeight / panel.scrollHeight) * r.height);
+    // трек — fixed-элемент вне панели, собственным скруглением (border-radius:12px у .tour-panel/
+    // .search-results) не обрезается, поэтому прямоугольный край ровно по r.top/r.right торчал
+    // мимо скруглённого угла — «верхняя часть полосы... уходит куда-то вверх», «у крестика видны
+    // фантомы» (Грегори, 2026-10-11); CORNER — тот же радиус, трек теперь вставлен внутрь него.
+    // Плюс небольшой отступ от самого края (EDGE_GAP), а не впритык («с самого края полосу надо
+    // убирать»)
+    const CORNER = 12, EDGE_GAP = 3;
+    const trackH = r.height - CORNER * 2;
+    track.style.left = `${r.right - 16 - EDGE_GAP}px`;
+    track.style.top = `${r.top + CORNER}px`;
+    track.style.height = `${trackH}px`;
+    const thumbH = Math.max(24, (panel.clientHeight / panel.scrollHeight) * trackH);
     const maxScroll = panel.scrollHeight - panel.clientHeight;
-    const thumbY = (panel.scrollTop / maxScroll) * (r.height - thumbH);
+    const thumbY = (panel.scrollTop / maxScroll) * (trackH - thumbH);
     thumb.style.height = `${thumbH}px`;
     thumb.style.transform = `translateY(${thumbY}px)`;
   };
