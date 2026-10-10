@@ -1107,10 +1107,16 @@ function openPhotoGallery(f) {
   openSideWindow(`gallery.html?t=${Date.now()}`, "travel-earth-gallery");
 }
 
-// отдельное окно по центру экрана, 80 % × 85 %; с тем же именем — то же окно, перезагружается
+// отдельное окно по центру ТЕКУЩЕГО окна браузера, 80 % × 85 % от него — не от всего экрана: если
+// окно браузера не развёрнуто на весь экран или сдвинуто, попап, посчитанный от screen.availWidth/
+// Height, открывался независимо от него и мог оказаться крупнее и вне его границ, закрывая всю карту
+// (Грегори, 2026-10-11: «большие окна альбома и навигации по камерам покидают окна браузера и
+// закрывают всю карту»). С тем же именем — то же окно, перезагружается
 function openSideWindow(url, name) {
-  const w = Math.round(screen.availWidth * 0.8), h = Math.round(screen.availHeight * 0.85);
-  const win = window.open(url, name, `popup,width=${w},height=${h},left=${Math.round((screen.availWidth - w) / 2)},top=${Math.round((screen.availHeight - h) / 2)}`);
+  const bw = window.outerWidth || screen.availWidth, bh = window.outerHeight || screen.availHeight;
+  const bx = window.screenX || 0, by = window.screenY || 0;
+  const w = Math.round(bw * 0.8), h = Math.round(bh * 0.85);
+  const win = window.open(url, name, `popup,width=${w},height=${h},left=${Math.round(bx + (bw - w) / 2)},top=${Math.round(by + (bh - h) / 2)}`);
   win?.focus();
   return win;
 }
