@@ -3559,7 +3559,12 @@ function renderTourPanel(id) {
   const textBtn = Object.assign(document.createElement("button"), { className: "tour-edit" });
   const setTextBtn = () => {
     const folded = tourPanel.classList.contains("titles");
-    textBtn.innerHTML = folded ? UNFOLD_ICON : FOLD_ICON;
+    // раньше тут иконка показывала действие по клику (вниз = «раскрыть», вверх = «свернуть»,
+    // как у per-section стрелок) — Грегори сравнил с развёрнутым окном на ПК и явно попросил
+    // другое: у кнопки с подписью «Показать текст пунктов» стрелка должна смотреть вверх
+    // («скриншот с ПК. окно развёрнуто. стрелка показать текст пунктов должна показывать вверх»,
+    // 2026-10-11) — поэтому пара иконок здесь зеркальная по отношению к paired-секциям
+    textBtn.innerHTML = folded ? FOLD_ICON : UNFOLD_ICON;
     textBtn.title = folded ? "Показать текст пунктов" : "Только пункты — свернуть текст";
   };
   textBtn.addEventListener("click", () => {
