@@ -385,9 +385,16 @@ const OVERLAYS = [
 ];
 const OVERLAYS_STORAGE_KEY = "travel-earth.overlays";
 // при первом запуске альбомы из репозитория видны сразу (Грегори: «видны всегда»)
-// при первом открытии — сразу экскурсии (и с ними разговорники) и свои фото (Грегори: «экскурсия
-// и языковой пакет запускаются сразу после открытия»); дальше — как оставил пользователь
-const activeOverlays = new Set(JSON.parse(localStorage.getItem(OVERLAYS_STORAGE_KEY) || '["myphotos", "tours"]'));
+const activeOverlays = new Set(JSON.parse(localStorage.getItem(OVERLAYS_STORAGE_KEY) || '["myphotos"]'));
+// «Экскурсии» всегда стартуют пассивно — не запоминаются между запусками, только карта (базовый
+// слой) и обычные слои это делают (Грегори, 2026-10-10 продолжение: «давай стартовать в пассивном
+// режиме... активны только карты и слои, в том смысле что они запоминают последнее состояние»);
+// раньше «tours» была в дефолтном наборе и восстанавливалась из localStorage как остальные слои —
+// из-за этого при старте значки экскурсий уже были на карте, но кнопка/окно не отражали этого
+// («кнопка слоя не выделена... при нажатии не меняется, а экскурсии выключаются» — первый клик
+// на самом деле ВЫключал уже активный, просто невидимый флаг). delete(), а не просто не класть
+// в дефолт — чистит и то, что уже сохранено в localStorage у самого Грегори с прошлых сессий
+activeOverlays.delete("tours");
 
 // шрифт подписей высот — тот же, что у подписей самой карты: у каждого стиля свой
 // сервер шрифтов, и чужого шрифта на нём может не быть
@@ -532,7 +539,14 @@ const TRAIL_POI_ICONS = {
     white: "M10.7 5.8h2.6v1.5h-2.6z M9 12.5h6v1.8H9z M8.6 16.3h6.8v1.8H8.6z" },
 };
 // на кнопках «Пляжи» и «Сёрфинг» — те же значки, что на карте
-const glyphSvg = (kind) => `<svg viewBox="0 0 24 24" width="18" height="18"><path fill="${TRAIL_POI_ICONS[kind].color}" d="${TRAIL_POI_ICONS[kind].path}"/></svg>`;
+// тот же красный кант, что и у значков на карте (outline в TRAIL_POI_ICONS) — на белой плашке
+// чипа бледно-жёлтая заливка без канта теряется так же, как раньше терялась на светлом береге
+// (Грегори, 2026-10-10 продолжение: «на кнопках в слоях и пляжей и кайтов нет обводки»)
+const glyphSvg = (kind) => {
+  const { color, outline, path } = TRAIL_POI_ICONS[kind];
+  const stroke = outline ? ` stroke="${outline}" stroke-width="1"` : "";
+  return `<svg viewBox="0 0 24 24" width="18" height="18"><path fill="${color}"${stroke} d="${path}"/></svg>`;
+};
 OVERLAYS.find((o) => o.id === "beaches").icon = glyphSvg("beach");
 OVERLAYS.find((o) => o.id === "surf").icon = glyphSvg("kitesurfing");
 // вид точки из тайла: class, а у информации и достопримечательностей — ещё и subclass
@@ -3359,8 +3373,11 @@ const TOUR_TEXT_KEY = "travel-earth.tour-text", TOUR_MIN_KEY = "travel-earth.tou
 const TOUR_LIST_MIN_KEY = "travel-earth.tour-list-min";
 const FOLD_ICON = `<svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M7.41 18.59 8.83 20 12 16.83 15.17 20l1.41-1.41L12 14l-4.59 4.59zm9.18-13.18L15.17 4 12 7.17 8.83 4 7.41 5.41 12 10l4.59-4.59z"/></svg>`;
 const UNFOLD_ICON = `<svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M12 5.83 15.17 9l1.41-1.41L12 3 7.41 7.59 8.83 9 12 5.83zm0 12.34L8.83 15l-1.41 1.41L12 21l4.59-4.59L15.17 15 12 18.17z"/></svg>`;
-const COLLAPSE_ICON = `<svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M19 13H5v-2h14v2z"/></svg>`;
-const EXPAND_ICON = `<svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M19 19H5V5h14v14zM5 3a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2H5z"/></svg>`;
+// один крупный шеврон вверх/вниз вместо прежней пары мелких разностильных значков — стрелка
+// вверх значит «свернуть», вниз значит «развернуть» (Грегори, 2026-10-10 продолжение: «сам
+// значок мелкий и не однозначный. Может обойдёмся одной, но большой стрелкой вверх/вниз?»)
+const COLLAPSE_ICON = `<svg viewBox="0 0 24 24" width="22" height="22"><path fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" d="M5 15l7-7 7 7"/></svg>`;
+const EXPAND_ICON = `<svg viewBox="0 0 24 24" width="22" height="22"><path fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" d="M5 9l7 7 7-7"/></svg>`;
 const CHEVRON_ICON = `<svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M16.59 8.59 12 13.17 7.41 8.59 6 10l6 6 6-6z"/></svg>`;
 // значок папки у строки группы экскурсий в списке (Грегори, 2026-10-04): у страны есть флаг, у
 // группы в ней — ничего, отличить от одиночной экскурсии можно было только по жирному капсу
@@ -4269,6 +4286,13 @@ function toggleOverlay(id) {
   } else {
     activeOverlays.add(id);
     addOverlay(id);
+    // «Мои фото» задуманы для показа вместе с экскурсиями — включаем их заодно, если выключены
+    // (Грегори, 2026-10-10 продолжение: «при нажатии на экскурсии... всегда активизировать Мои
+    // фото, они для этого сделаны»); однонаправленно — выключение экскурсий своих фото не трогает
+    if (id === "tours" && !activeOverlays.has("myphotos")) {
+      activeOverlays.add("myphotos");
+      addOverlay("myphotos");
+    }
   }
   localStorage.setItem(OVERLAYS_STORAGE_KEY, JSON.stringify([...activeOverlays]));
   renderOverlayMenu();
@@ -5512,13 +5536,9 @@ el("search-btn").addEventListener("click", () => {
   if (tourList.hidden) { tourList.hidden = false; renderTourList(); } else cur?.click();
 });
 el("search-tour-btn").addEventListener("click", () => setTourMode(!tourMode));
-// после перезапуска режим поиска — как был (слой «Экскурсии» помнится в списке включённых
-// слоёв), но значок кнопки не включаем сам по себе — окно (список/панель) ещё не открыто, а
-// активной должна быть кнопка именно открытого окна (Грегори, 2026-10-10), не режима поиска
-if (activeOverlays.has("tours")) {
-  tourMode = true;
-  el("search-input").placeholder = "Найти экскурсию";
-}
+// «Экскурсии» больше не восстанавливаются после перезапуска (см. activeOverlays.delete("tours")
+// выше) — tourMode просто остаётся false по умолчанию (Грегори, 2026-10-10 продолжение,
+// «пассивный режим»), этот блок раньше включал его из сохранённого состояния слоя
 el("search-clear-btn").addEventListener("click", () => {
   if (tourMode) {
     el("search-input").value = "";
