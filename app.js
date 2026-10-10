@@ -2328,6 +2328,9 @@ function setTourMode(on) {
   el("search-clear-btn").hidden = true;
   clearSearchResults();
   tourCursor = null;
+  // открытие списка экскурсий закрывает панель справа (деталь экскурсии или «Языки») —
+  // одновременно открыта только одна панель/список (Грегори, 2026-10-10 продолжение)
+  if (on && !tourPanel.hidden) closeTourPanel();
   tourList.hidden = !on;
   // экскурсии на карте — только пока кнопка нажата (Грегори)
   if (on !== activeOverlays.has("tours")) toggleOverlay("tours");
@@ -2487,6 +2490,11 @@ function renderLanguagesList() {
   stopSpeech();
   if (tourPanelId) { tourPanelId = null; showTourStopsOf(null); }
   tourList.hidden = true;
+  // «Языки» закрывает список экскурсий напрямую (не через setTourMode), но tourMode без этого
+  // оставался true — следующий клик по кнопке «Экскурсии» звал setTourMode(!tourMode), то есть
+  // setTourMode(false), и список не открывался заново, а молча гасил уже спрятанные окна
+  // (Грегори, 2026-10-10 продолжение: «с кнопками неразбениха»)
+  tourMode = false;
   tourCursor = null;
   const h = (tag, cls, text) => Object.assign(document.createElement(tag), { className: cls || "", textContent: text || "" });
   const byLang = new Map();

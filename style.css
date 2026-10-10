@@ -20,8 +20,10 @@
      красный — тот же, что у номеров остановок и значков экскурсий (TOUR_ICON_COLOR в app.js) */
   --tour-red: #e53935;
   --tour-red-dark: #c62828;
-  --lang-green: #66bb6a;
-  --lang-green-dark: #4e9d52;
+  /* ещё светлее прежнего (Грегори, 2026-10-10 продолжение: «цвет близко не тот, ещё посветлей») —
+     старый основной тон ушёл в -dark, как раньше с --player-blue выше */
+  --lang-green: #81c784;
+  --lang-green-dark: #66bb6a;
   --bg: #1b1b1f;
   --panel: #26262c;
   --accent: #4da3ff;
@@ -313,6 +315,10 @@ html, body {
   min-height: 120px;
   padding: 0 16px 18px;
   background: var(--light-panel);
+  /* без этого шапка наследовала светлый цвет текста тёмной темы страницы (var(--text)) поверх
+     белого фона — заголовок «Экскурсии» был почти не виден (Грегори, 2026-10-10 продолжение:
+     «надпись не видно»); строки списка этого не показывали — у них свой color (.tour-row) */
+  color: var(--light-text);
   scrollbar-width: thin;
   scrollbar-color: #c4c7c5 transparent;
   /* родной уголок resize убран — свой «зуммер» вместо него, крупный и по центру нижнего края
@@ -774,13 +780,15 @@ span.tour-flag {
   background: var(--light-hover);
 }
 
+/* синий, как уже подсвеченные чипы слоёв внутри (--player-blue) — Грегори, 2026-10-10
+   продолжение: «кнопка слоёв не стала синей», раньше тут был нейтральный серый */
 .places-btn.active {
-  background: var(--active-grey);
+  background: var(--player-blue);
   color: #fff;
 }
 
 .places-btn.active:hover {
-  background: var(--active-grey-dark);
+  background: var(--player-blue-dark);
 }
 
 /* панель «Места и слои»: две колонки чипов под кнопкой — места слева, слои справа (2026-10-04,
