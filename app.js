@@ -3310,7 +3310,92 @@ function chooseAlbum(albumId) {
   renderAlbumPanel(albumId);
 }
 
+// слайдшоу альбома в окне галереи: плей/пауза/назад/дальше/стоп — тот же набор кнопок, что у
+// аудиогида экскурсии (Грегори, 2026-10-12: «а должно быто одинаково. Это и значит — такая
+// же»), только вместо речи — автопоказ фото в travel-earth-gallery (окно переоткрывается на
+// нужном снимке тем же приёмом, что и при обычном клике по фото, см. openAlbumGallery выше)
+let albumPlay = null; // { albumId, i, paused }
+let albumPlayTimer = null;
+function albumPlaySchedule() {
+  clearInterval(albumPlayTimer);
+  albumPlayTimer = setInterval(() => albumPlayGo(1), 4000);
+}
+function startAlbumPlay(albumId) {
+  const a = myAlbums.get(albumId);
+  if (!a?.files.length) return;
+  albumPlay = { albumId, i: 0, paused: false };
+  openAlbumGallery(albumId, a.files[0]);
+  albumPlaySchedule();
+  renderAlbumPlayer();
+}
+function stopAlbumPlay() {
+  if (!albumPlay) return;
+  clearInterval(albumPlayTimer);
+  albumPlay = null;
+  renderAlbumPlayer();
+}
+function albumPlayPause() {
+  if (!albumPlay) return;
+  albumPlay.paused = !albumPlay.paused;
+  if (albumPlay.paused) clearInterval(albumPlayTimer); else albumPlaySchedule();
+  renderAlbumPlayer();
+}
+function albumPlayGo(delta) {
+  if (!albumPlay) return;
+  const a = myAlbums.get(albumPlay.albumId);
+  if (!a?.files.length) { stopAlbumPlay(); return; }
+  albumPlay.i = (albumPlay.i + delta + a.files.length) % a.files.length;
+  albumPlay.paused = false;
+  openAlbumGallery(albumPlay.albumId, a.files[albumPlay.i]);
+  albumPlaySchedule();
+  renderAlbumPlayer();
+}
+// полоска плеера в шапке альбома — по образцу renderTourPlayer (экскурсии), но треугольник
+// вместо говорящего лица (Грегори, Thread 1: «вместо озвучки... должен быть треугольник (плай)»)
+function renderAlbumPlayer() {
+  const bar = albumPanel.querySelector(".tour-player");
+  if (!bar) return;
+  const id = albumPanelId;
+  const play = albumPlay?.albumId === id ? albumPlay : null;
+  const b = (icon, title, fn, off) => {
+    const x = Object.assign(document.createElement("button"), { className: "tour-edit", title, innerHTML: icon, disabled: !!off });
+    x.addEventListener("click", fn);
+    return x;
+  };
+  const main = b(PLAY_ICON, !play ? "Слайдшоу альбома" : play.paused ? "Продолжить" : "Пауза",
+    () => (play ? albumPlayPause() : startAlbumPlay(id)));
+  main.classList.toggle("on", !!play && !play.paused);
+  bar.replaceChildren(b(PREV_ICON, "Назад", () => albumPlayGo(-1), !play), main,
+    b(NEXT_ICON, "Дальше", () => albumPlayGo(1), !play), b(STOP_ICON, "Стоп", stopAlbumPlay, !play));
+  const label = albumPanel.querySelector(".tour-player-label");
+  const a = myAlbums.get(id);
+  if (label) label.textContent = play && a ? `${play.i + 1} / ${a.files.length} · фото` : "";
+}
+// справка альбома — пока только счётчик и диапазон дат; сюда же позже лягут группировка по
+// дням/геолокации/странам/городам и .json-манифест (Грегори, Thread 1: «это пока пустое»)
+function albumHelpButton(albumId) {
+  const b = Object.assign(document.createElement("button"), { className: "tour-edit tour-help-btn", title: "Об альбоме", innerHTML: INFO_ICON });
+  b.addEventListener("click", () => {
+    const open = albumPanel.querySelector(".tour-help");
+    if (open) { open.remove(); b.classList.remove("on"); return; }
+    const a = myAlbums.get(albumId);
+    if (!a) return;
+    const dates = a.files.map((id) => myFiles.get(id)?.rec?.date).filter(Boolean).sort();
+    const fmt = (t) => new Date(t).toLocaleDateString("ru");
+    const range = dates.length ? (dates[0] === dates[dates.length - 1] ? fmt(dates[0]) : `${fmt(dates[0])} – ${fmt(dates[dates.length - 1])}`) : "";
+    const box = Object.assign(document.createElement("div"), { className: "tour-help" });
+    box.append(Object.assign(document.createElement("div"), { className: "tour-help-title", textContent: a.name }));
+    const row = Object.assign(document.createElement("div"), { className: "tour-help-row" });
+    row.append(Object.assign(document.createElement("span"), { textContent: `${a.files.length} фото${range ? " · " + range : ""}` }));
+    box.append(row);
+    b.closest(".tour-head").after(box);
+    b.classList.add("on");
+  });
+  return b;
+}
+
 function closeAlbumPanel() {
+  stopAlbumPlay();
   albumPanel.hidden = true;
   albumPanelId = null;
 }
@@ -3326,25 +3411,22 @@ function closeAlbumPanelToList() {
   });
 }
 
-// панель одного альбома: шапка — значок+название слева, треугольник плеера (как у «Мои
-// альбомы», но тут он всегда включён и запускает именно этот альбом), свернуть/закрыть справа;
-// ниже — список снимков с ленивыми миниатюрами (та же серийная очередь + IntersectionObserver,
-// что в gallery.html, но без window.opener — мы в том же окне, что и myFileThumb). Щелчок по
-// снимку и треугольник в шапке — оба открывают фотогалерею (слайд-шоу), саму панель они не
-// трогают (Грегори, 2026-10-11 продолжение: «только после клика на треугольник в этом окне
-// запускается просмотр альбома»)
+// панель одного альбома: оформлена по тому же принципу, что и панель экскурсии — тот же
+// плеер-кластер (назад/плей-пауза/дальше/стоп, только треугольник вместо лица), (i) и ▽ на тех
+// же местах, свернуть/закрыть справа (Грегори, 2026-10-12: «а должно быто одинаково. Это и
+// значит — такая же»). Нет аналога только у 📷-кнопки экскурсии — она переключает отдельную
+// ленту фото под картой, а у альбома своей ленты в панели больше нет (Грегори, тем же
+// раундом: «у альбома и так сплошная лента фото [на карте]... убирай! одна запись названия
+// альбома») — список снимков панели убран целиком, панель показывает только шапку с названием;
+// ▽ стоит про запас под будущую группировку снимков (пока отключена — нечего сворачивать)
 function renderAlbumPanel(albumId) {
   const a = myAlbums.get(albumId);
   if (!a) { closeAlbumPanel(); return; }
+  if (albumPlay && albumPlay.albumId !== albumId) stopAlbumPlay();
   albumPanelId = albumId;
   const h = (tag, cls, text) => Object.assign(document.createElement(tag), { className: cls || "", textContent: text || "" });
   const head = h("div", "tour-head");
   const bar = h("div", "tour-bar");
-  const player = h("div", "tour-player");
-  const playBtn = Object.assign(document.createElement("button"), { className: "tour-edit",
-    title: "Открыть фотогалерею", innerHTML: PLAY_ICON });
-  playBtn.addEventListener("click", () => openAlbumGallery(albumId, null));
-  player.append(playBtn);
   const minBtn = Object.assign(document.createElement("button"), { className: "tour-edit" });
   const setMinBtn = () => {
     const min = albumPanel.classList.contains("min");
@@ -3361,53 +3443,20 @@ function renderAlbumPanel(albumId) {
   close.addEventListener("click", closeAlbumPanelToList);
   albumPanel.classList.toggle("min", localStorage.getItem(ALBUM_PANEL_MIN_KEY) === "1");
   setMinBtn();
-  bar.append(player, h("span", "tour-bar-gap"), minBtn, close);
+  const foldBtn = Object.assign(document.createElement("button"), { className: "tour-edit tour-text-btn",
+    title: "Группировка снимков (по дням, местам) — скоро", innerHTML: FOLD_ICON, disabled: true });
+  bar.append(h("div", "tour-player"), h("span", "tour-bar-gap"), albumHelpButton(albumId), foldBtn, minBtn, close);
   const titleRow = h("div", "tour-title-row");
   const icon = h("span", "tour-row-pin tour-title-icon");
   icon.innerHTML = CHIP_ICONS.myphotos;
   const title = h("h2", "", a.name);
   title.title = a.name;
   titleRow.append(icon, title);
-  head.append(bar, titleRow);
-  const nodes = [head];
-  if (!a.files.length) {
-    nodes.push(h("div", "tour-list-empty", "В альбоме нет фото"));
-  } else {
-    const cells = a.files.map((id, i) => {
-      const file = myFiles.get(id);
-      const cell = Object.assign(document.createElement("button"), { className: "tour-row" });
-      cell.dataset.i = i;
-      const thumb = h("span", "album-photo-thumb");
-      thumb.append(document.createElement("img"));
-      const text = h("span", "tour-row-text");
-      text.append(h("span", "tour-row-title-text", file?.name || id));
-      if (file?.rec?.date) text.append(h("span", "tour-row-sub", new Date(file.rec.date).toLocaleDateString("ru")));
-      cell.append(thumb, text);
-      cell.addEventListener("click", () => openAlbumGallery(albumId, id));
-      return cell;
-    });
-    nodes.push(...cells);
-    const thumbQueue = []; // [id, imgEl], по одной — большой альбом иначе вешает браузер (makeMyThumb)
-    let thumbBusy = false;
-    const pumpThumbs = () => {
-      if (thumbBusy || !thumbQueue.length) return;
-      thumbBusy = true;
-      const [id, img] = thumbQueue.shift();
-      myFileThumb(id).then((url) => { img.src = url; }).catch(() => {}).finally(() => { thumbBusy = false; pumpThumbs(); });
-    };
-    const seen = new IntersectionObserver((entries) => {
-      for (const e of entries) {
-        if (!e.isIntersecting) continue;
-        seen.unobserve(e.target);
-        thumbQueue.push([a.files[Number(e.target.dataset.i)], e.target.querySelector("img")]);
-      }
-      pumpThumbs();
-    }, { root: albumPanel, rootMargin: "200px 0px" });
-    for (const c of cells) seen.observe(c);
-  }
-  albumPanel.replaceChildren(...nodes);
+  head.append(bar, titleRow, h("div", "tour-player-label"));
+  albumPanel.replaceChildren(head);
   albumPanel.hidden = false;
   albumPanel.scrollTop = 0;
+  renderAlbumPlayer();
 }
 
 function setAlbumsMode(on) {
