@@ -1409,6 +1409,8 @@ const myAlbums = new Map(); // "album/3" → { id, name, path, files: ["my/12", 
 let myDir = null;
 let myScan = null; // идущий обход
 let myFileSeq = 0, myAlbumSeq = 0;
+// изоляция одного альбома: id альбома, в который сейчас «погружены» (см. setMyAlbumFocus ниже)
+let myAlbumFocus = null;
 let myStatus = "";
 const myData = () => ({ type: "FeatureCollection", features: [
   ...[...myAlbums.values()].filter((a) => a.point).map((a) => ({ type: "Feature", geometry: { type: "Point", coordinates: a.point },
@@ -1472,6 +1474,9 @@ function addMyPhotos(before) {
   map.addLayer({ id: "ov-my-selected", type: "symbol", source: "ov-myphotos", minzoom: photoDotZoom(),
     filter: ["==", ["get", "photo"], selectedPhoto || ""],
     layout: { "icon-image": "photo-selected", "icon-size": 1.4, "icon-allow-overlap": true, "icon-ignore-placement": true } }, before);
+  // смена базовой карты пересоздаёт слои с нуля (см. applyOverlays) — изоляция альбома, если
+  // была включена, не должна из-за этого молча слетать
+  if (myAlbumFocus) setMyAlbumFocus(myAlbumFocus);
   raiseTrailPoi();
   initMyPhotos();
 }
@@ -1947,8 +1952,30 @@ function flyToAlbum(albumId) {
       { padding: { top: 90, bottom: 130, left: 110, right: 90 }, maxZoom: 17, duration: 2500 });
   } else map.flyTo({ center: album.point, zoom: 16, duration: 2500 });
 }
+// изоляция альбома: клик по значку на высоте видимости альбомов скрывает остальные альбомы и
+// их точки/фото, заодно выключает «Фото» и «Снимки улиц» — без отдельного инструмента «режим
+// просмотра альбома» получаем ровно его (Грегори, 2026-10-11: «не создавая новый инструмент мы
+// получим возможность просмотреть альбом»). null — снять ограничение (остальные альбомы снова
+// видны); «Фото»/«Снимки улиц» сами назад не включаются — это отдельное решение Грегори
+function setMyAlbumFocus(albumId) {
+  myAlbumFocus = albumId;
+  const kind = (k) => ["==", ["get", "kind"], k];
+  const restrict = (base) => (albumId ? ["all", base, ["==", ["get", "album"], albumId]] : base);
+  if (map.getLayer("ov-my-albums")) map.setFilter("ov-my-albums", restrict(kind("album")));
+  if (map.getLayer("ov-my-dots")) map.setFilter("ov-my-dots", restrict(kind("photo")));
+  if (map.getLayer("ov-my-photos")) map.setFilter("ov-my-photos", restrict(["all", kind("photo"), ["has", "img"]]));
+}
+// вернулись на высоту, где видны значки альбомов (та же граница, что у maxzoom ov-my-albums) —
+// снимаем изоляцию; moveend, а не zoom — иначе сразу после клика (мы ещё внизу, до начала
+// перелёта flyToAlbum) ограничение снималось бы, не успев примениться
+map.on("moveend", () => { if (myAlbumFocus && map.getZoom() < photoDotZoom()) setMyAlbumFocus(null); });
 onHover("ov-my-albums", (evt) => showAlbumInfo(evt.features[0]));
-map.on("click", "ov-my-albums", (evt) => flyToAlbum(evt.features[0].properties.album));
+map.on("click", "ov-my-albums", (evt) => {
+  const albumId = evt.features[0].properties.album;
+  setMyAlbumFocus(albumId);
+  for (const id of ["photos", "mapillary"]) if (activeOverlays.has(id)) toggleOverlay(id);
+  flyToAlbum(albumId);
+});
 map.on("dblclick", (evt) => {
   const a = albumAt(evt.point);
   if (!a || !canOpenGallery()) return;
@@ -4366,7 +4393,7 @@ function removeOverlay(id) {
   if (id === "terrain3d") map.setTerrain(null);
   if (id === "photos") { selectPhoto(null); updatePhotoStrip(); }
   if (id === "mapillary" && map.getSource("ov-mly-pos")) map.removeSource("ov-mly-pos");
-  if (id === "myphotos") { if (selectedPhoto?.startsWith("my/")) selectPhoto(null); updatePhotoStrip(); }
+  if (id === "myphotos") { if (selectedPhoto?.startsWith("my/")) selectPhoto(null); updatePhotoStrip(); myAlbumFocus = null; }
   if (id === "tours") { closeTourPanel(); updateTourFinder(); }
   for (const sourceId of [`ov-${id}`, `ov-${id}-vec`]) if (map.getSource(sourceId)) map.removeSource(sourceId);
   if (overlay.trails && !trailOverlayActive()) {
