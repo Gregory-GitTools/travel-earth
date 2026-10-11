@@ -2310,6 +2310,13 @@ let tourMode = false;
 const tourList = document.getElementById("tour-list");
 const tourOpen = new Set(); // раскрытые группы: "c:Италия", "g:Италия/Сицилия"
 let tourCursor = null; // ключ выделенной строки
+// самое первое открытие списка экскурсий/языков — сразу разворачиваем до максимума (см.
+// scalePanelHeight выше), а не крошечным по умолчанию; дальше пользователь сам решает размер
+// зуммером — повторно так не делаем, иначе каждое открытие будет «бороться» с его же resize
+// (Грегори, 2026-10-11: «нужно масштабировать Экскурсии и Языки при первом открытии. В других
+// случаях не надо. Иначе начнётся борьба»)
+let tourListAutoScaled = false;
+let langListAutoScaled = false;
 const tourCountry = (t) => t.country || (t.region.includes(",") ? t.region.split(",").pop().trim() : t.region) || "Без страны";
 // флаги — картинками flagcdn: эмодзи-флагов в Windows нет (вместо флага две буквы)
 const COUNTRY_CODES = {
@@ -2381,7 +2388,10 @@ function setTourMode(on) {
   // поднимало клавиатуру (Грегори, 2026-10-11: «фокус попадает в окно поиска... на телефоне это
   // вызывает клавиатуру»), а затем тем же днём Грегори уточнил, что фокус нужен только в самом
   // окне поиска, а не при открытии других окон вообще — убрал совсем, не только на телефоне
-  if (on) renderTourList();
+  if (on) {
+    renderTourList();
+    if (!tourListAutoScaled) { tourListAutoScaled = true; scalePanelHeight(tourList); }
+  }
 }
 
 function chooseTour(t) {
@@ -2650,6 +2660,8 @@ function renderLanguagesList() {
   tourPanel.replaceChildren(...rows);
   tourPanel.hidden = false;
   tourPanel.scrollTop = 0;
+  // первое открытие «Языков» — сразу во весь рост, см. tourListAutoScaled выше
+  if (!langListAutoScaled) { langListAutoScaled = true; scalePanelHeight(tourPanel); }
 }
 
 function markTourCursor() {
@@ -2872,8 +2884,21 @@ new ResizeObserver(() => {
 // оказался в низу и тоже очень маленький. Нужно намного больше и по центру нижнего края окна»).
 // Метка — fixed-элемент сама по себе, не ребёнок панели: renderTourList/renderTourPanel и
 // соседи зовут replaceChildren(...) и стёрли бы её при каждой перерисовке, будь она внутри
+// масштабирование высоты окна: вместо ручного перетаскивания зуммера — сразу переключает между
+// обычным видом (по содержимому, в пределах CSS max-height) и полностью развёрнутым до самого
+// max-height (Грегори, 2026-10-11: «можно сделать масштабирования высоты окон по двойному клику
+// на нижний движок»). minHeight=0 — та же причина, что в pointerdown ниже: снять базовый пол,
+// иначе свёрнутый обратно вид не может стать короче 160/120px
+function scalePanelHeight(panel) {
+  const max = parseFloat(getComputedStyle(panel).maxHeight) || Infinity;
+  const atMax = panel.getBoundingClientRect().height >= max - 1;
+  panel.style.minHeight = "0";
+  if (atMax) panel.style.removeProperty("height");
+  else panel.style.height = `${max}px`;
+}
 function attachResizeHandle(panel) {
   const handle = Object.assign(document.createElement("div"), { className: "panel-resize-handle" });
+  handle.title = "Потянуть — изменить высоту, двойной клик — развернуть/свернуть окно";
   document.body.append(handle);
   const reposition = () => {
     const show = !panel.hidden && !panel.classList.contains("min");
@@ -2926,6 +2951,7 @@ function attachResizeHandle(panel) {
     handle.addEventListener("pointermove", onMove);
     handle.addEventListener("pointerup", onUp, { once: true });
   });
+  handle.addEventListener("dblclick", () => scalePanelHeight(panel));
 }
 attachResizeHandle(tourList);
 attachResizeHandle(tourPanel);
