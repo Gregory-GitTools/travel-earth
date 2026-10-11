@@ -2001,7 +2001,14 @@ function focusAlbum(albumId) {
   for (const id of ["photos", "mapillary"]) if (activeOverlays.has(id)) toggleOverlay(id);
   flyToAlbum(albumId);
 }
-map.on("click", "ov-my-albums", (evt) => focusAlbum(evt.features[0].properties.album));
+// клик по значку альбома на карте теперь, как и клик по строке в «Моих альбомах», открывает
+// панель этого альбома — не только изоляцию+перелёт (Грегори, 2026-10-12: «клик по альбому на
+// карте должен открыть альбом в отдельной панели»); chooseAlbum ниже определена, но hoisted
+map.on("click", "ov-my-albums", (evt) => {
+  const id = evt.features[0].properties.album;
+  focusAlbum(id);
+  chooseAlbum(id);
+});
 map.on("dblclick", (evt) => {
   const a = albumAt(evt.point);
   if (!a || !canOpenGallery()) return;
