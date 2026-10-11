@@ -1837,11 +1837,20 @@ function updateMyThumbs() {
 }
 map.on("idle", updateMyThumbs);
 
-function ensureMyThumb(f) {
-  const id = f.properties.photo;
-  if (f.properties.thumb) return Promise.resolve(f.properties.thumb);
-  if (!myThumbBusy.has(id)) myThumbBusy.set(id, makeMyThumb(id));
+// разовая неудача (редкий сбой чтения файла/EXIF, особенно когда карта быстро летит между
+// разбросанными по разным городам снимками одного альбома — несколько файлов читаются
+// параллельно) не должна прятать снимок навсегда: раньше busy-отметка в myThumbBusy оставалась
+// даже у отклонённого промиса, и такой id больше никогда не попадал в очередь на перечитку
+// (Грегори, 2026-10-11: «фотки с новой локации с этого альбома подгружаются не всегда») —
+// теперь при отказе отметка снимается, следующий проход (idle на карте либо клик в галерее)
+// пробует снова
+function queueMyThumb(id, ready) {
+  if (ready) return Promise.resolve(ready);
+  if (!myThumbBusy.has(id)) myThumbBusy.set(id, makeMyThumb(id).catch((e) => { myThumbBusy.delete(id); throw e; }));
   return myThumbBusy.get(id);
+}
+function ensureMyThumb(f) {
+  return queueMyThumb(f.properties.photo, f.properties.thumb);
 }
 
 async function makeMyThumb(id) {
@@ -1885,9 +1894,7 @@ function myFileThumb(id) {
   const f = myPhotoFeatures.get(id), file = myFiles.get(id);
   if (f) return ensureMyThumb(f);
   if (!file) return Promise.reject(new Error("нет файла"));
-  if (file.thumb) return Promise.resolve(file.thumb);
-  if (!myThumbBusy.has(id)) myThumbBusy.set(id, makeMyThumb(id));
-  return myThumbBusy.get(id);
+  return queueMyThumb(id, file.thumb);
 }
 const myFullUrls = new Map(); // последние открытые оригиналы, id → blob URL
 async function myFileFull(id) {
