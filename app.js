@@ -3188,6 +3188,7 @@ function closeTourToList() {
 // аудиогида в шапке — один треугольник: открывает галерею уже выбранного альбома (albumsSelected —
 // своё состояние, не зависящее от myAlbumFocus — выбор в списке не должен слетать от closeAlbumPanel)
 const ALBUMS_LIST_MIN_KEY = "travel-earth.albums-list-min";
+const ALBUMS_LIST_FOLD_KEY = "travel-earth.albums-list-fold";
 const ALBUM_SORT_KEY = "travel-earth.album-sort";
 let albumSort = localStorage.getItem(ALBUM_SORT_KEY) || "name"; // "name" | "date" | "place"
 const ALBUM_SORT_NEXT = { name: "date", date: "place", place: "name" };
@@ -3244,13 +3245,15 @@ function renderAlbumsList() {
   const head = Object.assign(document.createElement("div"), { className: "tour-head" });
   const bar = Object.assign(document.createElement("div"), { className: "tour-bar" });
   const player = Object.assign(document.createElement("div"), { className: "tour-player" });
+  // иконка альбома вместо треугольника — она же кнопка «открыть галерею»; отдельный значок рядом
+  // с названием окна убрали совсем, он дублировал этот же рисунок (Грегори, Round 65: «вместо
+  // треугольника иконку альбома, а остальные иконки убрать»)
   const playBtn = Object.assign(document.createElement("button"), { className: "tour-edit",
-    title: "Открыть фотогалерею выбранного альбома", innerHTML: PLAY_ICON, disabled: !albumsSelected });
+    title: "Открыть фотогалерею выбранного альбома", innerHTML: CHIP_ICONS.myphotos, disabled: !albumsSelected });
   playBtn.addEventListener("click", () => { if (albumsSelected) openAlbumGallery(albumsSelected, null); });
   player.append(playBtn);
   const label = Object.assign(document.createElement("div"), { className: "tour-list-label" });
-  const titleIcon = Object.assign(document.createElement("span"), { className: "tour-row-pin tour-title-icon", innerHTML: CHIP_ICONS.myphotos });
-  label.append(titleIcon, Object.assign(document.createElement("h2"), { textContent: "Мои альбомы" }));
+  label.append(Object.assign(document.createElement("h2"), { textContent: "Мои альбомы" }));
   const sortBtn = Object.assign(document.createElement("button"), { className: "tour-edit",
     title: albumSortLabel(albumSort), innerHTML: SORT_ICON });
   sortBtn.addEventListener("click", () => {
@@ -3258,12 +3261,11 @@ function renderAlbumsList() {
     localStorage.setItem(ALBUM_SORT_KEY, albumSort);
     renderAlbumsList();
   });
-  // ту попытку (FOLD_ICON/UNFOLD_ICON, подписанную «список») Грегори не узнал — группировки у
-  // альбомов пока нет, фолдить там нечего, а кнопка как сворачивала, так и сворачивает всё окно
-  // до шапки (.tour-list.min, тот же класс, что у Экскурсий/Языков). Возвращаем обычную пару
-  // COLLAPSE_ICON/EXPAND_ICON — ту же, что у всех остальных окон (Грегори, Round 64: «в панели
-  // общего списка альбомов нет кнопки свернуть окно»); отдельная кнопка «свернуть группы»
-  // появится вместе с самой группировкой
+  // две разные кнопки, не одна: «свернуть окно» прячет всё до шапки (.tour-list.min, тот же класс,
+  // что у Экскурсий/Языков), «свернуть список» — только сами строки альбомов, окно остаётся того
+  // же размера/на месте (.rows-folded, см. style.css). Раньше по очереди делали то одну, то
+  // другую — Грегори оба раза замечал пропажу другой (Round 64: «нет кнопки свернуть окно»,
+  // Round 65: «опять пропала кнопка свернуть список») — нужны обе разом
   const minBtn = Object.assign(document.createElement("button"), { className: "tour-edit" });
   const setMinBtn = () => {
     const min = albumsList.classList.contains("min");
@@ -3276,6 +3278,18 @@ function renderAlbumsList() {
     localStorage.setItem(ALBUMS_LIST_MIN_KEY, min ? "1" : "0");
     setMinBtn();
   });
+  const foldBtn = Object.assign(document.createElement("button"), { className: "tour-edit" });
+  const setFoldBtn = () => {
+    const folded = albumsList.classList.contains("rows-folded");
+    foldBtn.innerHTML = folded ? UNFOLD_ICON : FOLD_ICON;
+    foldBtn.title = folded ? "Развернуть список" : "Свернуть список";
+  };
+  foldBtn.addEventListener("click", () => {
+    const folded = !albumsList.classList.contains("rows-folded");
+    albumsList.classList.toggle("rows-folded", folded);
+    localStorage.setItem(ALBUMS_LIST_FOLD_KEY, folded ? "1" : "0");
+    setFoldBtn();
+  });
   // пересканировать папку — список раньше было нечем обновить, кроме как заново открывать выбор
   // папки в настройках (Грегори, Round 64: «список альбомов ничем не обновить»)
   const refreshBtn = Object.assign(document.createElement("button"), { className: "tour-edit",
@@ -3284,10 +3298,12 @@ function renderAlbumsList() {
   refreshBtn.addEventListener("click", () => { if (myDir) startMyScan(myDir); });
   const close = Object.assign(document.createElement("button"), { className: "tour-close", title: "Закрыть", innerHTML: CLOSE_ICON });
   close.addEventListener("click", () => setAlbumsMode(false));
-  bar.append(player, label, Object.assign(document.createElement("span"), { className: "tour-bar-gap" }), refreshBtn, sortBtn, minBtn, close);
+  bar.append(player, label, Object.assign(document.createElement("span"), { className: "tour-bar-gap" }), refreshBtn, sortBtn, foldBtn, minBtn, close);
   head.append(bar);
   albumsList.classList.toggle("min", localStorage.getItem(ALBUMS_LIST_MIN_KEY) === "1");
   setMinBtn();
+  albumsList.classList.toggle("rows-folded", localStorage.getItem(ALBUMS_LIST_FOLD_KEY) === "1");
+  setFoldBtn();
   rows.push(head);
   for (const a of all) albumRow(a);
   if (!all.length) {
@@ -3458,16 +3474,61 @@ function closeAlbumPanelToList() {
   });
 }
 
+// снимки альбома, сгруппированные по дате съёмки — то же дерево-с-раскрытием, что у стран в
+// «Экскурсиях» (Грегори, Round 65: «сделаем выпадающий список с функцией сгруппировать по датам...
+// справа количество фото и стрелкой раскрывающей список с именами фоток. Только вместо страны —
+// дата»); ключ открытости включает albumId, так что раскрытые даты одного альбома не путаются с
+// другим при переключении панели
+const albumDateOpen = new Set();
+function albumDateGroups(a) {
+  const byDate = new Map(); // "2026-09-29" → [id, id…], "" — без даты (EXIF ещё не прочитан/его нет)
+  for (const id of a.files) {
+    const d = myFiles.get(id)?.rec?.date || "";
+    if (!byDate.has(d)) byDate.set(d, []);
+    byDate.get(d).push(id);
+  }
+  return byDate;
+}
+function renderAlbumGroups(albumId) {
+  const a = myAlbums.get(albumId);
+  if (!a) return [];
+  const byDate = albumDateGroups(a);
+  const rows = [];
+  const row = (key, cls, html, onClick) => {
+    const r = Object.assign(document.createElement("button"), { className: `tour-row ${cls}`, innerHTML: html });
+    r.dataset.key = key;
+    r.addEventListener("click", onClick);
+    rows.push(r);
+    return r;
+  };
+  const dateLabel = (d) => (d ? new Date(d).toLocaleDateString("ru", { day: "numeric", month: "long", year: "numeric" }) : "Без даты");
+  const toggle = (key) => () => { albumDateOpen.has(key) ? albumDateOpen.delete(key) : albumDateOpen.add(key); renderAlbumPanel(albumId); };
+  // даты — сначала новые; группа «без даты» — в самом конце, а не вперемешку по пустой строке
+  const dates = [...byDate.keys()].filter(Boolean).sort((x, y) => y.localeCompare(x));
+  if (byDate.has("")) dates.push("");
+  for (const d of dates) {
+    const ids = byDate.get(d);
+    const key = `${albumId}:${d}`;
+    const open = albumDateOpen.has(key);
+    row(key, "tour-row-group", `<span class="tour-row-group-icon">${CHIP_ICONS.myphotos}</span>`
+      + `<span class="tour-row-name">${escapeHtml(dateLabel(d))}</span><span class="tour-row-count">${ids.length}</span>${rowChevron(open)}`, toggle(key));
+    if (!open) continue;
+    for (const id of ids) {
+      const file = myFiles.get(id);
+      row(`${key}:${id}`, "tour-row-item in-group",
+        `<span class="tour-row-text"><span class="tour-row-title">${escapeHtml(file?.name || id)}</span></span>`,
+        () => openAlbumGallery(albumId, id));
+    }
+  }
+  return rows;
+}
+
 // панель одного альбома: оформлена по тому же принципу, что и панель экскурсии — тот же
 // плеер-кластер (назад/плей-пауза/дальше/стоп, только треугольник вместо лица), (i) на том же
 // месте, свернуть/закрыть справа (Грегори, 2026-10-12: «а должно быто одинаково. Это и значит —
-// такая же»). Нет аналога только у 📷-кнопки экскурсии — она переключает отдельную ленту фото под
-// картой, а у альбома своей ленты в панели больше нет (Грегори, тем же раундом: «у альбома и так
-// сплошная лента фото [на карте]... убирай! одна запись названия альбома») — список снимков
-// панели убран целиком, панель показывает только шапку с названием. Кнопку ▽ (группировка
-// снимков) убрали совсем, не оставили отключённой — пустая стрелка сворачивания без самого
-// списка только путала (Грегори, Round 63: «стрелка списка напутана. Списка нет, а она
-// предлагает его свернуть»); вернётся, когда появится сама группировка
+// такая же»). Под шапкой — не сплошная лента (её Грегори убрал, Round 63: «уже есть лента на
+// карте... убирай! одна запись названия альбома»), а раскрывающийся список дат (см.
+// renderAlbumGroups выше, Round 65)
 function renderAlbumPanel(albumId) {
   const a = myAlbums.get(albumId);
   if (!a) { closeAlbumPanel(); return; }
@@ -3500,7 +3561,7 @@ function renderAlbumPanel(albumId) {
   title.title = a.name;
   titleRow.append(icon, title);
   head.append(bar, titleRow, h("div", "tour-player-label"));
-  albumPanel.replaceChildren(head);
+  albumPanel.replaceChildren(head, ...renderAlbumGroups(albumId));
   albumPanel.hidden = false;
   albumPanel.scrollTop = 0;
   renderAlbumPlayer();
