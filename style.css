@@ -1469,51 +1469,6 @@ html:not(.is-mobile) .phone-only {
   background: var(--active-grey);
 }
 
-/* правка файла экскурсии в панели */
-.tour-panel.editing {
-  display: flex;
-  flex-direction: column;
-  height: calc(100vh - 182px); /* правке — вся высота до ленты внизу */
-  resize: none; /* своя фиксированная высота — ручной resize ей мешал бы */
-}
-
-.tour-editor {
-  flex: 1;
-  min-height: 200px;
-  margin-top: 10px;
-  padding: 8px;
-  border: 1px solid #dadce0;
-  border-radius: 8px;
-  background: #fff;
-  color: #222;
-  color-scheme: light; /* у страницы тёмная схема — иначе тёмные полоса прокрутки и рамка фокуса */
-  font: 0.82rem/1.45 Consolas, "Cascadia Mono", monospace;
-  resize: none;
-}
-
-.tour-editor:focus {
-  outline: 2px solid #ef6c00;
-  outline-offset: -1px;
-}
-
-.tour-edit-bar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 8px;
-}
-
-.tour-panel .text-btn {
-  color: #222;
-  background: #f1f3f4;
-  border: 1px solid #dadce0;
-}
-
-.tour-edit-status {
-  color: #d93025;
-  font-size: 0.78rem;
-}
-
 /* обзорная экскурсия: плеер под шапкой и слайд-шоу — негатив светло-синего вместо прежнего
    оранжевого тона-подсветки (Грегори, 2026-10-04: «плеер можно везде сделать на негативе
    светло-синего»): включено — сплошная заливка и белый значок, как у остальных активных кнопок */
@@ -1657,49 +1612,6 @@ html:not(.is-mobile) .phone-only {
 
 .tour-section.current .tour-num {
   background: var(--tour-red-dark);
-}
-
-.tour-path-ask {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-  margin-top: 6px;
-  font-size: 0.78rem;
-  color: #222;
-}
-
-.tour-path-ask input {
-  flex: 1;
-  min-width: 160px;
-  padding: 5px 8px;
-  border: 1px solid #dadce0;
-  border-radius: 6px;
-  background: #fff;
-  color: #222;
-  color-scheme: light;
-  font: inherit;
-}
-
-.tours-path-row {
-  display: block;
-  margin: 4px 0 10px;
-  font-size: 0.78rem;
-  color: var(--muted, #aaa);
-}
-
-.tours-path-row input {
-  display: block;
-  width: 100%;
-  margin-top: 4px;
-  padding: 6px 8px;
-  box-sizing: border-box;
-  border: 1px solid #555;
-  border-radius: 6px;
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  font-size: 0.85rem;
 }
 
 .voice-row span {
@@ -2002,12 +1914,6 @@ button.tour-sec-title:hover {
     /* было 32vh — зуммеру было почти некуда тянуть («ползунок... сильно ограничен в передвижении»,
        Грегори, 2026-10-10 продолжение); теперь можно растянуть почти до самого низа экрана */
     max-height: calc(100vh - var(--top-inset) - 70px);
-  }
-
-  .tour-panel.editing {
-    top: calc(var(--top-inset) + 64px);
-    height: auto;
-    max-height: none;
   }
 
   /* список экскурсий был привязан шириной к search-wrap (узкому, сжатому ради кнопок языка/мест

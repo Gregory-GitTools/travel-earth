@@ -1975,7 +1975,6 @@ const TOUR_ICON_COLOR = "#e53935"; // значки экскурсий на ка�
 const TOUR_TEXT_RE = /\.(md|txt)$/i;
 const TOUR_LAYERS = ["ov-tour-marks", "ov-tour-labels", "ov-tour-stops", "ov-tour-sel"];
 let tourSel = null; // { tour, n } — выделенная остановка
-let tourEditing = false; // в панели открыта правка файла — перечитывание её не трогает
 const tourSelFilter = () => ["all", ["==", ["get", "kind"], "stop"], ["==", ["get", "tour"], tourSel?.tour || ""], ["==", ["get", "n"], tourSel?.n || -1]];
 
 // выделить остановку на карте и в панели (Грегори: «выделять точки при клике на панели и в
@@ -3064,7 +3063,6 @@ function closeTourPanel() {
   tourPanel.hidden = true;
   tourPanelId = null;
   showTourStopsOf(null);
-  tourEditing = false;
   stopSpeech();
   selectTourStop(null);
 }
@@ -3631,11 +3629,8 @@ function renderTourPanel(id) {
     b.addEventListener("click", () => speak(text, b));
     return b;
   };
-  tourEditing = false;
   const close = Object.assign(document.createElement("button"), { className: "tour-close", title: "Закрыть", innerHTML: CLOSE_ICON });
   close.addEventListener("click", closeTourToList);
-  const edit = Object.assign(document.createElement("button"), { className: "tour-edit", title: "Править файл экскурсии", innerHTML: EDIT_ICON });
-  edit.addEventListener("click", () => editTour(id));
   const head = h("div", "tour-head");
   const title = h("h2", "", t.title);
   title.title = t.title;
@@ -3681,9 +3676,12 @@ function renderTourPanel(id) {
   const albumBtn = Object.assign(document.createElement("button"), { className: `tour-edit tour-album-btn${albumOff ? "" : " on"}`,
     title: albumOff ? "Показать альбом фото" : "Скрыть альбом фото", innerHTML: CHIP_ICONS.photos });
   albumBtn.addEventListener("click", () => setAlbum(albumOff));
-  // порядок после разделителя — по образцу скрина Грегори (2026-10-04), слева → направо: карандаш
-  // (если есть правка), справка, свернуть пункты, свернуть окно, закрыть; альбом — у плеера слева
-  bar.append(h("div", "tour-player"), albumBtn, h("span", "tour-bar-gap"), edit, tourHelpButton(), textBtn, minBtn, close);
+  // порядок после разделителя — по образцу скрина Грегори (2026-10-04): справка, свернуть пункты,
+  // свернуть окно, закрыть; альбом — у плеера слева. Карандаш правки файла убран целиком вместе с
+  // editTour() — для экскурсий из репозитория он всё равно открывал файл только на чтение, со
+  // ссылкой «Файл» внизу на тот же GitHub, которым Грегори правит и так напрямую (Грегори,
+  // 2026-10-11: «карандаш в экскурсии не нужен, работает ссылка на GitHub»)
+  bar.append(h("div", "tour-player"), albumBtn, h("span", "tour-bar-gap"), tourHelpButton(), textBtn, minBtn, close);
   const titleRow = h("div", "tour-title-row");
   const icon = h("span", "tour-row-pin tour-title-icon");
   icon.innerHTML = tourIcon(t);
@@ -3799,10 +3797,6 @@ function renderTourPanel(id) {
   updateTourTextBtn();
 }
 
-// Правка файла прямо в панели: страница не может запустить Блокнот, зато может записать в
-// файл выбранной папки (File System Access API) — при первом сохранении Chrome спросит
-// разрешение на изменение файлов. Ctrl+S — сохранить, Esc — отмена. Сохраняется в UTF-8
-const EDIT_ICON = `<svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>`;
 // «Информация» — как писать файл экскурсии (Грегори: «кнопка Информация с синтаксисом файла»);
 // раскрывается под шапкой, в просмотре и в правке, повторное нажатие — прячет
 const INFO_ICON = `<svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M11 7h2v2h-2zm0 4h2v6h-2zm1-9C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z"/></svg>`;
@@ -3877,14 +3871,6 @@ function languagesHelpButton() {
   return b;
 }
 
-// полный путь к файлу на диске: путь к папке из ⚙ (localStorage этой машины) + путь внутри неё
-const TOURS_PATH_KEY = "travel-earth.tours-path";
-function tourFilePath(t) {
-  const base = (localStorage.getItem(TOURS_PATH_KEY) || "").trim().replace(/[\\/]+$/, "");
-  if (!base) return "";
-  return `${base}\\${t.id.slice(t.id.indexOf("/") + 1).replace(/\//g, "\\")}`;
-}
-
 // промт для ChatGPT и других ИИ: как написать файл экскурсии — лежит рядом с экскурсиями
 // репозитория («_» — карта его не читает), ссылка на него — в режиме правки
 const TOUR_PROMPT = `${REPO_TOURS}/_Промт — как написать экскурсию.md`;
@@ -3894,127 +3880,6 @@ async function openRepoFile(path, edit) {
   const res = await fetch("/open-file", { method: "POST", headers: { "Content-Type": "application/json", "X-Travel-Earth": "1" },
     body: JSON.stringify({ path }) }).catch(() => null);
   if (!res?.ok) window.open(`https://github.com/${REPO}/${edit ? "edit" : "blob"}/main/${repoUrl(path)}`, "_blank", "noopener");
-}
-
-async function editTour(id) {
-  const t = tours.get(id);
-  if (!t?.handle) return;
-  stopTourPlay();
-  const bytes = await (await t.handle.getFile()).arrayBuffer();
-  let text;
-  try { text = new TextDecoder("utf-8", { fatal: true }).decode(bytes); } catch { text = new TextDecoder("windows-1251").decode(bytes); }
-  tourEditing = true;
-  stopSpeech();
-  const h = (tag, cls, txt) => Object.assign(document.createElement(tag), { className: cls || "", textContent: txt || "" });
-  const area = Object.assign(document.createElement("textarea"), { className: "tour-editor", value: text, spellcheck: true });
-  const status = h("span", "tour-edit-status");
-  const save = h("button", "text-btn tour-save", "Сохранить");
-  const cancel = h("button", "text-btn tour-cancel", "Отмена");
-  const doSave = async () => {
-    if (t.repo) return;
-    try {
-      if (await t.handle.queryPermission({ mode: "readwrite" }) !== "granted"
-        && await t.handle.requestPermission({ mode: "readwrite" }) !== "granted") { status.textContent = "Нет разрешения на запись"; return; }
-      const w = await t.handle.createWritable();
-      await w.write(area.value);
-      await w.close();
-    } catch (err) { status.textContent = `Не сохранилось: ${err.message}`; return; }
-    tourEditing = false;
-    t.mtime = null;
-    await readTours(tourDir);
-    renderTourPanel(id);
-  };
-  save.addEventListener("click", doSave);
-  cancel.addEventListener("click", () => renderTourPanel(id));
-  area.addEventListener("keydown", (e) => {
-    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") { e.preventDefault(); doSave(); }
-    else if (e.key === "Escape") renderTourPanel(id);
-  });
-  const head = h("div", "tour-head");
-  const editTitle = h("div", "tour-title-row");
-  // вместо крестика — нажатый карандаш: отжать — вернуться к экскурсии (Грегори: «из карандаша
-  // не выскочить обратно»); несохранённая правка отменяется, как по «Отмена»
-  const back = Object.assign(document.createElement("button"), { className: "tour-edit on", title: "Вернуться к экскурсии", innerHTML: EDIT_ICON });
-  back.addEventListener("click", () => renderTourPanel(id));
-  editTitle.append(h("h2", "", `Правка: ${t.file}`), tourHelpButton(), back);
-  head.append(editTitle);
-  // путь к файлу — ссылкой: открывает файл в программе Windows по умолчанию (Блокнот, VS Code…).
-  // Сама страница программу запустить не может и полного пути на диске не знает — поэтому
-  // путь к папке экскурсий указывается в ⚙ (на каждой машине свой), а открывает файл локальный
-  // сервер start.bat (tools/server.py, POST /open-file). Нет пути или сервера (GitHub Pages,
-  // старый http.server) — файл открывается в новой вкладке только для чтения и объясняется почему
-  const link = Object.assign(document.createElement("a"), { className: "tour-file-link", href: "#" });
-  const setLink = () => {
-    link.textContent = t.repo ? t.handle.repoPath : tourFilePath(t) || t.id;
-    link.title = t.repo ? "Править: в Блокноте при запуске через start.bat, иначе на GitHub"
-      : tourFilePath(t) ? "Открыть в программе по умолчанию" : "Указать, где на диске лежит папка экскурсий";
-  };
-  setLink();
-  // путь к папке не задан — спросить прямо здесь, одним полем (в ⚙ то же самое поле)
-  const askPath = () => {
-    if (fileRow.querySelector(".tour-path-ask")) return;
-    const box = h("div", "tour-path-ask");
-    const input = Object.assign(document.createElement("input"), { type: "text", spellcheck: false,
-      placeholder: `например, E:\\MyFotos\\${t.id.slice(0, t.id.indexOf("/"))}` });
-    const ok = h("button", "text-btn", "Запомнить");
-    const done = () => {
-      if (!input.value.trim()) return;
-      localStorage.setItem(TOURS_PATH_KEY, input.value.trim());
-      if (el("tours-path")) el("tours-path").value = input.value.trim();
-      box.remove();
-      setLink();
-      status.textContent = "";
-      link.click();
-    };
-    ok.addEventListener("click", done);
-    input.addEventListener("keydown", (ev) => { if (ev.key === "Enter") { ev.preventDefault(); done(); } });
-    box.append(h("span", "", `Где на диске лежит папка «${t.id.slice(0, t.id.indexOf("/"))}»? Браузер знает только её имя — полный путь нужен, чтобы открыть файл в редакторе:`), input, ok);
-    fileRow.append(box);
-    input.focus();
-  };
-  link.addEventListener("click", async (e) => {
-    e.preventDefault();
-    if (t.repo) { openRepoFile(t.handle.repoPath, true); return; }
-    const fullPath = tourFilePath(t);
-    if (!fullPath) { askPath(); return; }
-    const res = await fetch("/open-file", { method: "POST", headers: { "Content-Type": "application/json", "X-Travel-Earth": "1" },
-      body: JSON.stringify({ path: fullPath }) }).catch(() => null);
-    if (res?.ok) { status.textContent = ""; return; }
-    if (res?.status === 404 && res.headers.get("Content-Type")?.includes("html")) {
-      // сервер есть, но файла по этому пути нет — путь к папке неверный: спросить заново
-      status.textContent = `Файл не найден: ${fullPath} — проверьте путь к папке`;
-      localStorage.removeItem(TOURS_PATH_KEY);
-      setLink();
-      askPath();
-      return;
-    }
-    status.textContent = "Открыть в редакторе может только карта, запущенная через start.bat (сервер tools/server.py). Пока — в новой вкладке, только чтение";
-    const file = await t.handle.getFile();
-    const url = URL.createObjectURL(new Blob([await file.arrayBuffer()], { type: "text/plain;charset=utf-8" }));
-    window.open(url, "_blank");
-    setTimeout(() => URL.revokeObjectURL(url), 60000);
-  });
-  const fileRow = h("div", "tour-file");
-  const prompt = Object.assign(document.createElement("a"), { className: "tour-file-link", href: "#",
-    textContent: "промт для ChatGPT", title: "Подробное задание для ИИ: как написать файл экскурсии — скопируйте и допишите тему" });
-  prompt.addEventListener("click", (e) => { e.preventDefault(); openRepoFile(TOUR_PROMPT, false); });
-  fileRow.append("Файл: ", link, " · ", prompt);
-  const bar = h("div", "tour-edit-bar");
-  // экскурсия из репозитория: здесь только просмотр, правка — по ссылке «Файл»
-  if (t.repo) {
-    area.readOnly = true;
-    bar.append(h("span", "tour-edit-status", "Файл из репозитория — здесь только просмотр. Править — по ссылке «Файл»: на GitHub или, при запуске через start.bat, в Блокноте"));
-  } else bar.append(save, cancel, status);
-  // строка «Файл: …» — внизу, после текста, как в разговорниках (Грегори, 2026-10-04: «по-разному,
-  // сделай и в экскурсии исходный файл тоже снизу, как в языках»)
-  const hint = h("div", "tour-file", t.repo ? "Esc — назад. Как писать файл — кнопка «i» вверху"
-    : "Ctrl+S — сохранить, Esc — отмена. Как писать файл — кнопка «i» вверху");
-  tourPanel.replaceChildren(head, area, bar, hint, fileRow);
-  tourPanel.classList.remove("phrasebook", "lang-list", "lang-flow");
-  tourPanel.classList.add("editing");
-  area.focus();
-  area.setSelectionRange(0, 0);
-  area.scrollTop = 0;
 }
 
 // Разговорники (Грегори: «основные обороты на местном языке… отдельным блоком — Языки»): файлы
@@ -4091,7 +3956,7 @@ async function readPhrasebooks(dir) {
     updateLangFinder();
   }));
   updateTourFinder();
-  if (tourPanelId && !tourEditing && !tourPanel.classList.contains("phrasebook")) renderTourPanel(tourPanelId);
+  if (tourPanelId && !tourPanel.classList.contains("phrasebook")) renderTourPanel(tourPanelId);
 }
 
 // разговорник для экскурсии — по стране
@@ -4421,7 +4286,7 @@ map.on("click", TOUR_LAYERS, (evt) => {
   const p = evt.features[0].properties;
   trailPoiPopup?.remove();
   if (p.kind === "stop") {
-    if (tourPanelId !== p.tour || tourEditing) renderTourPanel(p.tour);
+    if (tourPanelId !== p.tour) renderTourPanel(p.tour);
     if (!jumpTourPlay(p.tour, p.n)) selectTourStop(p.tour, p.n);
   } else if (tourPlay?.id !== p.tour) startTourPlay(p.tour, -1);
 });
@@ -6094,8 +5959,6 @@ el("about-close-btn").addEventListener("click", closeAboutModal);
 el("my-photos-pick").addEventListener("click", pickMyFolder);
 el("tours-pick").addEventListener("click", pickTourFolder);
 el("tours-forget").addEventListener("click", forgetTourFolder);
-el("tours-path").value = localStorage.getItem(TOURS_PATH_KEY) || "";
-el("tours-path").addEventListener("change", (e) => localStorage.setItem(TOURS_PATH_KEY, e.target.value.trim()));
 el("voice-select").addEventListener("change", (e) => localStorage.setItem(VOICE_KEY, e.target.value));
 el("voice-rate").addEventListener("change", (e) => localStorage.setItem(VOICE_RATE_KEY, e.target.value));
 el("voice-test").addEventListener("click", (e) => speak("Левады строили с пятнадцатого века, чтобы уводить воду с дождливого севера острова на солнечный юг.", e.currentTarget));
