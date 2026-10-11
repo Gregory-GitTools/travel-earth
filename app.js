@@ -3486,10 +3486,22 @@ addEventListener("pointerdown", unlockSpeech, { capture: true });
 addEventListener("touchend", unlockSpeech, { capture: true });
 addEventListener("keydown", unlockSpeech, { capture: true });
 let speechHintShown = false;
+// один молчаливый повтор перед тем как сдаться и просить нажать «плей» руками: на Android холодный
+// старт синтезатора иногда не успевает «прогреться» даже к первой фразе экскурсии, хотя она и
+// запущена прямо в обработчике клика по экскурсии — чуть позже он сам просыпается без всякого
+// клика (Грегори, 2026-10-11: «озвучка не работает пока не кликну пункт экскурсии. Проснувшись
+// начинает работать»); чем ждать именно клика, сами пробуем ещё раз туда же, где остановились
+let speechAutoRetried = false;
 function checkSpeechStarted() {
   setTimeout(() => {
     if (speechHintShown || speechSynthesis.speaking || speechSynthesis.pending) return;
     if (!tourPlay && !pbPlay) return;
+    if (!speechAutoRetried) {
+      speechAutoRetried = true;
+      if (tourPlay) playTourStep(); else playPhraseStep();
+      checkSpeechStarted(); // та же проверка ещё раз — молчит и повтор, тогда уже подсказка
+      return;
+    }
     speechHintShown = true;
     flashStatus("Звук не включился — нажмите ▶ вверху панели");
     if (tourPlay) { tourPlay.paused = true; tourPlay.run = null; renderTourPlayer(); }
