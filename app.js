@@ -3189,7 +3189,6 @@ function closeTourToList() {
 // аудиогида в шапке — один треугольник: открывает галерею уже выбранного альбома (albumsSelected —
 // своё состояние, не зависящее от myAlbumFocus — выбор в списке не должен слетать от closeAlbumPanel)
 const ALBUMS_LIST_MIN_KEY = "travel-earth.albums-list-min";
-const ALBUMS_LIST_FOLD_KEY = "travel-earth.albums-list-fold";
 const ALBUM_SORT_KEY = "travel-earth.album-sort";
 let albumSort = localStorage.getItem(ALBUM_SORT_KEY) || "name"; // "name" | "date" | "place"
 const ALBUM_SORT_NEXT = { name: "date", date: "place", place: "name" };
@@ -3228,9 +3227,11 @@ function renderAlbumsList() {
   // число фото — рядом с названием, в одну строку с ним, прижато к правому краю строки
   // (.tour-row-title-text/.album-row-count, та же схема, что у счётчика стран/групп выше);
   // подпись экскурсии (если есть) — отдельной строкой ниже, как и раньше (Грегори, 2026-10-11
-  // продолжение)
+  // продолжение). Без значка слева: .tour-row-pin красный — это цвет метки экскурсии на карте,
+  // а не альбома, и рядом с названием альбома он только путал (Грегори, Round 67: «иконок рядом
+  // с названием альбомов быть не должно»)
   const albumRow = (a) => row(`a:${a.id}`, "tour-row-item",
-    `<span class="tour-row-pin">${CHIP_ICONS.myphotos}</span><span class="tour-row-text"><span class="tour-row-title">`
+    `<span class="tour-row-text"><span class="tour-row-title">`
     + `<span class="tour-row-title-text">${escapeHtml(a.name)}</span>`
     + `<span class="album-row-count">${escapeHtml(`${a.files.length} фото`)}</span></span>`
     + (a.excursion ? `<span class="tour-row-sub">${escapeHtml(a.excursion.title)}</span>` : "") + `</span>`,
@@ -3248,8 +3249,10 @@ function renderAlbumsList() {
   const player = Object.assign(document.createElement("div"), { className: "tour-player" });
   // иконка альбома вместо треугольника — она же кнопка «открыть галерею»; отдельный значок рядом
   // с названием окна убрали совсем, он дублировал этот же рисунок (Грегори, Round 65: «вместо
-  // треугольника иконку альбома, а остальные иконки убрать»)
-  const playBtn = Object.assign(document.createElement("button"), { className: "tour-edit",
+  // треугольника иконку альбома, а остальные иконки убрать»). Синяя на белом, а не обычный серый
+  // .tour-edit — главная кнопка шапки (Грегори, Round 67: «иконка рядом с Мои альбомы должна быть
+  // синяя на белом фоне»)
+  const playBtn = Object.assign(document.createElement("button"), { className: "tour-edit album-play-btn",
     title: "Открыть фотогалерею выбранного альбома", innerHTML: CHIP_ICONS.myphotos, disabled: !albumsSelected });
   playBtn.addEventListener("click", () => { if (albumsSelected) openAlbumGallery(albumsSelected, null); });
   player.append(playBtn);
@@ -3262,11 +3265,14 @@ function renderAlbumsList() {
     localStorage.setItem(ALBUM_SORT_KEY, albumSort);
     renderAlbumsList();
   });
-  // две разные кнопки, не одна: «свернуть окно» прячет всё до шапки (.tour-list.min, тот же класс,
-  // что у Экскурсий/Языков), «свернуть список» — только сами строки альбомов, окно остаётся того
-  // же размера/на месте (.rows-folded, см. style.css). Раньше по очереди делали то одну, то
-  // другую — Грегори оба раза замечал пропажу другой (Round 64: «нет кнопки свернуть окно»,
-  // Round 65: «опять пропала кнопка свернуть список») — нужны обе разом
+  // «свернуть окно» — прячет всё до шапки (.tour-list.min, тот же класс, что у Экскурсий/Языков,
+  // Round 64: «нет кнопки свернуть окно»). Вторая кнопка рядом — без функции: сворачивать в этом
+  // списке больше нечего, кроме самого списка целиком (ни групп, ни вложенных строк, в отличие от
+  // Тур/Языков), поэтому раньше реализованное «свернуть строки» (.rows-folded) только путало —
+  // список исчезал, а показать его обратно той же кнопкой не выходило явно (Грегори, Round 67:
+  // «полная путаница с кнопкой свернуть список... у нас кроме самого списка ничего нет, значит
+  // кнопка должна быть направлена в низ и при нажатии не реагировать»). Кнопка оставлена только
+  // для единого вида шапки среди всех списков — всегда стрелка вниз, без обработчика клика
   const minBtn = Object.assign(document.createElement("button"), { className: "tour-edit" });
   const setMinBtn = () => {
     const min = albumsList.classList.contains("min");
@@ -3279,18 +3285,8 @@ function renderAlbumsList() {
     localStorage.setItem(ALBUMS_LIST_MIN_KEY, min ? "1" : "0");
     setMinBtn();
   });
-  const foldBtn = Object.assign(document.createElement("button"), { className: "tour-edit" });
-  const setFoldBtn = () => {
-    const folded = albumsList.classList.contains("rows-folded");
-    foldBtn.innerHTML = folded ? UNFOLD_ICON : FOLD_ICON;
-    foldBtn.title = folded ? "Развернуть список" : "Свернуть список";
-  };
-  foldBtn.addEventListener("click", () => {
-    const folded = !albumsList.classList.contains("rows-folded");
-    albumsList.classList.toggle("rows-folded", folded);
-    localStorage.setItem(ALBUMS_LIST_FOLD_KEY, folded ? "1" : "0");
-    setFoldBtn();
-  });
+  const foldBtn = Object.assign(document.createElement("button"), { className: "tour-edit",
+    title: "Список альбомов", innerHTML: UNFOLD_ICON });
   // пересканировать папку — список раньше было нечем обновить, кроме как заново открывать выбор
   // папки в настройках (Грегори, Round 64: «список альбомов ничем не обновить»)
   const refreshBtn = Object.assign(document.createElement("button"), { className: "tour-edit",
@@ -3303,8 +3299,6 @@ function renderAlbumsList() {
   head.append(bar);
   albumsList.classList.toggle("min", localStorage.getItem(ALBUMS_LIST_MIN_KEY) === "1");
   setMinBtn();
-  albumsList.classList.toggle("rows-folded", localStorage.getItem(ALBUMS_LIST_FOLD_KEY) === "1");
-  setFoldBtn();
   rows.push(head);
   for (const a of all) albumRow(a);
   if (!all.length) {
@@ -3573,12 +3567,13 @@ function renderAlbumPanel(albumId) {
   albumPanel.classList.toggle("min", localStorage.getItem(ALBUM_PANEL_MIN_KEY) === "1");
   setMinBtn();
   bar.append(h("div", "tour-player"), h("span", "tour-bar-gap"), albumHelpButton(albumId), minBtn, close);
+  // без значка слева от названия — тот же повод, что и у строк списка (.tour-row-pin красный,
+  // для метки экскурсии на карте, не для альбома — Грегори, Round 67: «иконок рядом с названием
+  // альбомов быть не должно»)
   const titleRow = h("div", "tour-title-row");
-  const icon = h("span", "tour-row-pin tour-title-icon");
-  icon.innerHTML = CHIP_ICONS.myphotos;
   const title = h("h2", "", a.name);
   title.title = a.name;
-  titleRow.append(icon, title);
+  titleRow.append(title);
   head.append(bar, titleRow, h("div", "tour-player-label"));
   albumPanel.replaceChildren(head, ...renderAlbumGroups(albumId));
   albumPanel.hidden = false;
