@@ -1941,7 +1941,7 @@ function openAlbumGallery(albumId, startId) {
   });
   localStorage.setItem(PHOTO_GALLERY_KEY, JSON.stringify({ photos, start: Math.max(0, album.files.indexOf(startId)),
     excursion: album.excursion ? { title: album.excursion.title, blocks: album.excursion.blocks } : null }));
-  openSideWindow(`gallery.html?t=${Date.now()}`, "travel-earth-gallery");
+  return openSideWindow(`gallery.html?t=${Date.now()}`, "travel-earth-gallery");
 }
 
 // альбом: наведение — название и число снимков, щелчок — перелёт, двойной — галерея
@@ -1989,10 +1989,10 @@ function setMyAlbumFocus(albumId) {
     renderAlbumsPlayer();
   }
 }
-// вернулись на высоту, где видны значки альбомов (та же граница, что у maxzoom ov-my-albums) —
-// снимаем изоляцию; moveend, а не zoom — иначе сразу после клика (мы ещё внизу, до начала
-// перелёта flyToAlbum) ограничение снималось бы, не успев примениться
-map.on("moveend", () => { if (myAlbumFocus && map.getZoom() < photoDotZoom()) setMyAlbumFocus(null); });
+// изоляция больше не снимается сама при отъезде по масштабу (Грегори, 2026-10-12: «пусть выбор
+// альбома будет фильтром до тех пор, пока я не выйду из конкретного альбома, и это не зависит от
+// масштаба. У нас есть теперь другой механизм фиксации на альбоме» — этот механизм — панель
+// альбома, closeAlbumPanel снимает изоляцию явно при выходе, см. там)
 onHover("ov-my-albums", (evt) => showAlbumInfo(evt.features[0]));
 // изоляция+перелёт — то же самое и по клику на значок на карте, и по клику на строку в
 // «Моих альбомах» (см. renderAlbumsList ниже)
@@ -3179,8 +3179,7 @@ function closeTourToList() {
 // сначала) → близость к текущему центру карты. Строка списка — то же самое, что значок альбома на
 // карте: щелчок — изоляция+перелёт (focusAlbum), двойной — сразу фотогалерея. Вместо плеера
 // аудиогида в шапке — один треугольник: открывает галерею уже выбранного альбома (albumsSelected —
-// своё состояние, не зависящее от myAlbumFocus, который карта сама сбрасывает при отъезде, см.
-// map.on("moveend") выше — выбор в списке не должен слетать от этого)
+// своё состояние, не зависящее от myAlbumFocus — выбор в списке не должен слетать от closeAlbumPanel)
 const ALBUMS_LIST_MIN_KEY = "travel-earth.albums-list-min";
 const ALBUM_SORT_KEY = "travel-earth.album-sort";
 let albumSort = localStorage.getItem(ALBUM_SORT_KEY) || "name"; // "name" | "date" | "place"
@@ -3313,24 +3312,40 @@ function chooseAlbum(albumId) {
 // слайдшоу альбома в окне галереи: плей/пауза/назад/дальше/стоп — тот же набор кнопок, что у
 // аудиогида экскурсии (Грегори, 2026-10-12: «а должно быто одинаково. Это и значит — такая
 // же»), только вместо речи — автопоказ фото в travel-earth-gallery (окно переоткрывается на
-// нужном снимке тем же приёмом, что и при обычном клике по фото, см. openAlbumGallery выше)
+// нужном снимке тем же приёмом, что и при обычном клике по фото, см. openAlbumGallery выше).
+// Окно отслеживается отдельным таймером (albumWatchTimer): закрыл его человек руками — плей сам
+// останавливается, а не продолжает открывать новое окно каждые 4 с (Грегори, Round 63: «Окно
+// альбома открывается после закрытия потому что плай не остановился» — отсюда же и «все кнопки
+// окна ошибочно запускают альбом» — на деле их не было, просто плей не замечал закрытия и бил
+// новым окном поверх всего, что бы человек ни делал). Стоп — закрывает само окно, а не только
+// останавливает счётчик (Грегори: «кнопка стоп должна закрывать слайдшоу»)
 let albumPlay = null; // { albumId, i, paused }
-let albumPlayTimer = null;
+let albumPlayTimer = null; // автопоказ — смена фото
+let albumWatchTimer = null; // следит, не закрыл ли человек окно сам
+let albumGalleryWin = null;
 function albumPlaySchedule() {
   clearInterval(albumPlayTimer);
   albumPlayTimer = setInterval(() => albumPlayGo(1), 4000);
 }
+function albumWatchWindow() {
+  clearInterval(albumWatchTimer);
+  albumWatchTimer = setInterval(() => { if (albumGalleryWin?.closed) stopAlbumPlay(); }, 800);
+}
 function startAlbumPlay(albumId) {
   const a = myAlbums.get(albumId);
-  if (!a?.files.length) return;
+  if (!a?.files.length || !canOpenGallery()) return;
   albumPlay = { albumId, i: 0, paused: false };
-  openAlbumGallery(albumId, a.files[0]);
+  albumGalleryWin = openAlbumGallery(albumId, a.files[0]);
   albumPlaySchedule();
+  albumWatchWindow();
   renderAlbumPlayer();
 }
 function stopAlbumPlay() {
   if (!albumPlay) return;
   clearInterval(albumPlayTimer);
+  clearInterval(albumWatchTimer);
+  albumGalleryWin?.close();
+  albumGalleryWin = null;
   albumPlay = null;
   renderAlbumPlayer();
 }
@@ -3346,7 +3361,7 @@ function albumPlayGo(delta) {
   if (!a?.files.length) { stopAlbumPlay(); return; }
   albumPlay.i = (albumPlay.i + delta + a.files.length) % a.files.length;
   albumPlay.paused = false;
-  openAlbumGallery(albumPlay.albumId, a.files[albumPlay.i]);
+  albumGalleryWin = openAlbumGallery(albumPlay.albumId, a.files[albumPlay.i]);
   albumPlaySchedule();
   renderAlbumPlayer();
 }
@@ -3396,6 +3411,10 @@ function albumHelpButton(albumId) {
 
 function closeAlbumPanel() {
   stopAlbumPlay();
+  // изоляция альбома на карте — фильтр, который держится до явного выхода из альбома, а не до
+  // смены масштаба (Грегори, 2026-10-12: «пусть выбор альбома будет фильтром, пока я не выйду
+  // из конкретного альбома, и это не зависит от масштаба» — см. также setMyAlbumFocus выше)
+  setMyAlbumFocus(null);
   albumPanel.hidden = true;
   albumPanelId = null;
 }
@@ -3412,13 +3431,15 @@ function closeAlbumPanelToList() {
 }
 
 // панель одного альбома: оформлена по тому же принципу, что и панель экскурсии — тот же
-// плеер-кластер (назад/плей-пауза/дальше/стоп, только треугольник вместо лица), (i) и ▽ на тех
-// же местах, свернуть/закрыть справа (Грегори, 2026-10-12: «а должно быто одинаково. Это и
-// значит — такая же»). Нет аналога только у 📷-кнопки экскурсии — она переключает отдельную
-// ленту фото под картой, а у альбома своей ленты в панели больше нет (Грегори, тем же
-// раундом: «у альбома и так сплошная лента фото [на карте]... убирай! одна запись названия
-// альбома») — список снимков панели убран целиком, панель показывает только шапку с названием;
-// ▽ стоит про запас под будущую группировку снимков (пока отключена — нечего сворачивать)
+// плеер-кластер (назад/плей-пауза/дальше/стоп, только треугольник вместо лица), (i) на том же
+// месте, свернуть/закрыть справа (Грегори, 2026-10-12: «а должно быто одинаково. Это и значит —
+// такая же»). Нет аналога только у 📷-кнопки экскурсии — она переключает отдельную ленту фото под
+// картой, а у альбома своей ленты в панели больше нет (Грегори, тем же раундом: «у альбома и так
+// сплошная лента фото [на карте]... убирай! одна запись названия альбома») — список снимков
+// панели убран целиком, панель показывает только шапку с названием. Кнопку ▽ (группировка
+// снимков) убрали совсем, не оставили отключённой — пустая стрелка сворачивания без самого
+// списка только путала (Грегори, Round 63: «стрелка списка напутана. Списка нет, а она
+// предлагает его свернуть»); вернётся, когда появится сама группировка
 function renderAlbumPanel(albumId) {
   const a = myAlbums.get(albumId);
   if (!a) { closeAlbumPanel(); return; }
@@ -3443,9 +3464,7 @@ function renderAlbumPanel(albumId) {
   close.addEventListener("click", closeAlbumPanelToList);
   albumPanel.classList.toggle("min", localStorage.getItem(ALBUM_PANEL_MIN_KEY) === "1");
   setMinBtn();
-  const foldBtn = Object.assign(document.createElement("button"), { className: "tour-edit tour-text-btn",
-    title: "Группировка снимков (по дням, местам) — скоро", innerHTML: FOLD_ICON, disabled: true });
-  bar.append(h("div", "tour-player"), h("span", "tour-bar-gap"), albumHelpButton(albumId), foldBtn, minBtn, close);
+  bar.append(h("div", "tour-player"), h("span", "tour-bar-gap"), albumHelpButton(albumId), minBtn, close);
   const titleRow = h("div", "tour-title-row");
   const icon = h("span", "tour-row-pin tour-title-icon");
   icon.innerHTML = CHIP_ICONS.myphotos;
