@@ -2441,7 +2441,7 @@ function setTourMode(on) {
   // открытие списка экскурсий закрывает панель справа (деталь экскурсии, «Языки» или «Мои
   // альбомы») — одновременно открыта только одна панель/список (Грегори, 2026-10-10 продолжение)
   if (on && !tourPanel.hidden) closeTourPanel();
-  if (on && !albumsList.hidden) setAlbumsMode(false);
+  if (on && (!albumsList.hidden || !albumPanel.hidden)) setAlbumsMode(false);
   tourList.hidden = !on;
   // экскурсии на карте — только пока кнопка нажата (Грегори)
   if (on !== activeOverlays.has("tours")) toggleOverlay("tours");
@@ -2633,7 +2633,7 @@ function renderLanguagesList() {
   stopSpeech();
   if (tourPanelId) { tourPanelId = null; showTourStopsOf(null); }
   tourList.hidden = true;
-  if (!albumsList.hidden) setAlbumsMode(false);
+  if (!albumsList.hidden || !albumPanel.hidden) setAlbumsMode(false);
   // «Языки» закрывает список экскурсий напрямую (не через setTourMode), но tourMode без этого
   // оставался true — следующий клик по кнопке «Экскурсии» звал setTourMode(!tourMode), то есть
   // setTourMode(false), и список не открывался заново, а молча гасил уже спрятанные окна
@@ -3019,6 +3019,15 @@ function attachResizeHandle(panel) {
 }
 attachResizeHandle(tourList);
 attachResizeHandle(tourPanel);
+// панель одного альбома (renderAlbumPanel ниже) — тот же приём, что у tourPanel: своё плавающее
+// окно, создаётся в JS и живёт как сосед tourPanel/tourList, а не внутри .search-wrap (Грегори,
+// 2026-10-11 продолжение: «новая панель с одним альбомом в списке и кнопками плейера, по аналогии
+// с панелями самой экскурсии»)
+let albumPanelId = null;
+const ALBUM_PANEL_MIN_KEY = "travel-earth.album-panel-min";
+const albumPanel = Object.assign(document.createElement("aside"), { className: "tour-panel", hidden: true });
+document.body.append(albumPanel);
+attachResizeHandle(albumPanel);
 // собственный ползунок прокрутки поверх .tour-list/.tour-panel — только на тач-устройствах
 // (pointer: coarse). Стилизованный ::-webkit-scrollbar* (см. style.css) там не рисуется вовсе —
 // браузер показывает только системную полосу, почти незаметную (Грегори, 2026-10-10 продолжение:
@@ -3105,13 +3114,14 @@ function syncTourButtons() {
   const showingLang = !tourPanel.hidden && tourPanel.classList.contains("lang-flow");
   el("lang-list-btn").classList.toggle("on", showingLang);
   el("search-tour-btn").classList.toggle("on", !tourList.hidden || (!tourPanel.hidden && !showingLang));
-  // «Мои альбомы» — тем же приёмом, но у неё нет общего tourPanel: своя панель albumsList
-  el("my-albums-btn").classList.toggle("on", !albumsList.hidden);
+  // «Мои альбомы» — тем же приёмом, но своя пара окон: плоский список albumsList и панель одного
+  // альбома albumPanel (аналог tourList/tourPanel) — активна кнопка, если показано любое из двух
+  el("my-albums-btn").classList.toggle("on", !albumsList.hidden || !albumPanel.hidden);
   // «Слои» и правые окна (Экскурсии/Языки/Мои альбомы) теперь не уживаются вместе (Грегори,
   // 2026-10-10 продолжение: «при открытии любой панели справа, закрывать слои») — как только
   // показалось одно из правых окон, прячем «Места и слои»; обратное направление (открытие слоёв
   // прячет правые окна) — в обработчике клика places-btn ниже, этот наблюдатель его не трогает
-  if ((!tourList.hidden || !tourPanel.hidden || !albumsList.hidden) && !el("menu-panel").hidden) {
+  if ((!tourList.hidden || !tourPanel.hidden || !albumsList.hidden || !albumPanel.hidden) && !el("menu-panel").hidden) {
     el("menu-panel").hidden = true;
     updatePlacesBtn();
   }
@@ -3120,6 +3130,7 @@ const tourBtnSync = new MutationObserver(syncTourButtons);
 tourBtnSync.observe(tourPanel, { attributes: true, attributeFilter: ["class", "hidden"] });
 tourBtnSync.observe(tourList, { attributes: true, attributeFilter: ["hidden"] });
 tourBtnSync.observe(albumsList, { attributes: true, attributeFilter: ["hidden"] });
+tourBtnSync.observe(albumPanel, { attributes: true, attributeFilter: ["hidden"] });
 el("lang-list-btn").addEventListener("click", () => {
   if (!tourPanel.hidden && tourPanel.classList.contains("lang-list")) { closeTourToList(); return; }
   renderLanguagesList();
@@ -3199,21 +3210,21 @@ function renderAlbumsList() {
     rows.push(r);
     return r;
   };
-  // число фото — рядом с названием, в одну строку с ним; подпись экскурсии (если есть) —
-  // отдельной строкой ниже, как и раньше (Грегори, 2026-10-11 продолжение)
+  // число фото — рядом с названием, в одну строку с ним, прижато к правому краю строки
+  // (.tour-row-title-text/.album-row-count, та же схема, что у счётчика стран/групп выше);
+  // подпись экскурсии (если есть) — отдельной строкой ниже, как и раньше (Грегори, 2026-10-11
+  // продолжение)
   const albumRow = (a) => row(`a:${a.id}`, "tour-row-item",
-    `<span class="tour-row-pin">${CHIP_ICONS.myphotos}</span><span class="tour-row-text"><span class="tour-row-title">${escapeHtml(a.name)}`
-    + `<span class="tour-row-count">${escapeHtml(`${a.files.length} фото`)}</span></span>`
+    `<span class="tour-row-pin">${CHIP_ICONS.myphotos}</span><span class="tour-row-text"><span class="tour-row-title">`
+    + `<span class="tour-row-title-text">${escapeHtml(a.name)}</span>`
+    + `<span class="album-row-count">${escapeHtml(`${a.files.length} фото`)}</span></span>`
     + (a.excursion ? `<span class="tour-row-sub">${escapeHtml(a.excursion.title)}</span>` : "") + `</span>`,
-    // клик по строке сразу открывает альбом отдельным окном с плеером слайд-шоу (Грегори,
-    // 2026-10-11 продолжение: «после клика на альбом должно появляться новое окно с одним
-    // альбомом и плейером для слайдшоу») — карта всё равно изолируется/перелетает (если точка
-    // есть), как и раньше, окно просто открывается вдобавок
-    () => {
-      if (a.point) focusAlbum(a.id);
-      else { albumsSelected = a.id; albumsCursor = `a:${a.id}`; markAlbumsCursor(); renderAlbumsPlayer(); }
-      if (canOpenGallery()) openAlbumGallery(a.id, null);
-    });
+    // клик по строке — то же самое, что клик по значку альбома на карте (focusAlbum), и вдобавок
+    // открывает панель с одним альбомом и плейером — само слайд-шоу не запускается, только по
+    // треугольнику внутри этой панели (Грегори, 2026-10-11 продолжение: «открытие панели альбома
+    // идентично клику по альбому на карте… и только после клика на треугольник в этом окне
+    // запускается просмотр альбома»)
+    () => { focusAlbum(a.id); chooseAlbum(a.id); });
   // шапка — как у «Языки»/«Экскурсии» (значок+название слева, кнопки справа), но слева от названия
   // — свой «плеер»: не 4 кнопки аудиогида, а один треугольник (Грегори: «в проигрывателе уже будет
   // треугольник, и запускать он будет альбом»)
@@ -3234,11 +3245,17 @@ function renderAlbumsList() {
     localStorage.setItem(ALBUM_SORT_KEY, albumSort);
     renderAlbumsList();
   });
+  // свернуть/развернуть СПИСОК альбомов (не всё окно) — значок-квадрат/полоска (COLLAPSE_ICON/
+  // EXPAND_ICON) читался как «свернуть окно» и для Грегори выглядел несуществующей функцией, хотя
+  // сам .min уже и тогда прятал именно строки списка, оставляя шапку: берём ту же пару стрелок
+  // FOLD_ICON/UNFOLD_ICON, что у «Развернуть все»/«Свернуть все» в Экскурсиях — она уже читается
+  // как «список» (Грегори, 2026-10-11 продолжение: «кнопка свернуть/развернуть список — нет, есть
+  // свернуть окно… ничего нового не появилось»)
   const minBtn = Object.assign(document.createElement("button"), { className: "tour-edit" });
   const setMinBtn = () => {
     const min = albumsList.classList.contains("min");
-    minBtn.innerHTML = min ? EXPAND_ICON : COLLAPSE_ICON;
-    minBtn.title = min ? "Развернуть" : "Свернуть окно";
+    minBtn.innerHTML = min ? UNFOLD_ICON : FOLD_ICON;
+    minBtn.title = min ? "Развернуть список" : "Свернуть список";
   };
   minBtn.addEventListener("click", () => {
     const min = !albumsList.classList.contains("min");
@@ -3275,6 +3292,115 @@ function renderAlbumsPlayer() {
 
 function updateAlbumsFinder() {
   if (albumsMode && !albumsList.hidden) renderAlbumsList();
+  if (albumPanelId) renderAlbumPanel(albumPanelId); // обход папки мог дописать альбому новые файлы
+}
+
+// клик по строке списка — список прячется, открывается панель одного альбома (Грегори,
+// 2026-10-11 продолжение: «новая панель с одним альбомом в списке и кнопками плейера, по
+// аналогии с панелями самой экскурсии»); карту при этом уже двинул focusAlbum в albumRow выше
+function chooseAlbum(albumId) {
+  albumsList.hidden = true;
+  renderAlbumPanel(albumId);
+}
+
+function closeAlbumPanel() {
+  albumPanel.hidden = true;
+  albumPanelId = null;
+}
+
+// крестик панели альбома: назад к списку, та же ловушка с «следующим тактом», что у
+// closeTourToList (иначе щелчок мимо поиска сам прячет список сразу следом)
+function closeAlbumPanelToList() {
+  closeAlbumPanel();
+  if (!albumsMode) return;
+  setTimeout(() => {
+    albumsList.hidden = false;
+    renderAlbumsList();
+  });
+}
+
+// панель одного альбома: шапка — значок+название слева, треугольник плеера (как у «Мои
+// альбомы», но тут он всегда включён и запускает именно этот альбом), свернуть/закрыть справа;
+// ниже — список снимков с ленивыми миниатюрами (та же серийная очередь + IntersectionObserver,
+// что в gallery.html, но без window.opener — мы в том же окне, что и myFileThumb). Щелчок по
+// снимку и треугольник в шапке — оба открывают фотогалерею (слайд-шоу), саму панель они не
+// трогают (Грегори, 2026-10-11 продолжение: «только после клика на треугольник в этом окне
+// запускается просмотр альбома»)
+function renderAlbumPanel(albumId) {
+  const a = myAlbums.get(albumId);
+  if (!a) { closeAlbumPanel(); return; }
+  albumPanelId = albumId;
+  const h = (tag, cls, text) => Object.assign(document.createElement(tag), { className: cls || "", textContent: text || "" });
+  const head = h("div", "tour-head");
+  const bar = h("div", "tour-bar");
+  const player = h("div", "tour-player");
+  const playBtn = Object.assign(document.createElement("button"), { className: "tour-edit",
+    title: "Открыть фотогалерею", innerHTML: PLAY_ICON });
+  playBtn.addEventListener("click", () => openAlbumGallery(albumId, null));
+  player.append(playBtn);
+  const minBtn = Object.assign(document.createElement("button"), { className: "tour-edit" });
+  const setMinBtn = () => {
+    const min = albumPanel.classList.contains("min");
+    minBtn.innerHTML = min ? EXPAND_ICON : COLLAPSE_ICON;
+    minBtn.title = min ? "Развернуть альбом" : "Свернуть альбом";
+  };
+  minBtn.addEventListener("click", () => {
+    const min = !albumPanel.classList.contains("min");
+    albumPanel.classList.toggle("min", min);
+    localStorage.setItem(ALBUM_PANEL_MIN_KEY, min ? "1" : "0");
+    setMinBtn();
+  });
+  const close = Object.assign(document.createElement("button"), { className: "tour-close", title: "Закрыть", innerHTML: CLOSE_ICON });
+  close.addEventListener("click", closeAlbumPanelToList);
+  albumPanel.classList.toggle("min", localStorage.getItem(ALBUM_PANEL_MIN_KEY) === "1");
+  setMinBtn();
+  bar.append(player, h("span", "tour-bar-gap"), minBtn, close);
+  const titleRow = h("div", "tour-title-row");
+  const icon = h("span", "tour-row-pin tour-title-icon");
+  icon.innerHTML = CHIP_ICONS.myphotos;
+  const title = h("h2", "", a.name);
+  title.title = a.name;
+  titleRow.append(icon, title);
+  head.append(bar, titleRow);
+  const nodes = [head];
+  if (!a.files.length) {
+    nodes.push(h("div", "tour-list-empty", "В альбоме нет фото"));
+  } else {
+    const cells = a.files.map((id, i) => {
+      const file = myFiles.get(id);
+      const cell = Object.assign(document.createElement("button"), { className: "tour-row" });
+      cell.dataset.i = i;
+      const thumb = h("span", "album-photo-thumb");
+      thumb.append(document.createElement("img"));
+      const text = h("span", "tour-row-text");
+      text.append(h("span", "tour-row-title-text", file?.name || id));
+      if (file?.rec?.date) text.append(h("span", "tour-row-sub", new Date(file.rec.date).toLocaleDateString("ru")));
+      cell.append(thumb, text);
+      cell.addEventListener("click", () => openAlbumGallery(albumId, id));
+      return cell;
+    });
+    nodes.push(...cells);
+    const thumbQueue = []; // [id, imgEl], по одной — большой альбом иначе вешает браузер (makeMyThumb)
+    let thumbBusy = false;
+    const pumpThumbs = () => {
+      if (thumbBusy || !thumbQueue.length) return;
+      thumbBusy = true;
+      const [id, img] = thumbQueue.shift();
+      myFileThumb(id).then((url) => { img.src = url; }).catch(() => {}).finally(() => { thumbBusy = false; pumpThumbs(); });
+    };
+    const seen = new IntersectionObserver((entries) => {
+      for (const e of entries) {
+        if (!e.isIntersecting) continue;
+        seen.unobserve(e.target);
+        thumbQueue.push([a.files[Number(e.target.dataset.i)], e.target.querySelector("img")]);
+      }
+      pumpThumbs();
+    }, { root: albumPanel, rootMargin: "200px 0px" });
+    for (const c of cells) seen.observe(c);
+  }
+  albumPanel.replaceChildren(...nodes);
+  albumPanel.hidden = false;
+  albumPanel.scrollTop = 0;
 }
 
 function setAlbumsMode(on) {
@@ -3287,6 +3413,10 @@ function setAlbumsMode(on) {
   el("search-clear-btn").hidden = true;
   clearSearchResults();
   albumsCursor = null;
+  // панель одного альбома — часть того же окна «Мои альбомы»: закрывается вместе с ним в обе
+  // стороны (кнопка-переключатель, уход в другой список) — список сам вернётся на следующем
+  // открытии через renderAlbumsList ниже
+  if (!albumPanel.hidden) closeAlbumPanel();
   // открытие «Моих альбомов» закрывает панель/список справа — одновременно открыта только одна
   // (Грегори, 2026-10-10 продолжение); та же ловушка, что была у «Языков»: закрытие списка
   // экскурсий напрямую, не через setTourMode, оставляло tourMode застрявшим в true
@@ -4930,7 +5060,7 @@ el("places-btn").addEventListener("click", () => {
   if (open) {
     if (!tourList.hidden) setTourMode(false);
     if (!tourPanel.hidden) closeTourPanel();
-    if (!albumsList.hidden) setAlbumsMode(false);
+    if (!albumsList.hidden || !albumPanel.hidden) setAlbumsMode(false);
   }
 });
 
@@ -5878,13 +6008,13 @@ el("search-input").addEventListener("keydown", (evt) => {
 el("search-input").addEventListener("input", () => {
   el("search-clear-btn").hidden = !el("search-input").value;
   if (tourMode) { tourCursor = null; tourList.hidden = false; renderTourList(); return; }
-  if (albumsMode) { albumsCursor = null; renderAlbumsList(); return; }
+  if (albumsMode) { albumsCursor = null; closeAlbumPanel(); albumsList.hidden = false; renderAlbumsList(); return; }
   // стёрли запрос — снова видна история, начали печатать — она прячется
   showSearchHistory();
 });
 el("search-input").addEventListener("focus", () => {
   if (tourMode) { tourList.hidden = false; renderTourList(); }
-  else if (albumsMode) { albumsList.hidden = false; renderAlbumsList(); }
+  else if (albumsMode) { closeAlbumPanel(); albumsList.hidden = false; renderAlbumsList(); }
   else showSearchHistory();
 });
 // клик мимо поиска закрывает список
