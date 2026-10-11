@@ -1101,7 +1101,7 @@ const canOpenGallery = () => matchMedia("(pointer: fine)").matches;
 
 function openPhotoGallery(f) {
   if (!canOpenGallery()) return;
-  if (f.properties.photo.startsWith("my/")) return openAlbumGallery(f.properties.album, f.properties.photo);
+  if (f.properties.photo.startsWith("my/")) return albumPhotoClicked(f.properties.album, f.properties.photo);
   const list = photoStripList.some((g) => g.properties.photo === f.properties.photo) ? photoStripList : [f, ...photoStripList];
   const photos = list.map((g) => {
     const { photo, title, author, date, license, page, thumb, full, fullWidth } = g.properties;
@@ -1929,11 +1929,12 @@ async function showMyPhotoFull(id, imgEl) {
 }
 
 // альбом в окне галереи: все снимки папки (и без координат); миниатюры и оригиналы галерея
-// просит у этого окна сама (myGalleryThumb / myGalleryFull), по мере надобности. slides=true —
-// окно переоткрывает плеер панели альбома (startAlbumPlay/albumPlayGo) сам, каждые 4 с: тогда
-// свой плей-тогл внутри gallery.html скрыт, см. его afterShow() (Грегори, Round 64: «кнопка в
-// окне слайдшоу конфликтует с кнопкой на панели»)
-function openAlbumGallery(albumId, startId, slides = false) {
+// просит у этого окна сама (myGalleryThumb / myGalleryFull), по мере надобности. Плеер —
+// только на панели в главном окне (startAlbumPlay/albumPlayGo/albumPhotoClicked); свой
+// плей-тогл внутри gallery.html для альбомов скрыт всегда (p.my), не только во время
+// слайдшоу — иначе в окне, открытом просто кликом по фото, оставалась лишняя вторая кнопка
+// плей (Грегори, Round 66: «сделай одно окно без кнопки»)
+function openAlbumGallery(albumId, startId) {
   const album = myAlbums.get(albumId);
   if (!album || !canOpenGallery()) return;
   const photos = album.files.map((id) => {
@@ -1943,7 +1944,7 @@ function openAlbumGallery(albumId, startId, slides = false) {
       date: file.rec?.date ? new Date(file.rec.date).toLocaleDateString("ru") : "", license: `Альбом «${album.name}»` };
   });
   localStorage.setItem(PHOTO_GALLERY_KEY, JSON.stringify({ photos, start: Math.max(0, album.files.indexOf(startId)),
-    excursion: album.excursion ? { title: album.excursion.title, blocks: album.excursion.blocks } : null, slides }));
+    excursion: album.excursion ? { title: album.excursion.title, blocks: album.excursion.blocks } : null }));
   return openSideWindow(`gallery.html?t=${Date.now()}`, "travel-earth-gallery");
 }
 
@@ -3364,7 +3365,7 @@ function startAlbumPlay(albumId) {
   const a = myAlbums.get(albumId);
   if (!a?.files.length || !canOpenGallery()) return;
   albumPlay = { albumId, i: 0, paused: false };
-  albumGalleryWin = openAlbumGallery(albumId, a.files[0], true);
+  albumGalleryWin = openAlbumGallery(albumId, a.files[0]);
   albumPlaySchedule();
   albumWatchWindow();
   renderAlbumPlayer();
@@ -3390,7 +3391,7 @@ function albumAdvance(delta) {
   const a = myAlbums.get(albumPlay.albumId);
   if (!a?.files.length) { stopAlbumPlay(); return; }
   albumPlay.i = (albumPlay.i + delta + a.files.length) % a.files.length;
-  albumGalleryWin = openAlbumGallery(albumPlay.albumId, a.files[albumPlay.i], true);
+  albumGalleryWin = openAlbumGallery(albumPlay.albumId, a.files[albumPlay.i]);
   renderAlbumPlayer();
 }
 // ручной шаг кнопками назад/дальше: ставит на паузу и просто переходит, не запуская плей заново
@@ -3402,6 +3403,24 @@ function albumPlayGo(delta) {
   albumPlay.paused = true;
   clearInterval(albumPlayTimer);
   albumAdvance(delta);
+}
+// клик по конкретному снимку своего альбома — на карте, в ленте или в списке дат панели:
+// как кнопка «вперёд»/«назад», если альбом уже играет (тормозит автопоказ и переходит на этот
+// снимок), иначе просто открывает галерею на нём, как раньше (Грегори, Round 66: «клик на фото
+// на карте — это как стрелка прокрутки. Остановить воспроизведение, перейти на это фото в
+// альбоме. Если альбом не запущен, открыть»)
+function albumPhotoClicked(albumId, photoId) {
+  const a = myAlbums.get(albumId);
+  if (albumPlay?.albumId === albumId && a) {
+    albumPlay.paused = true;
+    clearInterval(albumPlayTimer);
+    const i = a.files.indexOf(photoId);
+    if (i >= 0) albumPlay.i = i;
+    albumGalleryWin = openAlbumGallery(albumId, photoId);
+    renderAlbumPlayer();
+    return;
+  }
+  openAlbumGallery(albumId, photoId);
 }
 // полоска плеера в шапке альбома — по образцу renderTourPlayer (экскурсии), но треугольник
 // вместо говорящего лица (Грегори, Thread 1: «вместо озвучки... должен быть треугольник (плай)»)
@@ -3517,7 +3536,7 @@ function renderAlbumGroups(albumId) {
       const file = myFiles.get(id);
       row(`${key}:${id}`, "tour-row-item in-group",
         `<span class="tour-row-text"><span class="tour-row-title">${escapeHtml(file?.name || id)}</span></span>`,
-        () => openAlbumGallery(albumId, id));
+        () => albumPhotoClicked(albumId, id));
     }
   }
   return rows;
