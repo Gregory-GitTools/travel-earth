@@ -386,7 +386,11 @@ const OVERLAYS = [
     layers: ["ov-photo-selected", "ov-photos", "ov-photo-dots"] },
   { id: "myphotos", name: "Мои фото", icon: CHIP_ICONS.myphotos,
     hint: "Фотографии из папки на этом компьютере (выбирается в ⚙ настройках) — альбомы видны на всём глобусе",
-    layers: ["ov-my-selected", "ov-my-photos", "ov-my-dots", "ov-my-albums"] },
+    layers: ["ov-my-selected", "ov-my-photos", "ov-my-dots", "ov-my-albums"],
+    // кнопки в «Слоях» нет (Грегори, 2026-10-11: «забираем кнопку Мои фото из слоев»): весь
+    // просмотр переехал в отдельное окно «Мои альбомы» в строке поиска, та же схема, что у
+    // «Экскурсий» выше — включение/выключение слоя теперь делает сама кнопка окна (setAlbumsMode)
+    hidden: true },
   { id: "tours", name: "Экскурсии", icon: CHIP_ICONS.tours,
     hint: "Наброски будущих путешествий из текстовых файлов в своей папке (выбирается в ⚙ настройках) — маршрут, точки, справки",
     layers: ["ov-tour-labels", "ov-tour-marks", "ov-tour-sel", "ov-tour-stops", "ov-tour-route"],
@@ -1419,7 +1423,11 @@ const myData = () => ({ type: "FeatureCollection", features: [
 let myDataTimer = 0;
 function refreshMyData() {
   clearTimeout(myDataTimer);
-  myDataTimer = setTimeout(() => { map.getSource("ov-myphotos")?.setData(myData()); updatePhotoStrip(); }, 300);
+  myDataTimer = setTimeout(() => {
+    map.getSource("ov-myphotos")?.setData(myData());
+    updatePhotoStrip();
+    updateAlbumsFinder(); // список обновляется по мере обхода папки, как у «Экскурсий»
+  }, 300);
 }
 
 // IndexedDB: settings — выбранная папка, exif — кэш координат по пути файла
@@ -1971,18 +1979,29 @@ function setMyAlbumFocus(albumId) {
   if (map.getLayer("ov-my-albums")) map.setFilter("ov-my-albums", restrict(kind("album")));
   if (map.getLayer("ov-my-dots")) map.setFilter("ov-my-dots", restrict(kind("photo")));
   if (map.getLayer("ov-my-photos")) map.setFilter("ov-my-photos", restrict(["all", kind("photo"), ["has", "img"]]));
+  // окно «Мои альбомы», если открыто, держит ту же выделенную строку и треугольник плеера —
+  // клик по значку на карте и клик по строке списка теперь делают одно и то же (см. focusAlbum
+  // ниже и renderAlbumsList)
+  if (albumsMode) {
+    albumsSelected = albumId;
+    albumsCursor = albumId ? `a:${albumId}` : null;
+    markAlbumsCursor();
+    renderAlbumsPlayer();
+  }
 }
 // вернулись на высоту, где видны значки альбомов (та же граница, что у maxzoom ov-my-albums) —
 // снимаем изоляцию; moveend, а не zoom — иначе сразу после клика (мы ещё внизу, до начала
 // перелёта flyToAlbum) ограничение снималось бы, не успев примениться
 map.on("moveend", () => { if (myAlbumFocus && map.getZoom() < photoDotZoom()) setMyAlbumFocus(null); });
 onHover("ov-my-albums", (evt) => showAlbumInfo(evt.features[0]));
-map.on("click", "ov-my-albums", (evt) => {
-  const albumId = evt.features[0].properties.album;
+// изоляция+перелёт — то же самое и по клику на значок на карте, и по клику на строку в
+// «Моих альбомах» (см. renderAlbumsList ниже)
+function focusAlbum(albumId) {
   setMyAlbumFocus(albumId);
   for (const id of ["photos", "mapillary"]) if (activeOverlays.has(id)) toggleOverlay(id);
   flyToAlbum(albumId);
-});
+}
+map.on("click", "ov-my-albums", (evt) => focusAlbum(evt.features[0].properties.album));
 map.on("dblclick", (evt) => {
   const a = albumAt(evt.point);
   if (!a || !canOpenGallery()) return;
@@ -2343,6 +2362,13 @@ let tourMode = false;
 const tourList = document.getElementById("tour-list");
 const tourOpen = new Set(); // раскрытые группы: "c:Италия", "g:Италия/Сицилия"
 let tourCursor = null; // ключ выделенной строки
+// «Мои альбомы» — отдельное окно той же схемы, крайнее правое в строке поиска (см. renderAlbumsList
+// ниже); albumsSelected — какой альбом «загружен» в треугольник плеера (не связан с zoom-сбросом
+// myAlbumFocus, см. ниже) — выбор в списке не должен слетать от того, что карта отъехала
+const albumsList = document.getElementById("albums-list");
+let albumsMode = false;
+let albumsCursor = null;
+let albumsSelected = null;
 // самое первое открытие списка экскурсий/языков — сразу подгоняем высоту под список (см.
 // scalePanelHeight выше), на случай если где-то осталась унаследованная инлайновая высота;
 // дальше пользователь сам решает размер зуммером — повторно так не делаем, иначе каждое открытие
@@ -2350,6 +2376,7 @@ let tourCursor = null; // ключ выделенной строки
 // при первом открытии. В других случаях не надо. Иначе начнётся борьба»)
 let tourListAutoScaled = false;
 let langListAutoScaled = false;
+let albumsListAutoScaled = false;
 const tourCountry = (t) => t.country || (t.region.includes(",") ? t.region.split(",").pop().trim() : t.region) || "Без страны";
 // флаги — картинками flagcdn: эмодзи-флагов в Windows нет (вместо флага две буквы)
 const COUNTRY_CODES = {
@@ -2411,9 +2438,10 @@ function setTourMode(on) {
   el("search-clear-btn").hidden = true;
   clearSearchResults();
   tourCursor = null;
-  // открытие списка экскурсий закрывает панель справа (деталь экскурсии или «Языки») —
-  // одновременно открыта только одна панель/список (Грегори, 2026-10-10 продолжение)
+  // открытие списка экскурсий закрывает панель справа (деталь экскурсии, «Языки» или «Мои
+  // альбомы») — одновременно открыта только одна панель/список (Грегори, 2026-10-10 продолжение)
   if (on && !tourPanel.hidden) closeTourPanel();
+  if (on && !albumsList.hidden) setAlbumsMode(false);
   tourList.hidden = !on;
   // экскурсии на карте — только пока кнопка нажата (Грегори)
   if (on !== activeOverlays.has("tours")) toggleOverlay("tours");
@@ -2605,6 +2633,7 @@ function renderLanguagesList() {
   stopSpeech();
   if (tourPanelId) { tourPanelId = null; showTourStopsOf(null); }
   tourList.hidden = true;
+  if (!albumsList.hidden) setAlbumsMode(false);
   // «Языки» закрывает список экскурсий напрямую (не через setTourMode), но tourMode без этого
   // оставался true — следующий клик по кнопке «Экскурсии» звал setTourMode(!tourMode), то есть
   // setTourMode(false), и список не открывался заново, а молча гасил уже спрятанные окна
@@ -3061,6 +3090,7 @@ function attachCustomScrollbar(panel) {
 }
 attachCustomScrollbar(tourList);
 attachCustomScrollbar(tourPanel);
+attachCustomScrollbar(albumsList);
 // кнопка «Языки» в строке поиска — светится, пока открыто именно окно «Языки» (а не экскурсия и
 // не правка файла); подписка на сам tourPanel и tourList вместо точечных вызовов из каждой
 // функции рендера (Грегори, 2026-10-10: «кнопку Языки перенесём ещё выше, в окно поиска»).
@@ -3075,11 +3105,13 @@ function syncTourButtons() {
   const showingLang = !tourPanel.hidden && tourPanel.classList.contains("lang-flow");
   el("lang-list-btn").classList.toggle("on", showingLang);
   el("search-tour-btn").classList.toggle("on", !tourList.hidden || (!tourPanel.hidden && !showingLang));
-  // «Слои» и правые окна (Экскурсии/Языки) теперь не уживаются вместе (Грегори, 2026-10-10
-  // продолжение: «при открытии любой панели справа, закрывать слои») — как только показалось
-  // одно из правых окон, прячем «Места и слои»; обратное направление (открытие слоёв прячет
-  // правые окна) — в обработчике клика places-btn ниже, этот наблюдатель его не трогает
-  if ((!tourList.hidden || !tourPanel.hidden) && !el("menu-panel").hidden) {
+  // «Мои альбомы» — тем же приёмом, но у неё нет общего tourPanel: своя панель albumsList
+  el("my-albums-btn").classList.toggle("on", !albumsList.hidden);
+  // «Слои» и правые окна (Экскурсии/Языки/Мои альбомы) теперь не уживаются вместе (Грегори,
+  // 2026-10-10 продолжение: «при открытии любой панели справа, закрывать слои») — как только
+  // показалось одно из правых окон, прячем «Места и слои»; обратное направление (открытие слоёв
+  // прячет правые окна) — в обработчике клика places-btn ниже, этот наблюдатель его не трогает
+  if ((!tourList.hidden || !tourPanel.hidden || !albumsList.hidden) && !el("menu-panel").hidden) {
     el("menu-panel").hidden = true;
     updatePlacesBtn();
   }
@@ -3087,6 +3119,7 @@ function syncTourButtons() {
 const tourBtnSync = new MutationObserver(syncTourButtons);
 tourBtnSync.observe(tourPanel, { attributes: true, attributeFilter: ["class", "hidden"] });
 tourBtnSync.observe(tourList, { attributes: true, attributeFilter: ["hidden"] });
+tourBtnSync.observe(albumsList, { attributes: true, attributeFilter: ["hidden"] });
 el("lang-list-btn").addEventListener("click", () => {
   if (!tourPanel.hidden && tourPanel.classList.contains("lang-list")) { closeTourToList(); return; }
   renderLanguagesList();
@@ -3113,6 +3146,152 @@ function closeTourToList() {
     // 2026-10-04), но фокус нужен только в самом окне поиска, а список экскурсий — «другое окно»
     // (Грегори, 2026-10-11: «в остальных окнах фокус не нужен, убирай везде») — теперь никуда не ставим
   });
+}
+
+// ---------- «Мои альбомы» — отдельное окно в строке поиска, той же схемы, что «Экскурсии»/«Языки» ----------
+
+// кнопка «Мои фото» в «Слоях» убрана (см. OVERLAYS выше, hidden: true) — весь просмотр альбомов
+// переехал в одно окно (Грегори, 2026-10-11: «забираем кнопку Мои фото из слоев и делаем кнопку
+// Мои альбомы самой правой в окне поиска со своей панелью... это соберет мои другие приложения
+// в одно»). Список — плоский, без группировки по странам (у альбома, в отличие от экскурсии,
+// обычно нет определённого места — только точка первого найденного снимка, а чаще и той нет, пока
+// обход не дойдёт до координат): фильтр в поле поиска — по названию, пути к папке и, если альбом
+// привязан к экскурсии, по её названию/месту (Грегори: «окно поиска... ориентировано на поиск по
+// альбомам, датам и местам»); сортировка — отдельной кнопкой, по кругу: название → дата (новые
+// сначала) → близость к текущему центру карты. Строка списка — то же самое, что значок альбома на
+// карте: щелчок — изоляция+перелёт (focusAlbum), двойной — сразу фотогалерея. Вместо плеера
+// аудиогида в шапке — один треугольник: открывает галерею уже выбранного альбома (albumsSelected —
+// своё состояние, не зависящее от myAlbumFocus, который карта сама сбрасывает при отъезде, см.
+// map.on("moveend") выше — выбор в списке не должен слетать от этого)
+const ALBUMS_LIST_MIN_KEY = "travel-earth.albums-list-min";
+const ALBUM_SORT_KEY = "travel-earth.album-sort";
+let albumSort = localStorage.getItem(ALBUM_SORT_KEY) || "name"; // "name" | "date" | "place"
+const ALBUM_SORT_NEXT = { name: "date", date: "place", place: "name" };
+const albumSortLabel = (mode) => (mode === "date" ? "Сортировка: по дате (сначала новые)"
+  : mode === "place" ? "Сортировка: по близости к текущему виду карты" : "Сортировка: по названию");
+// дата альбома для сортировки — самый новый снимок с известной датой; EXIF читается лениво во
+// время обхода/индексации, у части альбомов её может ещё не быть на момент сортировки
+function albumSortDate(a) {
+  let max = 0;
+  for (const id of a.files) { const d = myFiles.get(id)?.rec?.date; if (d && d > max) max = d; }
+  return max;
+}
+// расстояние до центра карты в градусах — для сортировки точность в метрах не нужна
+function albumSortDist(a) {
+  if (!a.point) return Infinity;
+  const c = map.getCenter();
+  return Math.hypot((a.point[0] - c.lng) * Math.cos((c.lat * Math.PI) / 180), a.point[1] - c.lat);
+}
+
+function renderAlbumsList() {
+  const q = el("search-input").value.trim().toLowerCase();
+  const all = [...myAlbums.values()].filter((a) => !q
+    || [a.name, a.path, a.excursion?.title, a.excursion?.country, a.excursion?.city].filter(Boolean).join(" ").toLowerCase().includes(q));
+  if (albumSort === "date") all.sort((a, b) => albumSortDate(b) - albumSortDate(a));
+  else if (albumSort === "place") all.sort((a, b) => albumSortDist(a) - albumSortDist(b));
+  else all.sort((a, b) => a.name.localeCompare(b.name, "ru"));
+  const rows = [];
+  const row = (key, cls, html, onClick, onDblClick) => {
+    const r = Object.assign(document.createElement("button"), { className: `tour-row ${cls}`, innerHTML: html });
+    r.dataset.key = key;
+    r.addEventListener("click", onClick);
+    if (onDblClick) r.addEventListener("dblclick", onDblClick);
+    rows.push(r);
+    return r;
+  };
+  const albumRow = (a) => row(`a:${a.id}`, "tour-row-item",
+    `<span class="tour-row-pin">${CHIP_ICONS.myphotos}</span><span class="tour-row-text"><span class="tour-row-title">${escapeHtml(a.name)}</span>`
+    + `<span class="tour-row-sub">${escapeHtml(`${a.files.length} фото${a.excursion ? ` · ${a.excursion.title}` : ""}`)}</span></span>`,
+    () => { if (a.point) focusAlbum(a.id); else { albumsSelected = a.id; albumsCursor = `a:${a.id}`; markAlbumsCursor(); renderAlbumsPlayer(); } },
+    () => { if (canOpenGallery()) openAlbumGallery(a.id, null); });
+  // шапка — как у «Языки»/«Экскурсии» (значок+название слева, кнопки справа), но слева от названия
+  // — свой «плеер»: не 4 кнопки аудиогида, а один треугольник (Грегори: «в проигрывателе уже будет
+  // треугольник, и запускать он будет альбом»)
+  const head = Object.assign(document.createElement("div"), { className: "tour-head" });
+  const bar = Object.assign(document.createElement("div"), { className: "tour-bar" });
+  const player = Object.assign(document.createElement("div"), { className: "tour-player" });
+  const playBtn = Object.assign(document.createElement("button"), { className: "tour-edit",
+    title: "Открыть фотогалерею выбранного альбома", innerHTML: PLAY_ICON, disabled: !albumsSelected });
+  playBtn.addEventListener("click", () => { if (albumsSelected) openAlbumGallery(albumsSelected, null); });
+  player.append(playBtn);
+  const label = Object.assign(document.createElement("div"), { className: "tour-list-label" });
+  const titleIcon = Object.assign(document.createElement("span"), { className: "tour-row-pin tour-title-icon", innerHTML: CHIP_ICONS.myphotos });
+  label.append(titleIcon, Object.assign(document.createElement("h2"), { textContent: "Мои альбомы" }));
+  const sortBtn = Object.assign(document.createElement("button"), { className: "tour-edit",
+    title: albumSortLabel(albumSort), innerHTML: SORT_ICON });
+  sortBtn.addEventListener("click", () => {
+    albumSort = ALBUM_SORT_NEXT[albumSort];
+    localStorage.setItem(ALBUM_SORT_KEY, albumSort);
+    renderAlbumsList();
+  });
+  const minBtn = Object.assign(document.createElement("button"), { className: "tour-edit" });
+  const setMinBtn = () => {
+    const min = albumsList.classList.contains("min");
+    minBtn.innerHTML = min ? EXPAND_ICON : COLLAPSE_ICON;
+    minBtn.title = min ? "Развернуть" : "Свернуть окно";
+  };
+  minBtn.addEventListener("click", () => {
+    const min = !albumsList.classList.contains("min");
+    albumsList.classList.toggle("min", min);
+    localStorage.setItem(ALBUMS_LIST_MIN_KEY, min ? "1" : "0");
+    setMinBtn();
+  });
+  const close = Object.assign(document.createElement("button"), { className: "tour-close", title: "Закрыть", innerHTML: CLOSE_ICON });
+  close.addEventListener("click", () => setAlbumsMode(false));
+  bar.append(player, label, Object.assign(document.createElement("span"), { className: "tour-bar-gap" }), sortBtn, minBtn, close);
+  head.append(bar);
+  albumsList.classList.toggle("min", localStorage.getItem(ALBUMS_LIST_MIN_KEY) === "1");
+  setMinBtn();
+  rows.push(head);
+  for (const a of all) albumRow(a);
+  if (!all.length) {
+    rows.push(Object.assign(document.createElement("div"), { className: "tour-list-empty",
+      textContent: myAlbums.size ? "Ничего не нашлось" : myDir ? "В папке фото нет альбомов" : "Альбомы загружаются…" }));
+  }
+  albumsList.replaceChildren(...rows);
+  markAlbumsCursor();
+}
+
+function markAlbumsCursor() {
+  for (const r of albumsList.querySelectorAll(".tour-row")) r.classList.toggle("active", r.dataset.key === albumsCursor);
+}
+
+// обновляет только треугольник плеера — без полной перерисовки списка (после focusAlbum/сброса
+// изоляции, см. setMyAlbumFocus и removeOverlay выше)
+function renderAlbumsPlayer() {
+  const btn = albumsList.querySelector(".tour-player .tour-edit");
+  if (btn) btn.disabled = !albumsSelected;
+}
+
+function updateAlbumsFinder() {
+  if (albumsMode && !albumsList.hidden) renderAlbumsList();
+}
+
+function setAlbumsMode(on) {
+  albumsMode = on;
+  const input = el("search-input");
+  el("my-albums-btn").title = on ? "Скрыть альбомы и вернуться к поиску мест" : "Мои альбомы: список, поиск по названию/дате/месту, сортировка";
+  input.placeholder = on ? "Найти альбом, дату, место" : "Поиск места";
+  input.value = "";
+  el("search-clear-btn").hidden = true;
+  clearSearchResults();
+  albumsCursor = null;
+  // открытие «Моих альбомов» закрывает панель/список справа — одновременно открыта только одна
+  // (Грегори, 2026-10-10 продолжение); та же ловушка, что была у «Языков»: закрытие списка
+  // экскурсий напрямую, не через setTourMode, оставляло tourMode застрявшим в true
+  if (on) {
+    if (tourMode) tourMode = false;
+    tourList.hidden = true;
+    if (!tourPanel.hidden) closeTourPanel();
+  }
+  albumsList.hidden = !on;
+  // «Мои фото» на карте — та же схема, что у «Экскурсий»: включены/выключены вместе с окном
+  // (кнопка в «Слоях» для этого слоя убрана, см. OVERLAYS выше)
+  if (on !== activeOverlays.has("myphotos")) toggleOverlay("myphotos");
+  if (on) {
+    renderAlbumsList();
+    if (!albumsListAutoScaled) { albumsListAutoScaled = true; scalePanelHeight(albumsList); }
+  }
 }
 
 // ---------- обзорная экскурсия: озвучка с переходами по точкам и слайд-шоу ----------
@@ -3834,6 +4013,8 @@ function renderTourPanel(id) {
 // «Информация» — как писать файл экскурсии (Грегори: «кнопка Информация с синтаксисом файла»);
 // раскрывается под шапкой, в просмотре и в правке, повторное нажатие — прячет
 const INFO_ICON = `<svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M11 7h2v2h-2zm0 4h2v6h-2zm1-9C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z"/></svg>`;
+// кнопка сортировки окна «Мои альбомы» (см. renderAlbumsList)
+const SORT_ICON = `<svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M3 18h6v-2H3v2zM3 6v2h18V6H3zm0 7h12v-2H3v2z"/></svg>`;
 const TOUR_HELP = [
   ["# Название", "название поездки — первая строка"],
   ["Регион: Мадейра, Португалия", "точка поездки на глобусе (достаточно названия)"],
@@ -4400,7 +4581,13 @@ function removeOverlay(id) {
   if (id === "terrain3d") map.setTerrain(null);
   if (id === "photos") { selectPhoto(null); updatePhotoStrip(); }
   if (id === "mapillary" && map.getSource("ov-mly-pos")) map.removeSource("ov-mly-pos");
-  if (id === "myphotos") { if (selectedPhoto?.startsWith("my/")) selectPhoto(null); updatePhotoStrip(); myAlbumFocus = null; }
+  if (id === "myphotos") {
+    if (selectedPhoto?.startsWith("my/")) selectPhoto(null);
+    updatePhotoStrip();
+    myAlbumFocus = null;
+    albumsSelected = null;
+    if (albumsMode) { albumsCursor = null; renderAlbumsPlayer(); }
+  }
   if (id === "tours") { closeTourPanel(); updateTourFinder(); }
   for (const sourceId of [`ov-${id}`, `ov-${id}-vec`]) if (map.getSource(sourceId)) map.removeSource(sourceId);
   if (overlay.trails && !trailOverlayActive()) {
@@ -4732,6 +4919,7 @@ el("places-btn").addEventListener("click", () => {
   if (open) {
     if (!tourList.hidden) setTourMode(false);
     if (!tourPanel.hidden) closeTourPanel();
+    if (!albumsList.hidden) setAlbumsMode(false);
   }
 });
 
@@ -5679,11 +5867,14 @@ el("search-input").addEventListener("keydown", (evt) => {
 el("search-input").addEventListener("input", () => {
   el("search-clear-btn").hidden = !el("search-input").value;
   if (tourMode) { tourCursor = null; tourList.hidden = false; renderTourList(); return; }
+  if (albumsMode) { albumsCursor = null; renderAlbumsList(); return; }
   // стёрли запрос — снова видна история, начали печатать — она прячется
   showSearchHistory();
 });
 el("search-input").addEventListener("focus", () => {
-  if (tourMode) { tourList.hidden = false; renderTourList(); } else showSearchHistory();
+  if (tourMode) { tourList.hidden = false; renderTourList(); }
+  else if (albumsMode) { albumsList.hidden = false; renderAlbumsList(); }
+  else showSearchHistory();
 });
 // клик мимо поиска закрывает список
 document.addEventListener("click", (evt) => {
@@ -5696,6 +5887,7 @@ document.addEventListener("click", (evt) => {
   if (!evt.target.closest(".search-wrap") && !evt.target.closest(".panel-resize-handle")) {
     clearSearchResults();
     tourList.hidden = true;
+    albumsList.hidden = true;
   }
 });
 el("search-btn").addEventListener("click", () => {
@@ -5710,11 +5902,18 @@ el("search-btn").addEventListener("click", () => {
     el("search-input").value = q;
     el("search-clear-btn").hidden = !q;
   }
+  if (albumsMode) {
+    const q = el("search-input").value;
+    setAlbumsMode(false);
+    el("search-input").value = q;
+    el("search-clear-btn").hidden = !q;
+  }
   if (!tourPanel.hidden) closeTourPanel();
   el("search-input").focus(); // фокус обратно в поле поиска, а не на саму кнопку (Грегори, 2026-10-11, скрин 42.png)
   runSearch();
 });
 el("search-tour-btn").addEventListener("click", () => setTourMode(!tourMode));
+el("my-albums-btn").addEventListener("click", () => setAlbumsMode(!albumsMode));
 // «Экскурсии» больше не восстанавливаются после перезапуска (см. activeOverlays.delete("tours")
 // выше) — tourMode просто остаётся false по умолчанию (Грегори, 2026-10-10 продолжение,
 // «пассивный режим»), этот блок раньше включал его из сохранённого состояния слоя
@@ -5724,6 +5923,13 @@ el("search-clear-btn").addEventListener("click", () => {
     el("search-clear-btn").hidden = true;
     tourCursor = null;
     renderTourList();
+    return;
+  }
+  if (albumsMode) {
+    el("search-input").value = "";
+    el("search-clear-btn").hidden = true;
+    albumsCursor = null;
+    renderAlbumsList();
     return;
   }
   el("search-input").value = "";

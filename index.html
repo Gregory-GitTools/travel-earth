@@ -48,9 +48,17 @@
       <button id="search-tour-btn" title="Экскурсии: поиск и список по странам">
         <svg viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M20.5 3l-.16.03L15 5.1 9 3 3.36 4.9c-.21.07-.36.25-.36.48V20.5c0 .28.22.5.5.5l.16-.03L9 18.9l6 2.1 5.64-1.9c.21-.07.36-.25.36-.48V3.5c0-.28-.22-.5-.5-.5zM15 19l-6-2.11V5l6 2.11V19z"/></svg>
       </button>
+      <!-- самая правая, после «Экскурсий» — своя панель со списком, поиском и сортировкой; кнопка
+           «Мои фото» в «Слоях» убрана (см. OVERLAYS в app.js), всё собрано здесь (Грегори,
+           2026-10-11: «забираем кнопку Мои фото из слоев и делаем кнопку Мои альбомы самой правой
+           в окне поиска со своей панелью... это соберет мои другие приложения в одно») -->
+      <button id="my-albums-btn" title="Мои альбомы: список, поиск по названию/дате/месту, сортировка">
+        <svg viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M22 16V4c0-1.1-.9-2-2-2H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2zm-11-4 2.03 2.71L16 11l4 5H8l3-4zM2 6v14c0 1.1.9 2 2 2h14v-2H4V6H2z"/></svg>
+      </button>
     </div>
     <div id="search-results" class="search-results" hidden></div>
     <div id="tour-list" class="search-results tour-list" hidden></div>
+    <div id="albums-list" class="search-results tour-list" hidden></div>
   </div>
   <div class="places-wrap">
     <button id="places-btn" class="places-btn" title="Места и слои: рестораны, транспорт, тропы, фото, рельеф…">
@@ -171,6 +179,6 @@
 
 <script src="https://unpkg.com/maplibre-gl@5/dist/maplibre-gl.js"></script>
 <script src="https://unpkg.com/maplibre-contour@0.1.1/dist/index.min.js"></script>
-<script src="app.js?v=202610112359"></script>
+<script src="app.js?v=202610120015"></script>
 </body>
 </html>
