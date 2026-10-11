@@ -1929,8 +1929,11 @@ async function showMyPhotoFull(id, imgEl) {
 }
 
 // альбом в окне галереи: все снимки папки (и без координат); миниатюры и оригиналы галерея
-// просит у этого окна сама (myGalleryThumb / myGalleryFull), по мере надобности
-function openAlbumGallery(albumId, startId) {
+// просит у этого окна сама (myGalleryThumb / myGalleryFull), по мере надобности. slides=true —
+// окно переоткрывает плеер панели альбома (startAlbumPlay/albumPlayGo) сам, каждые 4 с: тогда
+// свой плей-тогл внутри gallery.html скрыт, см. его afterShow() (Грегори, Round 64: «кнопка в
+// окне слайдшоу конфликтует с кнопкой на панели»)
+function openAlbumGallery(albumId, startId, slides = false) {
   const album = myAlbums.get(albumId);
   if (!album || !canOpenGallery()) return;
   const photos = album.files.map((id) => {
@@ -1940,7 +1943,7 @@ function openAlbumGallery(albumId, startId) {
       date: file.rec?.date ? new Date(file.rec.date).toLocaleDateString("ru") : "", license: `Альбом «${album.name}»` };
   });
   localStorage.setItem(PHOTO_GALLERY_KEY, JSON.stringify({ photos, start: Math.max(0, album.files.indexOf(startId)),
-    excursion: album.excursion ? { title: album.excursion.title, blocks: album.excursion.blocks } : null }));
+    excursion: album.excursion ? { title: album.excursion.title, blocks: album.excursion.blocks } : null, slides }));
   return openSideWindow(`gallery.html?t=${Date.now()}`, "travel-earth-gallery");
 }
 
@@ -2646,6 +2649,9 @@ function renderLanguagesList() {
   // setTourMode(false), и список не открывался заново, а молча гасил уже спрятанные окна
   // (Грегори, 2026-10-10 продолжение: «с кнопками неразбениха»)
   tourMode = false;
+  // сброса флага мало — слой маршрутов/точек экскурсий оставался на карте поверх «Языков»
+  // (Грегори, Round 64: «кнопки Язык и Альбом не снимают Экскурсии с карты»)
+  if (activeOverlays.has("tours")) toggleOverlay("tours");
   tourCursor = null;
   const h = (tag, cls, text) => Object.assign(document.createElement(tag), { className: cls || "", textContent: text || "" });
   const byLang = new Map();
@@ -2941,6 +2947,7 @@ function renderTourSettings(handle) {
 // панель дайджеста справа
 const SPEAK_ICON = `<svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>`;
 const PLAY_ICON = `<svg viewBox="0 0 24 24" width="14" height="14"><path fill="currentColor" d="M8 5v14l11-7z"/></svg>`;
+const PAUSE_ICON = `<svg viewBox="0 0 24 24" width="14" height="14"><path fill="currentColor" d="M6 5h4v14H6zm8 0h4v14h-4z"/></svg>`;
 let tourPanelId = null;
 const tourPanel = Object.assign(document.createElement("aside"), { className: "tour-panel", hidden: true });
 document.body.append(tourPanel);
@@ -3251,17 +3258,17 @@ function renderAlbumsList() {
     localStorage.setItem(ALBUM_SORT_KEY, albumSort);
     renderAlbumsList();
   });
-  // свернуть/развернуть СПИСОК альбомов (не всё окно) — значок-квадрат/полоска (COLLAPSE_ICON/
-  // EXPAND_ICON) читался как «свернуть окно» и для Грегори выглядел несуществующей функцией, хотя
-  // сам .min уже и тогда прятал именно строки списка, оставляя шапку: берём ту же пару стрелок
-  // FOLD_ICON/UNFOLD_ICON, что у «Развернуть все»/«Свернуть все» в Экскурсиях — она уже читается
-  // как «список» (Грегори, 2026-10-11 продолжение: «кнопка свернуть/развернуть список — нет, есть
-  // свернуть окно… ничего нового не появилось»)
+  // ту попытку (FOLD_ICON/UNFOLD_ICON, подписанную «список») Грегори не узнал — группировки у
+  // альбомов пока нет, фолдить там нечего, а кнопка как сворачивала, так и сворачивает всё окно
+  // до шапки (.tour-list.min, тот же класс, что у Экскурсий/Языков). Возвращаем обычную пару
+  // COLLAPSE_ICON/EXPAND_ICON — ту же, что у всех остальных окон (Грегори, Round 64: «в панели
+  // общего списка альбомов нет кнопки свернуть окно»); отдельная кнопка «свернуть группы»
+  // появится вместе с самой группировкой
   const minBtn = Object.assign(document.createElement("button"), { className: "tour-edit" });
   const setMinBtn = () => {
     const min = albumsList.classList.contains("min");
-    minBtn.innerHTML = min ? UNFOLD_ICON : FOLD_ICON;
-    minBtn.title = min ? "Развернуть список" : "Свернуть список";
+    minBtn.innerHTML = min ? EXPAND_ICON : COLLAPSE_ICON;
+    minBtn.title = min ? "Развернуть альбомы" : "Свернуть альбомы";
   };
   minBtn.addEventListener("click", () => {
     const min = !albumsList.classList.contains("min");
@@ -3269,9 +3276,15 @@ function renderAlbumsList() {
     localStorage.setItem(ALBUMS_LIST_MIN_KEY, min ? "1" : "0");
     setMinBtn();
   });
+  // пересканировать папку — список раньше было нечем обновить, кроме как заново открывать выбор
+  // папки в настройках (Грегори, Round 64: «список альбомов ничем не обновить»)
+  const refreshBtn = Object.assign(document.createElement("button"), { className: "tour-edit",
+    title: myDir ? "Обновить список альбомов" : "Сначала выберите папку со снимками в настройках",
+    innerHTML: REFRESH_ICON, disabled: !myDir });
+  refreshBtn.addEventListener("click", () => { if (myDir) startMyScan(myDir); });
   const close = Object.assign(document.createElement("button"), { className: "tour-close", title: "Закрыть", innerHTML: CLOSE_ICON });
   close.addEventListener("click", () => setAlbumsMode(false));
-  bar.append(player, label, Object.assign(document.createElement("span"), { className: "tour-bar-gap" }), sortBtn, minBtn, close);
+  bar.append(player, label, Object.assign(document.createElement("span"), { className: "tour-bar-gap" }), refreshBtn, sortBtn, minBtn, close);
   head.append(bar);
   albumsList.classList.toggle("min", localStorage.getItem(ALBUMS_LIST_MIN_KEY) === "1");
   setMinBtn();
@@ -3325,7 +3338,7 @@ let albumWatchTimer = null; // следит, не закрыл ли челове
 let albumGalleryWin = null;
 function albumPlaySchedule() {
   clearInterval(albumPlayTimer);
-  albumPlayTimer = setInterval(() => albumPlayGo(1), 4000);
+  albumPlayTimer = setInterval(() => albumAdvance(1), 4000);
 }
 function albumWatchWindow() {
   clearInterval(albumWatchTimer);
@@ -3335,7 +3348,7 @@ function startAlbumPlay(albumId) {
   const a = myAlbums.get(albumId);
   if (!a?.files.length || !canOpenGallery()) return;
   albumPlay = { albumId, i: 0, paused: false };
-  albumGalleryWin = openAlbumGallery(albumId, a.files[0]);
+  albumGalleryWin = openAlbumGallery(albumId, a.files[0], true);
   albumPlaySchedule();
   albumWatchWindow();
   renderAlbumPlayer();
@@ -3355,15 +3368,24 @@ function albumPlayPause() {
   if (albumPlay.paused) clearInterval(albumPlayTimer); else albumPlaySchedule();
   renderAlbumPlayer();
 }
-function albumPlayGo(delta) {
+// шаг таймера автопоказа — переставляет фото и остаётся на плее (таймер зовёт только отсюда)
+function albumAdvance(delta) {
   if (!albumPlay) return;
   const a = myAlbums.get(albumPlay.albumId);
   if (!a?.files.length) { stopAlbumPlay(); return; }
   albumPlay.i = (albumPlay.i + delta + a.files.length) % a.files.length;
-  albumPlay.paused = false;
-  albumGalleryWin = openAlbumGallery(albumPlay.albumId, a.files[albumPlay.i]);
-  albumPlaySchedule();
+  albumGalleryWin = openAlbumGallery(albumPlay.albumId, a.files[albumPlay.i], true);
   renderAlbumPlayer();
+}
+// ручной шаг кнопками назад/дальше: ставит на паузу и просто переходит, не запуская плей заново
+// (Грегори, Round 64: «кнопки вперёд/назад не должны запускать плай. Скорей, они должны
+// останавливать и предоставлять ручной выбор, а не бороться» — раньше шаг сбрасывал paused и сам
+// же перезапускал таймер, поэтому пауза никогда не держалась дольше одного клика)
+function albumPlayGo(delta) {
+  if (!albumPlay) return;
+  albumPlay.paused = true;
+  clearInterval(albumPlayTimer);
+  albumAdvance(delta);
 }
 // полоска плеера в шапке альбома — по образцу renderTourPlayer (экскурсии), но треугольник
 // вместо говорящего лица (Грегори, Thread 1: «вместо озвучки... должен быть треугольник (плай)»)
@@ -3372,19 +3394,25 @@ function renderAlbumPlayer() {
   if (!bar) return;
   const id = albumPanelId;
   const play = albumPlay?.albumId === id ? albumPlay : null;
+  const playing = !!play && !play.paused;
   const b = (icon, title, fn, off) => {
     const x = Object.assign(document.createElement("button"), { className: "tour-edit", title, innerHTML: icon, disabled: !!off });
     x.addEventListener("click", fn);
     return x;
   };
-  const main = b(PLAY_ICON, !play ? "Слайдшоу альбома" : play.paused ? "Продолжить" : "Пауза",
+  // значок главной кнопки сам переключается плей/пауза — раньше оставался треугольником даже во
+  // время показа, подсвечивался только кружок (Грегори, Round 64: «серый треугольник на белом
+  // фоне при нажатии должен меняться на значок паузы в сером круге»)
+  const main = b(playing ? PAUSE_ICON : PLAY_ICON, !play ? "Слайдшоу альбома" : play.paused ? "Продолжить" : "Пауза",
     () => (play ? albumPlayPause() : startAlbumPlay(id)));
-  main.classList.toggle("on", !!play && !play.paused);
+  main.classList.toggle("on", playing);
   bar.replaceChildren(b(PREV_ICON, "Назад", () => albumPlayGo(-1), !play), main,
     b(NEXT_ICON, "Дальше", () => albumPlayGo(1), !play), b(STOP_ICON, "Стоп", stopAlbumPlay, !play));
   const label = albumPanel.querySelector(".tour-player-label");
   const a = myAlbums.get(id);
-  if (label) label.textContent = play && a ? `${play.i + 1} / ${a.files.length} · фото` : "";
+  // остановлен — общее число снимков вместо пустой строки (Грегори, Round 64: «при остановке
+  // альбома нужно показывать общее количество снимков»)
+  if (label) label.textContent = !a ? "" : play ? `${play.i + 1} / ${a.files.length} · фото` : `${a.files.length} фото`;
 }
 // справка альбома — пока только счётчик и диапазон дат; сюда же позже лягут группировка по
 // дням/геолокации/странам/городам и .json-манифест (Грегори, Thread 1: «это пока пустое»)
@@ -3496,7 +3524,13 @@ function setAlbumsMode(on) {
   // (Грегори, 2026-10-10 продолжение); та же ловушка, что была у «Языков»: закрытие списка
   // экскурсий напрямую, не через setTourMode, оставляло tourMode застрявшим в true
   if (on) {
-    if (tourMode) tourMode = false;
+    if (tourMode) {
+      tourMode = false;
+      // сброса флага мало — слой маршрутов/точек экскурсий оставался на карте поверх альбомов
+      // (Грегори, Round 64: «кнопки Язык и Альбом не снимают Экскурсии с карты»); полный
+      // setTourMode(false) тут не зовём — он же чистит строку поиска под «Мои альбомы»
+      if (activeOverlays.has("tours")) toggleOverlay("tours");
+    }
     tourList.hidden = true;
     if (!tourPanel.hidden) closeTourPanel();
   }
@@ -4231,6 +4265,7 @@ function renderTourPanel(id) {
 const INFO_ICON = `<svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M11 7h2v2h-2zm0 4h2v6h-2zm1-9C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z"/></svg>`;
 // кнопка сортировки окна «Мои альбомы» (см. renderAlbumsList)
 const SORT_ICON = `<svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M3 18h6v-2H3v2zM3 6v2h18V6H3zm0 7h12v-2H3v2z"/></svg>`;
+const REFRESH_ICON = `<svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M17.65 6.35A7.95 7.95 0 0 0 12 4a8 8 0 1 0 7.73 10h-2.08A6 6 0 1 1 12 6c1.66 0 3.14.69 4.22 1.78L13 11h7V4z"/></svg>`;
 const TOUR_HELP = [
   ["# Название", "название поездки — первая строка"],
   ["Регион: Мадейра, Португалия", "точка поездки на глобусе (достаточно названия)"],

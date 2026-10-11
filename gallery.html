@@ -283,7 +283,11 @@ function afterShow(p) {
   // миниатюры по пути, и они встали бы в очередь
   thumbs[index].scrollIntoView({ block: "nearest", inline: "center", behavior: firstShow ? "instant" : "smooth" });
   firstShow = false;
-  $(".prev").disabled = $(".next").disabled = $(".play-toggle").hidden = photos.length < 2;
+  $(".prev").disabled = $(".next").disabled = photos.length < 2;
+  // свой плей-тогл прячем, если фото листает кто-то снаружи (панель альбома, слайд-шоу
+  // экскурсии) — два независимых таймера автосмены иначе воевали друг с другом (Грегори,
+  // Round 64: «кнопка в окне слайдшоу конфликтует с кнопкой на панели»)
+  $(".play-toggle").hidden = data.slides || photos.length < 2;
   tellMap({ gallery: "photo", photo: p.photo });
   // слайд-шоу идёт — переставить таймер на 5 с от текущего кадра, а не от прошлого
   if (playTimer) { clearInterval(playTimer); playTimer = setInterval(() => show(index + 1), 5000); }
