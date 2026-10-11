@@ -142,6 +142,11 @@
     cursor: pointer;
   }
   .tour-toggle.on { background: #333; }
+  /* плеер слайд-шоу: та же пилюля, что у переключателя «Экскурсия» (Грегори, 2026-10-11
+     продолжение: «после клика на альбом должно появляться новое окно с одним альбомом и
+     плейером для слайдшоу») — автосмена снимков каждые 5 с, пока нажата */
+  .play-toggle { min-width: 34px; text-align: center; }
+  .play-toggle.on { background: #e91e63; }
   .caption-text { font-size: 0.85rem; color: #ddd; font-style: italic; margin-top: 4px; }
 
   /* как в index.html: открытое из установленного приложения окно тоже без системного заголовка
@@ -169,6 +174,7 @@
 <div class="bar">
   <div class="caption"><div class="title"></div><div class="meta"></div><div class="caption-text" hidden></div></div>
   <button class="tour-toggle" hidden>Экскурсия</button>
+  <button class="tour-toggle play-toggle" title="Слайд-шоу: смена каждые 5 с">▶</button>
   <div class="count"></div>
 </div>
 <div class="main">
@@ -188,6 +194,9 @@ const photos = data.photos;
 let index = Math.min(Math.max(0, data.start || 0), photos.length - 1);
 const $ = (sel) => document.querySelector(sel);
 const photoEl = $(".photo");
+// плеер слайд-шоу — автосмена каждые 5 с, пока нажата кнопка; любая навигация (ручная или
+// автоматическая) переставляет таймер, чтобы темп не сбивался
+let playTimer = null;
 
 // крупный снимок: у Commons миниатюры стандартных размеров; оригинал — если он не больше 1920
 const bigUrl = (p) => (p.fullWidth > 1920 && p.thumb ? p.thumb.replace(/\/\d+px-/, "/1920px-") : p.full || p.thumb);
@@ -274,8 +283,10 @@ function afterShow(p) {
   // миниатюры по пути, и они встали бы в очередь
   thumbs[index].scrollIntoView({ block: "nearest", inline: "center", behavior: firstShow ? "instant" : "smooth" });
   firstShow = false;
-  $(".prev").disabled = $(".next").disabled = photos.length < 2;
+  $(".prev").disabled = $(".next").disabled = $(".play-toggle").hidden = photos.length < 2;
   tellMap({ gallery: "photo", photo: p.photo });
+  // слайд-шоу идёт — переставить таймер на 5 с от текущего кадра, а не от прошлого
+  if (playTimer) { clearInterval(playTimer); playTimer = setInterval(() => show(index + 1), 5000); }
 }
 
 // свой снимок: пока читается файл — миниатюра (если уже есть), потом оригинал
@@ -294,7 +305,7 @@ function showMine(p) {
 function tellMap(msg) {
   try { window.opener?.postMessage(msg, location.origin); } catch { /* главное окно закрыто */ }
 }
-addEventListener("pagehide", () => tellMap({ gallery: "closed" }));
+addEventListener("pagehide", () => { clearInterval(playTimer); tellMap({ gallery: "closed" }); });
 // галерея слайд-шоу аудиогида: новая остановка — новый список (перезагрузка), смена слайда —
 // тот же снимок здесь (galleryShow)
 addEventListener("message", (e) => {
@@ -306,6 +317,14 @@ if (data.stop) document.title = `${data.stop} — Travel Earth`;
 
 $(".prev").addEventListener("click", () => show(index - 1));
 $(".next").addEventListener("click", () => show(index + 1));
+$(".play-toggle").addEventListener("click", () => {
+  const on = !playTimer;
+  clearInterval(playTimer);
+  playTimer = on ? setInterval(() => show(index + 1), 5000) : null;
+  $(".play-toggle").classList.toggle("on", on);
+  $(".play-toggle").textContent = on ? "❚❚" : "▶";
+  $(".play-toggle").title = on ? "Пауза" : "Слайд-шоу: смена каждые 5 с";
+});
 document.addEventListener("keydown", (e) => {
   if (e.key === "ArrowLeft") show(index - 1);
   else if (e.key === "ArrowRight") show(index + 1);
@@ -348,7 +367,7 @@ if (tour) {
 }
 
 if (photos.length) show(index);
-else $(".stage").replaceChildren(Object.assign(document.createElement("div"), { className: "empty", textContent: "Нет снимков" }));
+else { $(".stage").replaceChildren(Object.assign(document.createElement("div"), { className: "empty", textContent: "Нет снимков" })); $(".play-toggle").hidden = true; }
 </script>
 </body>
 </html>

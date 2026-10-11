@@ -633,6 +633,16 @@ span.tour-flag {
   color: #5f6368;
 }
 
+/* число фото у строки альбома — рядом с названием, не отдельной строкой (Грегори, 2026-10-11
+   продолжение: «количество фотографий ставим правее от названия альбома, а не 3 строкой») */
+.tour-row-count {
+  font-size: 0.78rem;
+  font-weight: 400;
+  color: #5f6368;
+  margin-left: 4px;
+  white-space: nowrap;
+}
+
 .tour-list-empty {
   padding: 10px;
   color: var(--light-muted);

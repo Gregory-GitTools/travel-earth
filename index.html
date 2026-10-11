@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5/dist/maplibre-gl.css">
-<link rel="stylesheet" href="style.css?v=202610102715">
+<link rel="stylesheet" href="style.css?v=202610111200">
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icons/icon-32.png" sizes="32x32">
 <link rel="icon" href="icons/icon-192.png" sizes="192x192">
@@ -51,8 +51,10 @@
       <!-- самая правая, после «Экскурсий» — своя панель со списком, поиском и сортировкой; кнопка
            «Мои фото» в «Слоях» убрана (см. OVERLAYS в app.js), всё собрано здесь (Грегори,
            2026-10-11: «забираем кнопку Мои фото из слоев и делаем кнопку Мои альбомы самой правой
-           в окне поиска со своей панелью... это соберет мои другие приложения в одно») -->
-      <button id="my-albums-btn" title="Мои альбомы: список, поиск по названию/дате/месту, сортировка">
+           в окне поиска со своей панелью... это соберет мои другие приложения в одно»). Подпись
+           короткая (Грегори, 2026-10-11 продолжение: «подписи кнопке сделаем лаконичную. Мои
+           альбомы.») — без динамического текста при открытии/закрытии, в отличие от «Экскурсий» -->
+      <button id="my-albums-btn" title="Мои альбомы">
         <svg viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M22 16V4c0-1.1-.9-2-2-2H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2zm-11-4 2.03 2.71L16 11l4 5H8l3-4zM2 6v14c0 1.1.9 2 2 2h14v-2H4V6H2z"/></svg>
       </button>
     </div>
@@ -179,6 +181,6 @@
 
 <script src="https://unpkg.com/maplibre-gl@5/dist/maplibre-gl.js"></script>
 <script src="https://unpkg.com/maplibre-contour@0.1.1/dist/index.min.js"></script>
-<script src="app.js?v=202610120015"></script>
+<script src="app.js?v=202610111200"></script>
 </body>
 </html>

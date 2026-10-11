@@ -3199,11 +3199,21 @@ function renderAlbumsList() {
     rows.push(r);
     return r;
   };
+  // число фото — рядом с названием, в одну строку с ним; подпись экскурсии (если есть) —
+  // отдельной строкой ниже, как и раньше (Грегори, 2026-10-11 продолжение)
   const albumRow = (a) => row(`a:${a.id}`, "tour-row-item",
-    `<span class="tour-row-pin">${CHIP_ICONS.myphotos}</span><span class="tour-row-text"><span class="tour-row-title">${escapeHtml(a.name)}</span>`
-    + `<span class="tour-row-sub">${escapeHtml(`${a.files.length} фото${a.excursion ? ` · ${a.excursion.title}` : ""}`)}</span></span>`,
-    () => { if (a.point) focusAlbum(a.id); else { albumsSelected = a.id; albumsCursor = `a:${a.id}`; markAlbumsCursor(); renderAlbumsPlayer(); } },
-    () => { if (canOpenGallery()) openAlbumGallery(a.id, null); });
+    `<span class="tour-row-pin">${CHIP_ICONS.myphotos}</span><span class="tour-row-text"><span class="tour-row-title">${escapeHtml(a.name)}`
+    + `<span class="tour-row-count">${escapeHtml(`${a.files.length} фото`)}</span></span>`
+    + (a.excursion ? `<span class="tour-row-sub">${escapeHtml(a.excursion.title)}</span>` : "") + `</span>`,
+    // клик по строке сразу открывает альбом отдельным окном с плеером слайд-шоу (Грегори,
+    // 2026-10-11 продолжение: «после клика на альбом должно появляться новое окно с одним
+    // альбомом и плейером для слайдшоу») — карта всё равно изолируется/перелетает (если точка
+    // есть), как и раньше, окно просто открывается вдобавок
+    () => {
+      if (a.point) focusAlbum(a.id);
+      else { albumsSelected = a.id; albumsCursor = `a:${a.id}`; markAlbumsCursor(); renderAlbumsPlayer(); }
+      if (canOpenGallery()) openAlbumGallery(a.id, null);
+    });
   // шапка — как у «Языки»/«Экскурсии» (значок+название слева, кнопки справа), но слева от названия
   // — свой «плеер»: не 4 кнопки аудиогида, а один треугольник (Грегори: «в проигрывателе уже будет
   // треугольник, и запускать он будет альбом»)
@@ -3270,7 +3280,8 @@ function updateAlbumsFinder() {
 function setAlbumsMode(on) {
   albumsMode = on;
   const input = el("search-input");
-  el("my-albums-btn").title = on ? "Скрыть альбомы и вернуться к поиску мест" : "Мои альбомы: список, поиск по названию/дате/месту, сортировка";
+  // подпись кнопки статичная и короткая, см. index.html (Грегори, 2026-10-11 продолжение:
+  // «подписи кнопке сделаем лаконичную») — в отличие от «Экскурсий» не меняется при открытии
   input.placeholder = on ? "Найти альбом, дату, место" : "Поиск места";
   input.value = "";
   el("search-clear-btn").hidden = true;
