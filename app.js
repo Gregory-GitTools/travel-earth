@@ -3757,7 +3757,24 @@ function renderAlbumPanel(albumId) {
   close.addEventListener("click", closeAlbumPanelToList);
   albumPanel.classList.toggle("min", localStorage.getItem(ALBUM_PANEL_MIN_KEY) === "1");
   setMinBtn();
-  bar.append(h("div", "tour-player"), h("span", "tour-bar-gap"), albumHelpButton(albumId), minBtn, close);
+  // стрелка свернуть/развернуть все даты сразу — список внутри альбома и так сворачивается по
+  // одной дате за раз (шеврон в каждой строке, см. renderAlbumGroups), но целиком складывать его
+  // было нечем, в отличие от того же foldAllBtn у списка «Мои альбомы» (там — по странам)
+  // (Грегори, 2026-10-13, со скриншотом: «сделай стрелку сворачивания списка в альбоме»)
+  const groupKeys = [...albumDateGroups(a).keys()].map((d) => `${albumId}:${d}`);
+  const foldAllBtn = Object.assign(document.createElement("button"), { className: "tour-edit" });
+  if (groupKeys.length > 1) {
+    const allOpen = groupKeys.some((k) => albumDateOpen.has(k));
+    foldAllBtn.title = allOpen ? "Свернуть все" : "Развернуть все";
+    foldAllBtn.innerHTML = allOpen ? FOLD_ICON : UNFOLD_ICON;
+    foldAllBtn.addEventListener("click", () => {
+      if (allOpen) for (const k of groupKeys) albumDateOpen.delete(k); else for (const k of groupKeys) albumDateOpen.add(k);
+      renderAlbumPanel(albumId);
+    });
+  }
+  bar.append(h("div", "tour-player"), h("span", "tour-bar-gap"), albumHelpButton(albumId));
+  if (groupKeys.length > 1) bar.append(foldAllBtn);
+  bar.append(minBtn, close);
   // без значка слева от названия — тот же повод, что и у строк списка (.tour-row-pin красный,
   // для метки экскурсии на карте, не для альбома — Грегори, Round 67: «иконок рядом с названием
   // альбомов быть не должно»)
