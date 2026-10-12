@@ -1809,24 +1809,32 @@ async function startMyScan(handle) {
     // аэропорт в снимках на один-два кадра, сама поездка на десятки, так что побеждает самый
     // многолюдный «куст» точек (с округлением до ~10 км, та же сетка, что у кэша геокодинга idb
     // "geo"), а не то, что снято первым
-    const pointClusters = new Map(); // "lon,lat" (округлено) → { count, point }
+    const pointClusters = new Map(); // "lon,lat" (округлено) → { count, point, ids }
     for (const id of album.files) {
       const rec = await exifOf(id);
       if (rec.lat) {
         const key = `${rec.lon.toFixed(1)},${rec.lat.toFixed(1)}`;
-        const cell = pointClusters.get(key) || { count: 0, point: [rec.lon, rec.lat] };
+        const cell = pointClusters.get(key) || { count: 0, point: [rec.lon, rec.lat], ids: [] };
         cell.count++;
+        cell.ids.push(id);
         pointClusters.set(key, cell);
       }
       addPhotoFeature(id);
     }
+    // главное фото альбома — случайный снимок из победившего «куста» (та же логика, что у
+    // геопозиции выше): аэропорт не должен попасть на обложку чаще настоящего места поездки
+    // (Грегори, 2026-10-13: «рандомное фото из кучи», в альбоме под заголовком). Без координат
+    // совсем (альбом без GPS) — берём случайный снимок просто из всех файлов альбома
+    let best = null;
     if (pointClusters.size) {
-      const [, best] = [...pointClusters].reduce((a, b) => (b[1].count > a[1].count ? b : a));
+      best = [...pointClusters.values()].reduce((a, b) => (b.count > a.count ? b : a));
       if (!album.point || best.point[0] !== album.point[0] || best.point[1] !== album.point[1]) {
         album.point = best.point;
         album.country = undefined; // точка сменилась — страну надо спросить заново
       }
     }
+    const coverPool = best ? best.ids : album.files;
+    if (coverPool.length) album.cover = coverPool[Math.floor(Math.random() * coverPool.length)];
     album.indexed = true;
     refreshMyData();
     report(false);
@@ -3765,7 +3773,21 @@ function renderAlbumPanel(albumId) {
   title.title = albumDisplayName(a);
   title.addEventListener("click", () => openAlbumGallery(albumId, null));
   titleRow.append(title);
-  head.append(bar, titleRow, h("div", "tour-player-label"));
+  // главное фото альбома — случайный снимок из места поездки (выбирает проход 2 обхода, см.
+  // album.cover в startMyScan), не аэропорта вылета (Грегори, 2026-10-13: «рандомное фото из
+  // кучи... в альбоме под заголовком»). Грузится по требованию, тем же путём, что и ленты
+  // галереи (myFileThumb) — скрыта, пока миниатюра не готова, чтобы не держать пустую рамку
+  const cover = h("img", "album-cover");
+  cover.alt = "";
+  cover.hidden = true;
+  if (a.cover) {
+    myFileThumb(a.cover).then((url) => {
+      if (albumPanelId !== albumId) return; // пока грузилось — открыли другой альбом
+      cover.src = url;
+      cover.hidden = false;
+    }).catch(() => {});
+  }
+  head.append(bar, titleRow, cover, h("div", "tour-player-label"));
   albumPanel.replaceChildren(head, ...renderAlbumGroups(albumId));
   albumPanel.hidden = false;
   albumPanel.scrollTop = 0;

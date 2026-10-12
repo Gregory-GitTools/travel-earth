@@ -1478,6 +1478,18 @@ html:not(.is-mobile) .phone-only {
   text-decoration: underline;
 }
 
+/* главное фото альбома — под заголовком, во всю ширину шапки (Грегори, 2026-10-13:
+   «рандомное фото из кучи... в альбоме под заголовком»); hidden снят в renderAlbumPanel,
+   когда миниатюра готова, — до этого рамки не видно */
+.album-cover {
+  display: block;
+  width: 100%;
+  max-height: 160px;
+  object-fit: cover;
+  border-radius: 6px;
+  margin-top: 2px;
+}
+
 .tour-head + .tour-meta {
   margin-top: 8px;
 }
@@ -1909,6 +1921,10 @@ html:not(.is-mobile) .phone-only {
 }
 
 .tour-panel.min .tour-player-label {
+  display: none;
+}
+
+.tour-panel.min .album-cover {
   display: none;
 }
 
