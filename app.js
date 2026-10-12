@@ -2191,6 +2191,38 @@ async function tourGeocodeOnce(query, near, box = 0) {
   return run;
 }
 
+// страна альбома — по его точке на карте (album.point: координаты первого снимка в папке, у
+// которого они вообще есть — Грегори: «за геолокацию альбома принять первую фотографию в папке
+// альбома»; у снимков без EXIF-координат взять геопозицию просто не из чего, поэтому «первый» —
+// первый подходящий). Обратное геокодирование Nominatim (/reverse), та же общая очередь и тот же
+// кэш в IndexedDB ("geo"), что у геокодинга экскурсий — чтобы не превышать «раз в секунду» вторым,
+// параллельным потоком запросов. undefined — ещё не спрашивали, null — запрос уже в очереди,
+// "" — спросили, страна не нашлась, непустая строка — результат
+async function albumCountryOf(a) {
+  if (a.country !== undefined) return a.country;
+  if (!a.point) return "";
+  const key = `rev@${a.point.map((v) => v.toFixed(1)).join(",")}`;
+  const hit = await idb("geo", "readonly", (st) => st.get(key)).catch(() => undefined);
+  if (hit !== undefined) return (a.country = hit);
+  a.country = null;
+  const run = tourGeoQueue.then(async () => {
+    const [lon, lat] = a.point;
+    const params = new URLSearchParams({ lat: lat.toFixed(5), lon: lon.toFixed(5), format: "jsonv2", zoom: "3",
+      addressdetails: "1", "accept-language": uiLanguageCode() });
+    const res = await fetch(`${NOMINATIM_URL.replace("/search", "/reverse")}?${params}`).catch(() => null);
+    const place = res?.ok ? await res.json() : null;
+    const country = place?.address?.country || "";
+    if (res?.ok) await idb("geo", "readwrite", (st) => st.put(country, key)).catch(() => {});
+    await new Promise((r) => setTimeout(r, 1100)); // то же правило Nominatim — не чаще раза в секунду
+    return country;
+  });
+  tourGeoQueue = run.catch(() => "");
+  const country = await run;
+  a.country = country;
+  updateAlbumsFinder(); // список/панель перерисуются, когда страна наконец узнана
+  return country;
+}
+
 const tourData = () => {
   const features = [];
   for (const t of tours.values()) {
@@ -3189,6 +3221,9 @@ function closeTourToList() {
 // аудиогида в шапке — один треугольник: открывает галерею уже выбранного альбома (albumsSelected —
 // своё состояние, не зависящее от myAlbumFocus — выбор в списке не должен слетать от closeAlbumPanel)
 const ALBUMS_LIST_MIN_KEY = "travel-earth.albums-list-min";
+// раскрытые группы стран в списке альбомов — та же схема, что у tourOpen в «Экскурсиях»
+// (Грегори: «список альбомов можно сгруппировать по странам»)
+const albumCountryOpen = new Set();
 const ALBUM_SORT_KEY = "travel-earth.album-sort";
 let albumSort = localStorage.getItem(ALBUM_SORT_KEY) || "name"; // "name" | "date" | "place"
 const ALBUM_SORT_NEXT = { name: "date", date: "place", place: "name" };
@@ -3212,9 +3247,22 @@ function renderAlbumsList() {
   const q = el("search-input").value.trim().toLowerCase();
   const all = [...myAlbums.values()].filter((a) => !q
     || [a.name, a.path, a.excursion?.title, a.excursion?.country, a.excursion?.city].filter(Boolean).join(" ").toLowerCase().includes(q));
-  if (albumSort === "date") all.sort((a, b) => albumSortDate(b) - albumSortDate(a));
-  else if (albumSort === "place") all.sort((a, b) => albumSortDist(a) - albumSortDist(b));
-  else all.sort((a, b) => a.name.localeCompare(b.name, "ru"));
+  const sortCmp = albumSort === "date" ? (a, b) => albumSortDate(b) - albumSortDate(a)
+    : albumSort === "place" ? (a, b) => albumSortDist(a) - albumSortDist(b)
+    : (a, b) => a.name.localeCompare(b.name, "ru");
+  // группировка по странам — та же схема, что у «Экскурсий» (tree/groupKeys/flag, см.
+  // renderTourList выше). Страна — по album.point (albumCountryOf, геокодинг в фоне: при первом
+  // обращении запрос становится в общую очередь с «Экскурсиями» и сама перерисует список, когда
+  // ответ придёт); пока не узнана — временно в «Без страны», как и у экскурсии без региона
+  const tree = new Map(); // страна → альбомы
+  for (const a of all) {
+    if (a.country === undefined) albumCountryOf(a);
+    const c = a.country || "Без страны";
+    if (!tree.has(c)) tree.set(c, []);
+    tree.get(c).push(a);
+  }
+  for (const list of tree.values()) list.sort(sortCmp);
+  const groupKeys = [...tree.keys()].map((c) => `c:${c}`);
   const rows = [];
   const row = (key, cls, html, onClick, onDblClick) => {
     const r = Object.assign(document.createElement("button"), { className: `tour-row ${cls}`, innerHTML: html });
@@ -3241,6 +3289,7 @@ function renderAlbumsList() {
     // идентично клику по альбому на карте… и только после клика на треугольник в этом окне
     // запускается просмотр альбома»)
     () => { focusAlbum(a.id); chooseAlbum(a.id); });
+  const toggle = (key) => () => { albumCountryOpen.has(key) ? albumCountryOpen.delete(key) : albumCountryOpen.add(key); renderAlbumsList(); };
   // шапка — как у «Языки»/«Экскурсии» (значок+название слева, кнопки справа), но слева от названия
   // — свой «плеер»: не 4 кнопки аудиогида, а один треугольник (Грегори: «в проигрывателе уже будет
   // треугольник, и запускать он будет альбом»)
@@ -3266,13 +3315,7 @@ function renderAlbumsList() {
     renderAlbumsList();
   });
   // «свернуть окно» — прячет всё до шапки (.tour-list.min, тот же класс, что у Экскурсий/Языков,
-  // Round 64: «нет кнопки свернуть окно»). Вторая кнопка рядом — без функции: сворачивать в этом
-  // списке больше нечего, кроме самого списка целиком (ни групп, ни вложенных строк, в отличие от
-  // Тур/Языков), поэтому раньше реализованное «свернуть строки» (.rows-folded) только путало —
-  // список исчезал, а показать его обратно той же кнопкой не выходило явно (Грегори, Round 67:
-  // «полная путаница с кнопкой свернуть список... у нас кроме самого списка ничего нет, значит
-  // кнопка должна быть направлена в низ и при нажатии не реагировать»). Кнопка оставлена только
-  // для единого вида шапки среди всех списков — всегда стрелка вниз, без обработчика клика
+  // Round 64: «нет кнопки свернуть окно»)
   const minBtn = Object.assign(document.createElement("button"), { className: "tour-edit" });
   const setMinBtn = () => {
     const min = albumsList.classList.contains("min");
@@ -3285,8 +3328,24 @@ function renderAlbumsList() {
     localStorage.setItem(ALBUMS_LIST_MIN_KEY, min ? "1" : "0");
     setMinBtn();
   });
-  const foldBtn = Object.assign(document.createElement("button"), { className: "tour-edit",
-    title: "Список альбомов", innerHTML: UNFOLD_ICON });
+  // кнопка рядом (вторая) раньше сворачивала/разворачивала строки списка (.rows-folded) — путала,
+  // поскольку список тогда был плоским, без групп, и свёрнутое состояние было неоткуда развернуть
+  // обратно той же кнопкой (Грегори, Round 67: «полная путаница с кнопкой свернуть список... у нас
+  // кроме самого списка ничего нет, значит кнопка должна быть направлена в низ и при нажатии не
+  // реагировать» — тогда её оставили только для единого вида шапки, без обработчика). Теперь в
+  // списке есть группы стран (albumCountryOpen выше, Грегори: «список альбомов можно
+  // сгруппировать по странам»), и у кнопки наконец есть настоящая работа — свернуть/развернуть
+  // их все, тем же приёмом, что allBtn у «Экскурсий» (renderTourList выше)
+  const foldAllBtn = Object.assign(document.createElement("button"), { className: "tour-edit" });
+  if (groupKeys.length && !q) {
+    const allOpen = groupKeys.some((k) => albumCountryOpen.has(k));
+    foldAllBtn.title = allOpen ? "Свернуть все страны" : "Развернуть все страны";
+    foldAllBtn.innerHTML = allOpen ? FOLD_ICON : UNFOLD_ICON;
+    foldAllBtn.addEventListener("click", () => {
+      if (allOpen) for (const k of groupKeys) albumCountryOpen.delete(k); else for (const k of groupKeys) albumCountryOpen.add(k);
+      renderAlbumsList();
+    });
+  }
   // пересканировать папку — список раньше было нечем обновить, кроме как заново открывать выбор
   // папки в настройках (Грегори, Round 64: «список альбомов ничем не обновить»)
   const refreshBtn = Object.assign(document.createElement("button"), { className: "tour-edit",
@@ -3295,12 +3354,24 @@ function renderAlbumsList() {
   refreshBtn.addEventListener("click", () => { if (myDir) startMyScan(myDir); });
   const close = Object.assign(document.createElement("button"), { className: "tour-close", title: "Закрыть", innerHTML: CLOSE_ICON });
   close.addEventListener("click", () => setAlbumsMode(false));
-  bar.append(player, label, Object.assign(document.createElement("span"), { className: "tour-bar-gap" }), refreshBtn, sortBtn, foldBtn, minBtn, close);
+  bar.append(player, label, Object.assign(document.createElement("span"), { className: "tour-bar-gap" }), refreshBtn, sortBtn);
+  if (groupKeys.length && !q) bar.append(foldAllBtn);
+  bar.append(minBtn, close);
   head.append(bar);
   albumsList.classList.toggle("min", localStorage.getItem(ALBUMS_LIST_MIN_KEY) === "1");
   setMinBtn();
   rows.push(head);
-  for (const a of all) albumRow(a);
+  // страна — всегда отдельной строкой-группой, даже с одной (та же логика, что у «Экскурсий»,
+  // renderTourList выше, Грегори: «страна... группа со своим... значком»)
+  for (const country of [...tree.keys()].sort((a, b) => a.localeCompare(b, "ru"))) {
+    const albumsIn = tree.get(country);
+    const ck = `c:${country}`;
+    const open = !!q || albumCountryOpen.has(ck);
+    row(ck, "tour-row-country", `${countryFlag(country)}<span class="tour-row-name">${escapeHtml(country)}</span>`
+      + `<span class="tour-row-count">${albumsIn.length}</span>${rowChevron(open)}`, toggle(ck));
+    if (!open) continue;
+    for (const a of albumsIn) albumRow(a).classList.add("in-country");
+  }
   if (!all.length) {
     rows.push(Object.assign(document.createElement("div"), { className: "tour-list-empty",
       textContent: myAlbums.size ? "Ничего не нашлось" : myDir ? "В папке фото нет альбомов" : "Альбомы загружаются…" }));
@@ -3493,15 +3564,25 @@ function closeAlbumPanelToList() {
 // дата»); ключ открытости включает albumId, так что раскрытые даты одного альбома не путаются с
 // другим при переключении панели
 const albumDateOpen = new Set();
+// rec.date — это timestamp (exifOf: rec.date = e.DateTimeOriginal.getTime()), а не строка
+// "2026-09-29", как было тут написано раньше. Группировка по самому timestamp'у почти всегда
+// давала отдельную группу на каждый снимок (у двух снимков редко совпадает миллисекунда съёмки),
+// а дальше dates.sort() пытался звать .localeCompare() у ЧИСЛА — упор, которого у Number нет, и
+// sort бросал исключение, обрывая renderAlbumGroups/renderAlbumPanel на середине (отсюда и
+// «без даты делает, с датой нет», Грегори, Round 68 — и, похоже, то самое «панель пропадает» из
+// того же раунда: альбом с разнородными датами просто не дорисовывался). Ключ группы — теперь
+// календарный день по МЕСТНОМУ времени ("2026-09-29"), не исходный timestamp
 function albumDateGroups(a) {
   const byDate = new Map(); // "2026-09-29" → [id, id…], "" — без даты (EXIF ещё не прочитан/его нет)
   for (const id of a.files) {
-    const d = myFiles.get(id)?.rec?.date || "";
+    const ts = myFiles.get(id)?.rec?.date;
+    const d = ts ? albumDateKey(new Date(ts)) : "";
     if (!byDate.has(d)) byDate.set(d, []);
     byDate.get(d).push(id);
   }
   return byDate;
 }
+const albumDateKey = (dt) => `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
 function renderAlbumGroups(albumId) {
   const a = myAlbums.get(albumId);
   if (!a) return [];
@@ -3514,7 +3595,13 @@ function renderAlbumGroups(albumId) {
     rows.push(r);
     return r;
   };
-  const dateLabel = (d) => (d ? new Date(d).toLocaleDateString("ru", { day: "numeric", month: "long", year: "numeric" }) : "Без даты");
+  // d — "2026-09-29" (albumDateKey, местный день), не ISO-момент времени: разбираем вручную, а не
+  // через new Date(d), чтобы часовой пояс браузера не сдвинул дату на соседний день
+  const dateLabel = (d) => {
+    if (!d) return "Без даты";
+    const [y, m, day] = d.split("-").map(Number);
+    return new Date(y, m - 1, day).toLocaleDateString("ru", { day: "numeric", month: "long", year: "numeric" });
+  };
   const toggle = (key) => () => { albumDateOpen.has(key) ? albumDateOpen.delete(key) : albumDateOpen.add(key); renderAlbumPanel(albumId); };
   // даты — сначала новые; группа «без даты» — в самом конце, а не вперемешку по пустой строке
   const dates = [...byDate.keys()].filter(Boolean).sort((x, y) => y.localeCompare(x));
