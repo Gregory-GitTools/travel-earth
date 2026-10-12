@@ -1975,6 +1975,32 @@ function myFileThumb(id) {
   if (!file) return Promise.reject(new Error("нет файла"));
   return queueMyThumb(id, file.thumb);
 }
+
+// обложка альбома (renderAlbumPanel) — на всю ширину панели, а не крошечный значок на карте
+// (как у myFileThumb/makeMyThumb выше): встроенную EXIF-миниатюру (обычно ~160×120) тот путь
+// подставляет ради скорости для сотен точек сразу, но растянутая на всю ширину панели она
+// рассыпается на квадратики (Грегори, 2026-10-13, со скриншотом: «очень слабое разрешение
+// фото») — для одной обложки за раз лишний десяток килобайт не жалко, разворачиваем снимок
+// целиком и ужимаем сами, пошире и покачественнее
+const myCoverThumbBusy = new Map(); // id → Promise url
+function myCoverThumb(id) {
+  const file = myFiles.get(id);
+  if (!file) return Promise.reject(new Error("нет файла"));
+  if (file.coverThumb) return Promise.resolve(file.coverThumb);
+  if (!myCoverThumbBusy.has(id)) myCoverThumbBusy.set(id, makeMyCoverThumb(id).catch((e) => { myCoverThumbBusy.delete(id); throw e; }));
+  return myCoverThumbBusy.get(id);
+}
+async function makeMyCoverThumb(id) {
+  const file = myFiles.get(id);
+  const blobFile = await file.handle.getFile();
+  const bmp = await createImageBitmap(blobFile, { resizeWidth: 960, resizeQuality: "high" });
+  const canvas = new OffscreenCanvas(bmp.width, bmp.height);
+  canvas.getContext("2d").drawImage(bmp, 0, 0);
+  const blob = await canvas.convertToBlob({ type: "image/jpeg", quality: 0.88 });
+  bmp.close();
+  const url = URL.createObjectURL(blob);
+  return (file.coverThumb = url);
+}
 const myFullUrls = new Map(); // последние открытые оригиналы, id → blob URL
 async function myFileFull(id) {
   if (myFullUrls.has(id)) return myFullUrls.get(id);
@@ -3792,13 +3818,14 @@ function renderAlbumPanel(albumId) {
   titleRow.append(title);
   // главное фото альбома — случайный снимок из места поездки (выбирает проход 2 обхода, см.
   // album.cover в startMyScan), не аэропорта вылета (Грегори, 2026-10-13: «рандомное фото из
-  // кучи... в альбоме под заголовком»). Грузится по требованию, тем же путём, что и ленты
-  // галереи (myFileThumb) — скрыта, пока миниатюра не готова, чтобы не держать пустую рамку
+  // кучи... в альбоме под заголовком»). Грузится по требованию, крупной миниатюрой (myCoverThumb,
+  // не myFileThumb — та отдаёт значок для карты, у обложки на всю ширину панели он рассыпался
+  // на квадратики, Грегори, 2026-10-13: «очень слабое разрешение фото») — скрыта, пока не готова
   const cover = h("img", "album-cover");
   cover.alt = "";
   cover.hidden = true;
   if (a.cover) {
-    myFileThumb(a.cover).then((url) => {
+    myCoverThumb(a.cover).then((url) => {
       if (albumPanelId !== albumId) return; // пока грузилось — открыли другой альбом
       cover.src = url;
       cover.hidden = false;
