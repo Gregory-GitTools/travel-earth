@@ -1428,7 +1428,10 @@ let myStatus = "";
 // скобок»; «нужно фильтровать слово -Albom»). Саму папку/a.name не трогаем — только то, что
 // показывается человеку
 const albumDisplayName = (a) => a.name
-  .replace(/^\d+[\s_-]+/, "")
+  // "+" на всей группе целиком — не одна группа цифр, а повтор: диапазон дат вроде "01-03 Malaga"
+  // после одного прохода терял только "01-", второе число оставалось торчать у начала названия
+  // (Грегори, 2026-10-13: «цифры ушли не все. 02, 03 — это остатки от диапазона дат»)
+  .replace(/^(?:\d+[\s_-]+)+/, "")
   .replace(/\s*\([^()]*\)/g, "")
   .replace(/[\s_–—-]*albom[\s_–—-]*$/i, "")
   .replace(/\s{2,}/g, " ")
@@ -1792,10 +1795,30 @@ async function startMyScan(handle) {
     if (!rest.length) break;
     const dist = (a) => (a.point ? Math.hypot(a.point[0] - c.lng, a.point[1] - c.lat) : 1e9);
     const album = rest.reduce((best, a) => (dist(a) < dist(best) ? a : best));
+    // геопозиция альбома — не просто первый подходящий снимок (проход 1 ставил её именно так,
+    // для скорости): если альбом начинается с аэропорта страны вылета, первый кадр с координатами
+    // обычно он и есть, а не место поездки (Грегори, 2026-10-13: «геолокация аэропорта нам ничего
+    // не даёт... задать стандартное название обложке альбома с предпочтением по геолокации») —
+    // аэропорт в снимках на один-два кадра, сама поездка на десятки, так что побеждает самый
+    // многолюдный «куст» точек (с округлением до ~10 км, та же сетка, что у кэша геокодинга idb
+    // "geo"), а не то, что снято первым
+    const pointClusters = new Map(); // "lon,lat" (округлено) → { count, point }
     for (const id of album.files) {
       const rec = await exifOf(id);
-      if (rec.lat && !album.point) album.point = [rec.lon, rec.lat];
+      if (rec.lat) {
+        const key = `${rec.lon.toFixed(1)},${rec.lat.toFixed(1)}`;
+        const cell = pointClusters.get(key) || { count: 0, point: [rec.lon, rec.lat] };
+        cell.count++;
+        pointClusters.set(key, cell);
+      }
       addPhotoFeature(id);
+    }
+    if (pointClusters.size) {
+      const [, best] = [...pointClusters].reduce((a, b) => (b[1].count > a[1].count ? b : a));
+      if (!album.point || best.point[0] !== album.point[0] || best.point[1] !== album.point[1]) {
+        album.point = best.point;
+        album.country = undefined; // точка сменилась — страну надо спросить заново
+      }
     }
     album.indexed = true;
     refreshMyData();
@@ -2233,10 +2256,17 @@ async function tourGeocodeOnce(query, near, box = 0) {
 // "" — спросили, страна не нашлась, непустая строка — результат
 async function albumCountryOf(a) {
   if (a.country !== undefined) return a.country;
-  if (!a.point) return "";
+  // точки нет — считать не из чего, и дальше спрашивать смысла нет: без записи a.country
+  // (осталось бы undefined) countryOf звала бы эту функцию заново на каждой перерисовке
+  if (!a.point) return (a.country = "");
   const key = `rev@${a.point.map((v) => v.toFixed(1)).join(",")}`;
   const hit = await idb("geo", "readonly", (st) => st.get(key)).catch(() => undefined);
-  if (hit !== undefined) return (a.country = hit);
+  // попадание в кэш — тоже повод перерисовать список: раньше звали updateAlbumsFinder только в
+  // конце долгого пути (запрос к Nominatim), а быстрый путь из кэша молча менял a.country и ничего
+  // не перерисовывал — список так и оставался в «Без страны», пока случайно не перерисуется
+  // по другому поводу (Грегори, 2026-10-13: «при первом открытии пишет одну строку Без страны...
+  // нужно подправить»)
+  if (hit !== undefined) { a.country = hit; updateAlbumsFinder(); return hit; }
   a.country = null;
   const run = tourGeoQueue.then(async () => {
     const [lon, lat] = a.point;
@@ -3297,16 +3327,23 @@ function renderAlbumsList() {
   // 2026-10-12: «экскурсию поставил в Австрию, написал без страны, а альбом в Эстонии» — группа
   // шла по GPS снимков, а не по тому, что он сам указал в экскурсии; пока страна не узнана —
   // временно в «Без страны», как и у экскурсии без региона
+  // null — геокодинг ещё не ответил (не путать с "" — уже спросили, страны нет): раньше оба
+  // случая сваливались в один и тот же «Без страны», и при первом открытии список целиком
+  // показывал «Без страны» со всеми альбомами разом, пока запросы не разойдутся по настоящим
+  // странам (Грегори, 2026-10-13: «при первом открытии пишет одну строку Без страны и список
+  // всех... нужно подправить») — отдельная группа-заглушка честнее: страна правда ещё не известна
   const countryOf = (a) => {
     if (a.excursion?.country) return a.excursion.country;
-    if (a.country === undefined) albumCountryOf(a);
+    if (a.country === undefined) { albumCountryOf(a); return null; }
+    if (a.country === null) return null; // запрос уже в очереди/в полёте — тоже ещё не знаем
     return a.country || "";
   };
   const tree = new Map(); // страна → альбомы
   for (const a of all) {
-    const c = countryOf(a) || "Без страны";
-    if (!tree.has(c)) tree.set(c, []);
-    tree.get(c).push(a);
+    const c = countryOf(a);
+    const bucket = c === null ? "Определяем страну…" : (c || "Без страны");
+    if (!tree.has(bucket)) tree.set(bucket, []);
+    tree.get(bucket).push(a);
   }
   for (const list of tree.values()) list.sort(sortCmp);
   const groupKeys = [...tree.keys()].map((c) => `c:${c}`);
