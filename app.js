@@ -1419,12 +1419,20 @@ let myFileSeq = 0, myAlbumSeq = 0;
 // изоляция одного альбома: id альбома, в который сейчас «погружены» (см. setMyAlbumFocus ниже)
 let myAlbumFocus = null;
 let myStatus = "";
-// название альбома напоказ — без даты-префикса в начале имени папки ("20250829 Juminda -Albom" →
-// "Juminda -Albom"): дата альбома уже читается из EXIF снимков (albumDateGroups/albumSortDate),
-// цифры в начале названия только мешают читать его (Грегори, 2026-10-12: «раз уж мы настроили
-// считывание даты, давай настроим маску и будем убирать цифры в начале названия альбома»). Саму
-// папку/a.name не трогаем — только то, что показывается человеку
-const albumDisplayName = (a) => a.name.replace(/^\d{6,8}[\s_-]+/, "").trim() || a.name;
+// название альбома напоказ — без технических пометок из имени папки: ведущей даты-префикса
+// ("20250829 Juminda -Albom" → "Juminda -Albom"), скобок с уточнениями вроде "(1)" и собственного
+// суффикса "-Albom"/«–Albom» (дата уже читается из EXIF снимков, albumDateGroups/albumSortDate,
+// а суффикс — просто наша же пометка типа папки, не часть названия). Длина цифр-префикса —
+// любая, не только 6-8 (Грегори, 2026-10-12: «маска работает по длине префикса... настроить на
+// все цифры в начале, чтобы не исправлять названия руками»; «маску надо настроить на убирание
+// скобок»; «нужно фильтровать слово -Albom»). Саму папку/a.name не трогаем — только то, что
+// показывается человеку
+const albumDisplayName = (a) => a.name
+  .replace(/^\d+[\s_-]+/, "")
+  .replace(/\s*\([^()]*\)/g, "")
+  .replace(/[\s_–—-]*albom[\s_–—-]*$/i, "")
+  .replace(/\s{2,}/g, " ")
+  .trim() || a.name;
 const myData = () => ({ type: "FeatureCollection", features: [
   ...[...myAlbums.values()].filter((a) => a.point).map((a) => ({ type: "Feature", geometry: { type: "Point", coordinates: a.point },
     properties: { album: a.id, kind: "album", title: albumDisplayName(a), path: a.path, count: a.files.length, excursion: a.excursion?.title || "" } })),
@@ -2613,7 +2621,7 @@ function renderTourList() {
   const setMinBtn = () => {
     const min = tourList.classList.contains("min");
     minBtn.innerHTML = min ? EXPAND_ICON : COLLAPSE_ICON;
-    minBtn.title = min ? "Развернуть" : "Свернуть окно";
+    minBtn.title = min ? "Развернуть" : "Свернуть";
   };
   minBtn.addEventListener("click", () => {
     const min = !tourList.classList.contains("min");
@@ -2725,7 +2733,7 @@ function renderLanguagesList() {
   const setMinBtn = () => {
     const min = tourPanel.classList.contains("min");
     minBtn.innerHTML = min ? EXPAND_ICON : COLLAPSE_ICON;
-    minBtn.title = min ? "Развернуть" : "Свернуть окно";
+    minBtn.title = min ? "Развернуть" : "Свернуть";
   };
   minBtn.addEventListener("click", () => {
     const min = !tourPanel.classList.contains("min");
@@ -3359,7 +3367,7 @@ function renderAlbumsList() {
   const setMinBtn = () => {
     const min = albumsList.classList.contains("min");
     minBtn.innerHTML = min ? EXPAND_ICON : COLLAPSE_ICON;
-    minBtn.title = min ? "Развернуть альбомы" : "Свернуть альбомы";
+    minBtn.title = min ? "Развернуть" : "Свернуть";
   };
   minBtn.addEventListener("click", () => {
     const min = !albumsList.classList.contains("min");
@@ -3378,7 +3386,7 @@ function renderAlbumsList() {
   const foldAllBtn = Object.assign(document.createElement("button"), { className: "tour-edit" });
   if (groupKeys.length && !q) {
     const allOpen = groupKeys.some((k) => albumCountryOpen.has(k));
-    foldAllBtn.title = allOpen ? "Свернуть все страны" : "Развернуть все страны";
+    foldAllBtn.title = allOpen ? "Свернуть все" : "Развернуть все";
     foldAllBtn.innerHTML = allOpen ? FOLD_ICON : UNFOLD_ICON;
     foldAllBtn.addEventListener("click", () => {
       if (allOpen) for (const k of groupKeys) albumCountryOpen.delete(k); else for (const k of groupKeys) albumCountryOpen.add(k);
@@ -3390,7 +3398,7 @@ function renderAlbumsList() {
   // крутится, пока идёт обход (myScanBusy) — раньше кнопка никак не показывала, что обновление
   // уже началось (Грегори: «обновление замирает. Может колесико выводить?»)
   const refreshBtn = Object.assign(document.createElement("button"), { className: `tour-edit${myScanBusy ? " spinning" : ""}`,
-    title: myScanBusy ? "Обновляю…" : myDir ? "Обновить список альбомов" : "Сначала выберите папку со снимками в настройках",
+    title: myScanBusy ? "Обновляю…" : myDir ? "Обновить" : "Сначала выберите папку со снимками в настройках",
     innerHTML: REFRESH_ICON, disabled: !myDir || myScanBusy });
   refreshBtn.addEventListener("click", () => { if (myDir && !myScanBusy) startMyScan(myDir); });
   const close = Object.assign(document.createElement("button"), { className: "tour-close", title: "Закрыть", innerHTML: CLOSE_ICON });
@@ -3685,7 +3693,7 @@ function renderAlbumPanel(albumId) {
   const setMinBtn = () => {
     const min = albumPanel.classList.contains("min");
     minBtn.innerHTML = min ? EXPAND_ICON : COLLAPSE_ICON;
-    minBtn.title = min ? "Развернуть альбом" : "Свернуть альбом";
+    minBtn.title = min ? "Развернуть" : "Свернуть";
   };
   minBtn.addEventListener("click", () => {
     const min = !albumPanel.classList.contains("min");
@@ -3702,8 +3710,16 @@ function renderAlbumPanel(albumId) {
   // для метки экскурсии на карте, не для альбома — Грегори, Round 67: «иконок рядом с названием
   // альбомов быть не должно»)
   const titleRow = h("div", "tour-title-row");
-  const title = h("h2", "", albumDisplayName(a));
+  // название — без переноса по умолчанию у всех .tour-head h2 (многоточие при нехватке места),
+  // но длинные имена альбомов из-за этого обрезались (Грегори, 2026-10-12: «можно выводить
+  // название альбома с переносом строки») — класс album-title переопределяет это только здесь,
+  // у «Экскурсий»/«Языков» обрезание осталось как было. Сама строка — ещё и ссылка на галерею
+  // этого альбома (то же действие, что у треугольника плеера слева), с подсказкой-курсором,
+  // чтобы было похоже на активную ссылку (Грегори: «хотелось бы у названий альбомов активную
+  // ссылку на сам альбом»)
+  const title = h("h2", "album-title", albumDisplayName(a));
   title.title = albumDisplayName(a);
+  title.addEventListener("click", () => openAlbumGallery(albumId, null));
   titleRow.append(title);
   head.append(bar, titleRow, h("div", "tour-player-label"));
   albumPanel.replaceChildren(head, ...renderAlbumGroups(albumId));
@@ -4330,7 +4346,7 @@ function renderTourPanel(id) {
   const setMinBtn = () => {
     const min = tourPanel.classList.contains("min");
     minBtn.innerHTML = min ? EXPAND_ICON : COLLAPSE_ICON;
-    minBtn.title = min ? "Развернуть экскурсию" : "Свернуть экскурсию";
+    minBtn.title = min ? "Развернуть" : "Свернуть";
   };
   minBtn.addEventListener("click", () => {
     const min = !tourPanel.classList.contains("min");
@@ -4808,7 +4824,7 @@ function renderPhrasebook(id, fromTour = null) {
   const setMinBtn = () => {
     const min = tourPanel.classList.contains("min");
     minBtn.innerHTML = min ? EXPAND_ICON : COLLAPSE_ICON;
-    minBtn.title = min ? "Развернуть" : "Свернуть окно";
+    minBtn.title = min ? "Развернуть" : "Свернуть";
   };
   minBtn.addEventListener("click", () => {
     const min = !tourPanel.classList.contains("min");

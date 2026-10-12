@@ -537,6 +537,14 @@ span.tour-flag {
   color: var(--my-color);
 }
 
+/* кнопки шапки «Мои альбомы» (обновить/сортировка/свернуть все страны/свернуть окно) — серые, как
+   у «Экскурсий»/«Языков», хотя сам треугольник-плеер рядом уже фирменного сиреневого (--my-color,
+   .album-play-btn выше) — тот же повод, что и у значка группы-даты (Грегори, 2026-10-12: «поменяй
+   цвет иконки в мои альбомы»). Крестик «закрыть» — свой класс (.tour-close), сюда не попадает */
+#albums-list .tour-bar .tour-edit {
+  color: var(--my-color);
+}
+
 .tour-row-group-icon svg {
   width: 22px;
   height: 22px;
@@ -1454,6 +1462,20 @@ html:not(.is-mobile) .phone-only {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* название альбома — переносится по словам, а не обрезается многоточием (Грегори, 2026-10-12:
+   «можно выводить название альбома с переносом строки»); и выглядит как активная ссылка на
+   галерею этого альбома (клик — см. renderAlbumPanel), курсор и подчёркивание при наведении —
+   единственная подсказка, что по названию можно щёлкнуть */
+.tour-head h2.album-title {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: unset;
+  cursor: pointer;
+}
+.tour-head h2.album-title:hover {
+  text-decoration: underline;
 }
 
 .tour-head + .tour-meta {
