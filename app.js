@@ -1412,13 +1412,22 @@ const myFiles = new Map(); // "my/12" → { handle, name, path, album, rec }
 const myAlbums = new Map(); // "album/3" → { id, name, path, files: ["my/12", …], point, indexed }
 let myDir = null;
 let myScan = null; // идущий обход
+// обход идёт прямо сейчас — крутит значок кнопки «обновить» (Грегори, 2026-10-12: «обновление
+// замирает. Может колесико выводить?» — раньше кнопка никак не показывала, что обход уже начался)
+let myScanBusy = false;
 let myFileSeq = 0, myAlbumSeq = 0;
 // изоляция одного альбома: id альбома, в который сейчас «погружены» (см. setMyAlbumFocus ниже)
 let myAlbumFocus = null;
 let myStatus = "";
+// название альбома напоказ — без даты-префикса в начале имени папки ("20250829 Juminda -Albom" →
+// "Juminda -Albom"): дата альбома уже читается из EXIF снимков (albumDateGroups/albumSortDate),
+// цифры в начале названия только мешают читать его (Грегори, 2026-10-12: «раз уж мы настроили
+// считывание даты, давай настроим маску и будем убирать цифры в начале названия альбома»). Саму
+// папку/a.name не трогаем — только то, что показывается человеку
+const albumDisplayName = (a) => a.name.replace(/^\d{6,8}[\s_-]+/, "").trim() || a.name;
 const myData = () => ({ type: "FeatureCollection", features: [
   ...[...myAlbums.values()].filter((a) => a.point).map((a) => ({ type: "Feature", geometry: { type: "Point", coordinates: a.point },
-    properties: { album: a.id, kind: "album", title: a.name, path: a.path, count: a.files.length, excursion: a.excursion?.title || "" } })),
+    properties: { album: a.id, kind: "album", title: albumDisplayName(a), path: a.path, count: a.files.length, excursion: a.excursion?.title || "" } })),
   ...myPhotoFeatures.values()] });
 let myDataTimer = 0;
 function refreshMyData() {
@@ -1650,11 +1659,23 @@ function renderMySettings(handle) {
 }
 
 async function startMyScan(handle) {
+  // кнопка «обновить» раньше сбрасывала уже узнанную страну каждого альбома в «без страны» до
+  // конца нового обхода — альбом на том же месте (тот же путь к папке) просто переносит её дальше
+  // (Грегори, 2026-10-12: «у кнопки обновить старая логика. Делает список без страны»); null —
+  // запрос был в полёте у старого объекта и теперь потерян, его переспрашиваем, как заново
+  const prevByPath = new Map([...myAlbums.values()].map((a) => [a.path, a]));
   resetMyPhotos();
   myDir = handle;
+  myScanBusy = true;
+  updateAlbumsFinder();
   const scan = myScan = {};
   const exifr = await loadExifr().catch(() => null);
-  if (!exifr) { setMyStatus("Не загрузилась библиотека чтения EXIF — проверьте интернет"); return; }
+  if (!exifr) {
+    setMyStatus("Не загрузилась библиотека чтения EXIF — проверьте интернет");
+    myScanBusy = false;
+    updateAlbumsFinder();
+    return;
+  }
   const keys = await idb("exif", "readonly", (st) => st.getAllKeys()).catch(() => []);
   const values = await idb("exif", "readonly", (st) => st.getAll()).catch(() => []);
   const cache = new Map(keys.map((k, i) => [k, values[i]]));
@@ -1716,7 +1737,7 @@ async function startMyScan(handle) {
     located++;
     const album = myAlbums.get(file.album);
     myPhotoFeatures.set(id, { type: "Feature", geometry: { type: "Point", coordinates: [file.rec.lon, file.rec.lat] },
-      properties: { photo: id, kind: "photo", album: album.id, albumName: album.name, title: file.name,
+      properties: { photo: id, kind: "photo", album: album.id, albumName: albumDisplayName(album), title: file.name,
         caption: album.excursion?.captions[file.name.toLowerCase()] || "",
         date: file.rec.date ? new Date(file.rec.date).toLocaleDateString("ru") : "", z: 0 } });
   };
@@ -1734,6 +1755,8 @@ async function startMyScan(handle) {
     if (scan !== myScan) return;
     if (files.length) {
       const album = { id: `album/${++myAlbumSeq}`, name: dir.name, path, files: [], point: null, indexed: false };
+      const prev = prevByPath.get(path);
+      if (prev && prev.country != null) album.country = prev.country; // null — старый запрос в полёте, переспросим
       myAlbums.set(album.id, album);
       for (const [name, h] of files.sort((a, b) => a[0].localeCompare(b[0], undefined, { numeric: true }))) {
         const id = `my/${++myFileSeq}`;
@@ -1773,6 +1796,8 @@ async function startMyScan(handle) {
   }
   flush();
   report(true);
+  myScanBusy = false;
+  updateAlbumsFinder();
 }
 
 // Экскурсия: текстовые файлы (.txt, .md) в папке альбома. Формат простой, для Блокнота:
@@ -1941,7 +1966,7 @@ function openAlbumGallery(albumId, startId) {
     const file = myFiles.get(id);
     return { photo: id, my: true, title: file.name, thumb: file.thumb || myPhotoFeatures.get(id)?.properties.thumb || "",
       caption: album.excursion?.captions[file.name.toLowerCase()] || "",
-      date: file.rec?.date ? new Date(file.rec.date).toLocaleDateString("ru") : "", license: `Альбом «${album.name}»` };
+      date: file.rec?.date ? new Date(file.rec.date).toLocaleDateString("ru") : "", license: `Альбом «${albumDisplayName(album)}»` };
   });
   localStorage.setItem(PHOTO_GALLERY_KEY, JSON.stringify({ photos, start: Math.max(0, album.files.indexOf(startId)),
     excursion: album.excursion ? { title: album.excursion.title, blocks: album.excursion.blocks } : null }));
@@ -3066,6 +3091,10 @@ function attachResizeHandle(panel) {
 }
 attachResizeHandle(tourList);
 attachResizeHandle(tourPanel);
+// нижний движок на окне списка альбомов — забыли при переезде «Мои фото» в своё окно (Грегори,
+// 2026-10-12: «в первом окне со списком альбомов нет нижнего движка»); у tourList/tourPanel/
+// albumPanel он уже был
+attachResizeHandle(albumsList);
 // панель одного альбома (renderAlbumPanel ниже) — тот же приём, что у tourPanel: своё плавающее
 // окно, создаётся в JS и живёт как сосед tourPanel/tourList, а не внутри .search-wrap (Грегори,
 // 2026-10-11 продолжение: «новая панель с одним альбомом в списке и кнопками плейера, по аналогии
@@ -3249,15 +3278,25 @@ function renderAlbumsList() {
     || [a.name, a.path, a.excursion?.title, a.excursion?.country, a.excursion?.city].filter(Boolean).join(" ").toLowerCase().includes(q));
   const sortCmp = albumSort === "date" ? (a, b) => albumSortDate(b) - albumSortDate(a)
     : albumSort === "place" ? (a, b) => albumSortDist(a) - albumSortDist(b)
-    : (a, b) => a.name.localeCompare(b.name, "ru");
+    // по названию — по тому, что видно человеку (без цифр-даты в начале), а не по сырому имени
+    // папки: иначе «сортировка по названию» на деле сортировала по дате в её начале
+    : (a, b) => albumDisplayName(a).localeCompare(albumDisplayName(b), "ru");
   // группировка по странам — та же схема, что у «Экскурсий» (tree/groupKeys/flag, см.
-  // renderTourList выше). Страна — по album.point (albumCountryOf, геокодинг в фоне: при первом
-  // обращении запрос становится в общую очередь с «Экскурсиями» и сама перерисует список, когда
-  // ответ придёт); пока не узнана — временно в «Без страны», как и у экскурсии без региона
+  // renderTourList выше). Страна — приоритетно из текста экскурсии альбома (a.excursion.country,
+  // та же логика, что у tourCountry выше: «написал вручную» сильнее геопозиции), а если его нет —
+  // по album.point (albumCountryOf, геокодинг в фоне: при первом обращении запрос становится в
+  // общую очередь с «Экскурсиями» и сама перерисует список, когда ответ придёт). Грегори,
+  // 2026-10-12: «экскурсию поставил в Австрию, написал без страны, а альбом в Эстонии» — группа
+  // шла по GPS снимков, а не по тому, что он сам указал в экскурсии; пока страна не узнана —
+  // временно в «Без страны», как и у экскурсии без региона
+  const countryOf = (a) => {
+    if (a.excursion?.country) return a.excursion.country;
+    if (a.country === undefined) albumCountryOf(a);
+    return a.country || "";
+  };
   const tree = new Map(); // страна → альбомы
   for (const a of all) {
-    if (a.country === undefined) albumCountryOf(a);
-    const c = a.country || "Без страны";
+    const c = countryOf(a) || "Без страны";
     if (!tree.has(c)) tree.set(c, []);
     tree.get(c).push(a);
   }
@@ -3280,7 +3319,7 @@ function renderAlbumsList() {
   // с названием альбомов быть не должно»)
   const albumRow = (a) => row(`a:${a.id}`, "tour-row-item",
     `<span class="tour-row-text"><span class="tour-row-title">`
-    + `<span class="tour-row-title-text">${escapeHtml(a.name)}</span>`
+    + `<span class="tour-row-title-text">${escapeHtml(albumDisplayName(a))}</span>`
     + `<span class="album-row-count">${escapeHtml(`${a.files.length} фото`)}</span></span>`
     + (a.excursion ? `<span class="tour-row-sub">${escapeHtml(a.excursion.title)}</span>` : "") + `</span>`,
     // клик по строке — то же самое, что клик по значку альбома на карте (focusAlbum), и вдобавок
@@ -3348,10 +3387,12 @@ function renderAlbumsList() {
   }
   // пересканировать папку — список раньше было нечем обновить, кроме как заново открывать выбор
   // папки в настройках (Грегори, Round 64: «список альбомов ничем не обновить»)
-  const refreshBtn = Object.assign(document.createElement("button"), { className: "tour-edit",
-    title: myDir ? "Обновить список альбомов" : "Сначала выберите папку со снимками в настройках",
-    innerHTML: REFRESH_ICON, disabled: !myDir });
-  refreshBtn.addEventListener("click", () => { if (myDir) startMyScan(myDir); });
+  // крутится, пока идёт обход (myScanBusy) — раньше кнопка никак не показывала, что обновление
+  // уже началось (Грегори: «обновление замирает. Может колесико выводить?»)
+  const refreshBtn = Object.assign(document.createElement("button"), { className: `tour-edit${myScanBusy ? " spinning" : ""}`,
+    title: myScanBusy ? "Обновляю…" : myDir ? "Обновить список альбомов" : "Сначала выберите папку со снимками в настройках",
+    innerHTML: REFRESH_ICON, disabled: !myDir || myScanBusy });
+  refreshBtn.addEventListener("click", () => { if (myDir && !myScanBusy) startMyScan(myDir); });
   const close = Object.assign(document.createElement("button"), { className: "tour-close", title: "Закрыть", innerHTML: CLOSE_ICON });
   close.addEventListener("click", () => setAlbumsMode(false));
   bar.append(player, label, Object.assign(document.createElement("span"), { className: "tour-bar-gap" }), refreshBtn, sortBtn);
@@ -3363,7 +3404,10 @@ function renderAlbumsList() {
   rows.push(head);
   // страна — всегда отдельной строкой-группой, даже с одной (та же логика, что у «Экскурсий»,
   // renderTourList выше, Грегори: «страна... группа со своим... значком»)
-  for (const country of [...tree.keys()].sort((a, b) => a.localeCompare(b, "ru"))) {
+  // «Без страны» — особым случаем впереди всех, а не по алфавиту вперемешку с остальными
+  // (Грегори: «без страны должна выскакивать на самый верх»)
+  const countryCmp = (x, y) => (x === "Без страны" || y === "Без страны") ? (x === "Без страны" ? -1 : 1) : x.localeCompare(y, "ru");
+  for (const country of [...tree.keys()].sort(countryCmp)) {
     const albumsIn = tree.get(country);
     const ck = `c:${country}`;
     const open = !!q || albumCountryOpen.has(ck);
@@ -3527,7 +3571,7 @@ function albumHelpButton(albumId) {
     const fmt = (t) => new Date(t).toLocaleDateString("ru");
     const range = dates.length ? (dates[0] === dates[dates.length - 1] ? fmt(dates[0]) : `${fmt(dates[0])} – ${fmt(dates[dates.length - 1])}`) : "";
     const box = Object.assign(document.createElement("div"), { className: "tour-help" });
-    box.append(Object.assign(document.createElement("div"), { className: "tour-help-title", textContent: a.name }));
+    box.append(Object.assign(document.createElement("div"), { className: "tour-help-title", textContent: albumDisplayName(a) }));
     const row = Object.assign(document.createElement("div"), { className: "tour-help-row" });
     row.append(Object.assign(document.createElement("span"), { textContent: `${a.files.length} фото${range ? " · " + range : ""}` }));
     box.append(row);
@@ -3658,8 +3702,8 @@ function renderAlbumPanel(albumId) {
   // для метки экскурсии на карте, не для альбома — Грегори, Round 67: «иконок рядом с названием
   // альбомов быть не должно»)
   const titleRow = h("div", "tour-title-row");
-  const title = h("h2", "", a.name);
-  title.title = a.name;
+  const title = h("h2", "", albumDisplayName(a));
+  title.title = albumDisplayName(a);
   titleRow.append(title);
   head.append(bar, titleRow, h("div", "tour-player-label"));
   albumPanel.replaceChildren(head, ...renderAlbumGroups(albumId));
