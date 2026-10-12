@@ -1772,7 +1772,16 @@ async function startMyScan(handle) {
     } catch { return; }
     if (scan !== myScan) return;
     if (files.length) {
-      const album = { id: `album/${++myAlbumSeq}`, name: dir.name, path, files: [], point: null, indexed: false };
+      // сама папка альбома — чтобы по клику на название открыть системный диалог выбора папки
+      // прямо в ней (см. renderAlbumPanel), ближайшее, что браузер вообще разрешает сайту сделать
+      // с диском: настоящего «открыть в Проводнике» веб-страницам не дают ни в одном браузере —
+      // песочница File System Access API не отдаёт реальный путь и не умеет звать проводник
+      // (Грегори, 2026-10-13: «чтобы ссылка открывала папку на диске, а не галерею»). У альбомов
+      // из репозитория (dir — не настоящий FileSystemDirectoryHandle, а самодельная заглушка из
+      // repoFolder) диска просто нет — для них dirHandle не ставим, ссылка остаётся открытием
+      // галереи
+      const album = { id: `album/${++myAlbumSeq}`, name: dir.name, path, files: [], point: null, indexed: false,
+        dirHandle: dir instanceof FileSystemDirectoryHandle ? dir : null };
       const prev = prevByPath.get(path);
       if (prev && prev.country != null) album.country = prev.country; // null — старый запрос в полёте, переспросим
       myAlbums.set(album.id, album);
@@ -3808,13 +3817,19 @@ function renderAlbumPanel(albumId) {
   // название — без переноса по умолчанию у всех .tour-head h2 (многоточие при нехватке места),
   // но длинные имена альбомов из-за этого обрезались (Грегори, 2026-10-12: «можно выводить
   // название альбома с переносом строки») — класс album-title переопределяет это только здесь,
-  // у «Экскурсий»/«Языков» обрезание осталось как было. Сама строка — ещё и ссылка на галерею
-  // этого альбома (то же действие, что у треугольника плеера слева), с подсказкой-курсором,
-  // чтобы было похоже на активную ссылку (Грегори: «хотелось бы у названий альбомов активную
-  // ссылку на сам альбом»)
+  // у «Экскурсий»/«Языков» обрезание осталось как было. Сама строка — ещё и ссылка, с подсказкой-
+  // курсором, чтобы было похоже на активную ссылку (Грегори: «хотелось бы у названий альбомов
+  // активную ссылку на сам альбом»). У альбома с настоящей папкой на диске (dirHandle, см. walk
+  // в startMyScan) клик зовёт системный диалог выбора папки прямо в ней — показать содержимое
+  // «как в Проводнике» иначе нельзя (Грегори, 2026-10-13: «что бы ссылка открывала папку на диске,
+  // а не галерею»); отмена диалога — ожидаемый исход (человек просто посмотрел и закрыл), а не
+  // ошибка. У альбомов без диска (из репозитория) ссылка остаётся прежней — открывает галерею
   const title = h("h2", "album-title", albumDisplayName(a));
   title.title = albumDisplayName(a);
-  title.addEventListener("click", () => openAlbumGallery(albumId, null));
+  title.addEventListener("click", () => {
+    if (a.dirHandle) { window.showDirectoryPicker({ id: "travel-earth-reveal", mode: "read", startIn: a.dirHandle }).catch(() => {}); return; }
+    openAlbumGallery(albumId, null);
+  });
   titleRow.append(title);
   // главное фото альбома — случайный снимок из места поездки (выбирает проход 2 обхода, см.
   // album.cover в startMyScan), не аэропорта вылета (Грегори, 2026-10-13: «рандомное фото из
