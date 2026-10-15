@@ -1728,21 +1728,30 @@ async function startMyScan(handle) {
   const exifOf = async (id) => {
     const file = myFiles.get(id);
     if (file.rec) return file.rec;
-    // у снимка из репозитория размер и хэш известны без скачивания — кэш проверяется по ним
-    const f = file.handle.meta || await file.handle.getFile();
-    const hit = cache.get(file.path);
-    if (hit && hit.size === f.size && hit.mtime === f.lastModified) return (file.rec = phoneRec(hit, file.path));
-    let rec = { size: f.size, mtime: f.lastModified };
+    let rec = {};
     try {
-      const e = await exifr.parse(f instanceof Blob ? f : await file.handle.getFile(), { tiff: true, exif: true, gps: true, xmp: false, icc: false, iptc: false, jfif: false, ihdr: false, translateValues: false });
-      if (Number.isFinite(e?.latitude) && Number.isFinite(e?.longitude) && (e.latitude || e.longitude)) rec = { ...rec, lat: e.latitude, lon: e.longitude };
-      if (e?.DateTimeOriginal instanceof Date) rec.date = e.DateTimeOriginal.getTime();
-      if (e?.Orientation) rec.orient = e.Orientation;
-    } catch { /* без EXIF */ }
-    // у видео дата съёмки в метаданных часто не читается — берём дату изменения файла, она у
-    // нетронутого ролика с телефона обычно совпадает с датой съёмки (Грегори, 2026-10-14:
-    // «просмотр видео форматов, iPhone .MOV»)
-    if (!rec.date && file.video && rec.mtime) rec.date = rec.mtime;
+      // у снимка из репозитория размер и хэш известны без скачивания — кэш проверяется по ним.
+      // Сам file.handle.getFile() тоже может упасть — не только у видео, но у него заметно чаще:
+      // например, облачное хранилище (iCloud/OneDrive «Файлы по требованию») держит на диске
+      // только заглушку крупного ролика, а не сам файл. Раньше такой файл сюда просто не попадал
+      // (видео целиком пропускались при обходе папки) — теперь попадает, и непойманное исключение
+      // тут обрывало обход всей папки целиком, список альбомов оставался пустым (Грегори,
+      // 2026-10-15, со скриншотом: «список альбомов пуст»). Один нечитаемый файл не должен ронять
+      // весь альбом — считаем его файлом без метаданных и идём дальше
+      const f = file.handle.meta || await file.handle.getFile();
+      rec = { size: f.size, mtime: f.lastModified };
+      const hit = cache.get(file.path);
+      if (hit && hit.size === f.size && hit.mtime === f.lastModified) { checked++; return (file.rec = phoneRec(hit, file.path)); }
+      try {
+        const e = await exifr.parse(f instanceof Blob ? f : await file.handle.getFile(), { tiff: true, exif: true, gps: true, xmp: false, icc: false, iptc: false, jfif: false, ihdr: false, translateValues: false });
+        if (Number.isFinite(e?.latitude) && Number.isFinite(e?.longitude) && (e.latitude || e.longitude)) rec = { ...rec, lat: e.latitude, lon: e.longitude };
+        if (e?.DateTimeOriginal instanceof Date) rec.date = e.DateTimeOriginal.getTime();
+        if (e?.Orientation) rec.orient = e.Orientation;
+      } catch { /* без EXIF */ }
+    } catch { /* файл недоступен — не валим весь альбом из-за одного такого */ }
+    // дату видео по дате изменения файла раньше подставляли — Грегори, 2026-10-15: «не надо, лучше
+    // пусть без даты, путаницы меньше, будут появляться фантомные дни». Без даты — группа «Без
+    // даты» в альбоме (albumDateGroups), не ошибка
     checked++;
     pending.push([file.path, rec]);
     if (pending.length >= 200) flush();
@@ -1980,6 +1989,11 @@ async function videoFrameBitmap(blobFile, targetWidth) {
     await new Promise((resolve, reject) => {
       video.onloadeddata = () => resolve();
       video.onerror = () => reject(new Error("видео не читается"));
+      // кодек, который браузер молча не умеет (бывает у новых iPhone — HEVC/H.265 без аппаратной
+      // поддержки) — ни loadeddata, ни error может не прийти вовсе, тогда без предохранителя кадр
+      // этого ролика завис бы навсегда и забил бы собой очередь миниатюр (там не больше двух
+      // параллельных, см. updateMyThumbs/myThumbActive)
+      setTimeout(() => reject(new Error("видео не загрузилось за 8 секунд")), 8000);
     });
     await new Promise((resolve) => {
       video.onseeked = resolve;
