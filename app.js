@@ -3896,11 +3896,15 @@ function renderAlbumPanel(albumId) {
   // в startMyScan) клик зовёт системный диалог выбора папки прямо в ней — показать содержимое
   // «как в Проводнике» иначе нельзя (Грегори, 2026-10-13: «что бы ссылка открывала папку на диске,
   // а не галерею»); отмена диалога — ожидаемый исход (человек просто посмотрел и закрыл), а не
-  // ошибка. У альбомов без диска (из репозитория) ссылка остаётся прежней — открывает галерею
+  // ошибка. У альбомов без диска (из репозитория) ссылка остаётся прежней — открывает галерею.
+  // Без id: с ним браузер запоминает ОДНУ папку на все альбомы разом (ключ — сам id, не альбом) и
+  // при повторном клике открывает её вместо startIn, игнорируя a.dirHandle — ссылка на любой альбом
+  // вела в чужую, случайно запомненную папку (Грегори, 2026-10-16: «пошёл не туда E:\.GitHub\
+  // Альбомы», хотя реальная папка была E:\AllPhoto\#All_Albums\Alboms)
   const title = h("h2", "album-title", albumDisplayName(a));
   title.title = albumDisplayName(a);
   title.addEventListener("click", () => {
-    if (a.dirHandle) { window.showDirectoryPicker({ id: "travel-earth-reveal", mode: "read", startIn: a.dirHandle }).catch(() => {}); return; }
+    if (a.dirHandle) { window.showDirectoryPicker({ mode: "read", startIn: a.dirHandle }).catch(() => {}); return; }
     openAlbumGallery(albumId, null);
   });
   titleRow.append(title);
