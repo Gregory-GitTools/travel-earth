@@ -2122,7 +2122,10 @@ function openAlbumGallery(albumId, startId) {
       // что показать, по этим двум полям
       video: !!file.video, live: file.live || null };
   });
-  localStorage.setItem(PHOTO_GALLERY_KEY, JSON.stringify({ photos, start: Math.max(0, album.files.indexOf(startId)),
+  // albumId — чтобы окно галереи само могло звать плеер альбома (albumPlayPause/Go/...),
+  // когда свои собственные кнопки сверху (Грегори: «кнопки... должны повторять кнопки в панели
+  // альбома»), и чтобы ролики сами просились дальше по albumClipEnded, минуя 4-секундный таймер
+  localStorage.setItem(PHOTO_GALLERY_KEY, JSON.stringify({ photos, start: Math.max(0, album.files.indexOf(startId)), albumId,
     excursion: album.excursion ? { title: album.excursion.title, blocks: album.excursion.blocks } : null }));
   return openSideWindow(`gallery.html?t=${Date.now()}`, "travel-earth-gallery");
 }
@@ -3619,25 +3622,48 @@ function chooseAlbum(albumId) {
 
 // слайдшоу альбома в окне галереи: плей/пауза/назад/дальше/стоп — тот же набор кнопок, что у
 // аудиогида экскурсии (Грегори, 2026-10-12: «а должно быто одинаково. Это и значит — такая
-// же»), только вместо речи — автопоказ фото в travel-earth-gallery (окно переоткрывается на
-// нужном снимке тем же приёмом, что и при обычном клике по фото, см. openAlbumGallery выше).
+// же»), только вместо речи — автопоказ фото в travel-earth-gallery. Окно открывается заново
+// (openAlbumGallery) только один раз, на старте — дальше кадры переставляются сообщением
+// (albumGalleryShow), как у слайд-шоу экскурсии (sendSlidesToGallery), без перезагрузки окна:
+// раньше каждый тик зовя openAlbumGallery заново перезагружал уже открытое окно (тот же
+// window.open с тем же именем), из-за чего слетало всё, что человек успел начать на кадре —
+// видео/живое фото нельзя было поймать кликом, а окно каждый раз чуть смещалось (Грегори,
+// 2026-10-16: «невозможно поймать видео... на Live невозможно кликнуть... кнопки каждый раз в
+// разных местах»). Видео и живое фото проигрываются сами при показе (без зацикливания) и сами
+// сообщают об окончании (сообщение "ended" от gallery.html) — на обычных таймер идёт как раньше,
+// но ждать окончания ролика, а не идти дальше через фиксированные 4 с (Грегори: «давай проигрывать
+// Live и видео в слайдшоу, и каждый раз идти дальше»; «зацикливание Live — не хорошая идея»).
 // Окно отслеживается отдельным таймером (albumWatchTimer): закрыл его человек руками — плей сам
-// останавливается, а не продолжает открывать новое окно каждые 4 с (Грегори, Round 63: «Окно
-// альбома открывается после закрытия потому что плай не остановился» — отсюда же и «все кнопки
-// окна ошибочно запускают альбом» — на деле их не было, просто плей не замечал закрытия и бил
-// новым окном поверх всего, что бы человек ни делал). Стоп — закрывает само окно, а не только
-// останавливает счётчик (Грегори: «кнопка стоп должна закрывать слайдшоу»)
+// останавливается, а не продолжает слать сообщения в закрытое окно (Грегори, Round 63: «Окно
+// альбома открывается после закрытия потому что плай не остановился»). Стоп — закрывает само окно,
+// а не только останавливает счётчик (Грегори: «кнопка стоп должна закрывать слайдшоу»)
 let albumPlay = null; // { albumId, i, paused }
-let albumPlayTimer = null; // автопоказ — смена фото
+let albumPlayTimer = null; // автопоказ обычных фото (видео/живое фото — по сообщению "ended", без таймера)
 let albumWatchTimer = null; // следит, не закрыл ли человек окно сам
 let albumGalleryWin = null;
+const ALBUM_SLIDE_MS = 6000; // показ фото + переход (Грегори, 2026-10-16: «прибавь пару секунд на переход»)
+function albumCurrentFile() {
+  const a = albumPlay && myAlbums.get(albumPlay.albumId);
+  return a ? myFiles.get(a.files[albumPlay.i]) : null;
+}
 function albumPlaySchedule() {
-  clearInterval(albumPlayTimer);
-  albumPlayTimer = setInterval(() => albumAdvance(1), 4000);
+  clearTimeout(albumPlayTimer);
+  albumPlayTimer = null;
+  if (!albumPlay || albumPlay.paused) return;
+  const file = albumCurrentFile();
+  if (file?.video || file?.live) return; // идёт ролик — дальше пойдём по сообщению "ended"
+  albumPlayTimer = setTimeout(() => albumAdvance(1), ALBUM_SLIDE_MS);
 }
 function albumWatchWindow() {
   clearInterval(albumWatchTimer);
   albumWatchTimer = setInterval(() => { if (albumGalleryWin?.closed) stopAlbumPlay(); }, 800);
+}
+// показывает кадр в уже открытом окне галереи сообщением, без перезагрузки; если окно почему-то
+// закрыто (watch-таймер ещё не успел это заметить) — открывает заново, как раньше
+function albumGalleryShow(i) {
+  const a = myAlbums.get(albumPlay.albumId);
+  if (albumGalleryWin && !albumGalleryWin.closed) albumGalleryWin.postMessage({ galleryShow: i }, location.origin);
+  else albumGalleryWin = openAlbumGallery(albumPlay.albumId, a.files[i]);
 }
 function startAlbumPlay(albumId) {
   const a = myAlbums.get(albumId);
@@ -3650,7 +3676,7 @@ function startAlbumPlay(albumId) {
 }
 function stopAlbumPlay() {
   if (!albumPlay) return;
-  clearInterval(albumPlayTimer);
+  clearTimeout(albumPlayTimer);
   clearInterval(albumWatchTimer);
   albumGalleryWin?.close();
   albumGalleryWin = null;
@@ -3660,26 +3686,33 @@ function stopAlbumPlay() {
 function albumPlayPause() {
   if (!albumPlay) return;
   albumPlay.paused = !albumPlay.paused;
-  if (albumPlay.paused) clearInterval(albumPlayTimer); else albumPlaySchedule();
+  // ролик на экране сейчас — ставим на паузу/продолжаем вместе со слайдшоу, а не только
+  // обычные фото (Грегори: «при нажатии на плей крутить слайдшоу с этого места дальше»)
+  albumGalleryWin?.postMessage({ galleryPause: albumPlay.paused }, location.origin);
+  albumPlaySchedule();
   renderAlbumPlayer();
 }
-// шаг таймера автопоказа — переставляет фото и остаётся на плее (таймер зовёт только отсюда)
+// шаг таймера автопоказа (и сообщения "ended") — переставляет фото и остаётся на плее
 function albumAdvance(delta) {
   if (!albumPlay) return;
   const a = myAlbums.get(albumPlay.albumId);
   if (!a?.files.length) { stopAlbumPlay(); return; }
   albumPlay.i = (albumPlay.i + delta + a.files.length) % a.files.length;
-  albumGalleryWin = openAlbumGallery(albumPlay.albumId, a.files[albumPlay.i]);
+  albumGalleryShow(albumPlay.i);
+  albumPlaySchedule();
   renderAlbumPlayer();
 }
 // ручной шаг кнопками назад/дальше: ставит на паузу и просто переходит, не запуская плей заново
 // (Грегори, Round 64: «кнопки вперёд/назад не должны запускать плай. Скорей, они должны
 // останавливать и предоставлять ручной выбор, а не бороться» — раньше шаг сбрасывал paused и сам
-// же перезапускал таймер, поэтому пауза никогда не держалась дольше одного клика)
+// же перезапускал таймер, поэтому пауза никогда не держалась дольше одного клика). Проигрывается
+// один раз без зацикливания и без автоперехода дальше (Грегори: «при выборе конкретного эпизода
+// проиграть и остановиться») — albumPlaySchedule внутри albumAdvance тут ничего не планирует,
+// потому что paused уже true
 function albumPlayGo(delta) {
   if (!albumPlay) return;
   albumPlay.paused = true;
-  clearInterval(albumPlayTimer);
+  clearTimeout(albumPlayTimer);
   albumAdvance(delta);
 }
 // клик по конкретному снимку своего альбома — на карте, в ленте или в списке дат панели:
@@ -3691,15 +3724,38 @@ function albumPhotoClicked(albumId, photoId) {
   const a = myAlbums.get(albumId);
   if (albumPlay?.albumId === albumId && a) {
     albumPlay.paused = true;
-    clearInterval(albumPlayTimer);
+    clearTimeout(albumPlayTimer);
     const i = a.files.indexOf(photoId);
     if (i >= 0) albumPlay.i = i;
-    albumGalleryWin = openAlbumGallery(albumId, photoId);
+    albumGalleryShow(albumPlay.i);
     renderAlbumPlayer();
     return;
   }
   openAlbumGallery(albumId, photoId);
 }
+// клик на снимке или на конкретный кадр внутри самого окна галереи (там же, где он уже открыт) —
+// просто держит i в app.js в курсе, не шлёт обратно galleryShow (кадр там и так уже показан
+// локально). Клик по конкретному кадру (бывшей миниатюре/стрелкам) всегда ставит на паузу и
+// просто переходит, без зацикливания (Грегори: «при клике на конкретный кадр останови слайдшоу и
+// покажи только то что попросили»); клик по самому фото/видео — переключатель паузы, им же можно
+// продолжить (Грегори: «слайдшоу должно останавливаться, ждать клика на фото или продолжения»)
+window.albumJumpTo = (i) => {
+  if (!albumPlay) return;
+  albumPlay.paused = true;
+  clearTimeout(albumPlayTimer);
+  albumPlayTimer = null;
+  albumPlay.i = i;
+  renderAlbumPlayer();
+};
+window.albumPlayPause = albumPlayPause;
+window.albumPlayGo = albumPlayGo;
+window.stopAlbumPlay = stopAlbumPlay;
+window.startAlbumPlay = startAlbumPlay;
+window.albumPlayState = () => (albumPlay ? { ...albumPlay, total: myAlbums.get(albumPlay.albumId)?.files.length || 0 } : null);
+// ролик (видео или живое фото) доиграл сам, своим ходом — если слайдшоу в этот момент не на
+// паузе, идём дальше; если на паузе (кадр выбрали руками) — просто остаёмся на нём (Грегори: «при
+// выборе конкретного эпизода, проиграть и остановиться»)
+window.albumClipEnded = () => { if (albumPlay && !albumPlay.paused) albumAdvance(1); };
 // полоска плеера в шапке альбома — по образцу renderTourPlayer (экскурсии), но треугольник
 // вместо говорящего лица (Грегори, Thread 1: «вместо озвучки... должен быть треугольник (плай)»)
 function renderAlbumPlayer() {
