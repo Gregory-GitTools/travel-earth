@@ -42,17 +42,15 @@
     height: 100%;
     object-fit: contain;
   }
-  /* пока грузится крупный снимок, растянута миниатюра */
-  .stage img.preview { filter: blur(6px); }
-
-  /* бейдж типа кадра — пассивная подпись поверх снимка (▶ видео / LIVE), тот же приём, что у
-     значка в ленте миниатюр, только крупнее (Грегори, 2026-10-16: «должен быть один значок,
-     или видео, или Live»). [hidden] объявлен отдельным правилом — иначе его проигрывает по
-     специфичности display:flex класса ниже, и бейдж никогда не скрывается (Грегори, 2026-10-16:
-     «значок Live не уходит») */
+  /* бейдж LIVE — пассивная подпись сверху справа, не внизу: там теперь одна-единственная кнопка
+     разового воспроизведения, два элемента рядом смотрелись как две разные кнопки плей (Грегори,
+     2026-10-16: «один значок, или видео, или Live»; «значки плей справа связаны, а не должны»).
+     Для обычного видео бейдж вообще не нужен — его состояние и так видно по иконке кнопки снизу.
+     [hidden] объявлен отдельным правилом — иначе его проигрывает по специфичности display:flex
+     класса ниже, и бейдж никогда не скрывается (Грегори, 2026-10-16: «значок Live не уходит») */
   .stage-badge {
     position: absolute;
-    bottom: 14px;
+    top: 14px;
     right: 14px;
     z-index: 2;
     border-radius: 12px;
@@ -65,13 +63,15 @@
   }
   .stage-badge[hidden] { display: none; }
 
-  /* разовое воспроизведение текущего кадра (видео или живое фото) — отдельная кнопка снизу
-     слева, не связанная со слайдшоу альбома (Грегори, 2026-10-16: «клик снизу управляет разовым
-     воспроизведением, а сверху и в панели экскурсии — слайдшоу, синхронизированы друг с другом») */
+  /* разовое воспроизведение текущего кадра (видео или живое фото) — одна кнопка внизу справа
+     (Грегори, 2026-10-16, после попытки слева: «ни одной кнопки слева снизу — я правша»), не
+     связанная со слайдшоу альбома: клик тут — play/pause самого ролика, сверху и в панели
+     экскурсии — слайдшоу, синхронизированы друг с другом. Отступ снизу больше обычного — чтобы
+     не наезжать на встроенную ленту прокрутки видео (controls=true ниже) */
   .play-once {
     position: absolute;
-    bottom: 14px;
-    left: 14px;
+    bottom: 44px;
+    right: 14px;
     z-index: 2;
     display: grid;
     place-items: center;
@@ -85,6 +85,12 @@
   }
   .play-once[hidden] { display: none; }
   .play-once:hover { background: rgba(0, 0, 0, 0.75); }
+
+  /* нативные элементы управления видео возвращены ради ленты прокрутки (Грегори, 2026-10-16:
+     «ушла лента прокрутки, которая должна остаться поверх видео») — но свою кнопку play/pause
+     внутри них прячем, иначе рядом с .play-once было бы два одинаковых плей-контрола */
+  video.photo::-webkit-media-controls-play-button,
+  video.photo::-webkit-media-controls-overlay-play-button { display: none !important; }
 
   .nav {
     position: absolute;
@@ -114,6 +120,9 @@
     scrollbar-width: thin;
     scrollbar-color: #444 transparent;
   }
+  /* [hidden] объявлен отдельно — тот же приём, что у .stage-badge/.play-once выше: без этого
+     display:flex класса всегда побеждал бы спрятанный атрибут (режим F11, см. syncFullscreen) */
+  .thumbs[hidden] { display: none; }
   .thumb {
     position: relative;
     flex: none;
@@ -269,7 +278,7 @@
   <div class="stage">
     <img class="photo" alt="">
     <video class="photo" playsinline hidden></video>
-    <span class="stage-badge" hidden></span>
+    <span class="stage-badge" hidden>LIVE</span>
     <button class="play-once" hidden title="Воспроизвести"></button>
     <button class="nav prev" title="Назад (←)">‹</button>
     <button class="nav next" title="Вперёд (→)">›</button>
@@ -374,15 +383,18 @@ function show(i) {
   stopLive();
   stageBadge.hidden = true;
   playOnceBtn.hidden = true;
-  withTransition(() => {
-    photoEl.hidden = false;
-    videoEl.hidden = true;
-    photoEl.src = p.thumb;
-    photoEl.classList.add("preview");
-  });
+  // прежний снимок остаётся на экране, пока грузится новый — старая версия подменяла его сразу
+  // блёклой миниатюрой (CSS blur), и переход получался «через плохое качество» (Грегори,
+  // 2026-10-16: «чёткое фото размывается и показывается в плохом качестве»); теперь перетекание
+  // стартует только когда новая картинка реально готова, сразу в полном качестве
   const big = new Image();
-  big.onload = () => { if (photos[index] === p) { photoEl.src = big.src; photoEl.classList.remove("preview"); } };
-  big.onerror = () => { if (photos[index] === p && p.full && big.src !== p.full) big.src = p.full; };
+  const apply = (src) => withTransition(() => { photoEl.hidden = false; videoEl.hidden = true; photoEl.src = src; });
+  big.onload = () => { if (photos[index] === p) apply(big.src); };
+  big.onerror = () => {
+    if (photos[index] !== p) return;
+    if (p.full && big.src !== p.full) big.src = p.full;
+    else if (p.thumb) apply(p.thumb);
+  };
   big.src = bigUrl(p);
   // соседние — заранее, чтобы листалось без ожидания
   for (const d of [1, -1]) new Image().src = bigUrl(photos[(index + d + photos.length) % photos.length]);
@@ -415,11 +427,12 @@ function afterShow(p) {
   if (playTimer) { clearInterval(playTimer); playTimer = setInterval(() => show(index + 1), 5000); }
 }
 
-// остановить проигрывание живого фото и спрятать его видео — вызывается и при листании на
-// другой снимок, и перед показом нового кадра, чтобы не остался играющий ролик от прошлого
-// живого фото (Грегори, 2026-10-14: «просмотр видео форматов, iPhone .MOV. Живых фото»)
+// остановить проигрывание ролика (видео или живое фото) и спрятать его — вызывается при переходе
+// на снимок с чужого источника (Commons/Mapillary — там видео не бывает), чтобы не остался
+// играющий ролик от прошлого своего снимка в ленте (Грегори, 2026-10-14: «просмотр видео
+// форматов, iPhone .MOV. Живых фото»)
 function stopLive() {
-  if (videoEl.dataset.mode === "live") {
+  if (videoEl.dataset.mode) {
     videoEl.pause();
     videoEl.removeAttribute("src");
     videoEl.hidden = true;
@@ -428,70 +441,63 @@ function stopLive() {
   videoEl.dataset.mode = "";
 }
 
-// свой снимок: пока читается файл — миниатюра (если уже есть), потом оригинал. Отдельный ролик
-// (.MOV без пары) и живое фото запускаются сами, без клика (Грегори: «клик на видео или Live —
-// проигрывать сразу»); разовое воспроизведение (пауза/повтор) — кнопкой .play-once снизу слева,
-// одна и та же кнопка на оба случая вместо своих элементов управления у видео (Грегори,
-// 2026-10-16: «должен быть один значок, или видео, или Live»; «ещё одна кнопка снизу слева»)
-function showMine(p) {
-  stopLive();
-  withTransition(() => {
-    if (p.video) {
+// текущий кадр на экране остаётся видимым, пока грузится новый (фото или ролик) — ни фото, ни
+// видео никогда не остаются без src в процессе: раньше src сбрасывался сразу (removeAttribute),
+// и пока файл читался, стоял пустой <img> — Edge на пустом/битом <img> показывает свою иконку
+// поиска по картинке, «постоянно висящую» в углу (Грегори, 2026-10-16: «постоянно висит значок
+// поиска в верхнем углу»; «чёткое фото размывается и показывается в плохом качестве»)
+function loadPhoto(p) {
+  host()?.myGalleryFull(p.photo).then((url) => {
+    if (photos[index] !== p) return;
+    withTransition(() => {
+      videoEl.hidden = true;
+      videoEl.removeAttribute("src");
+      videoEl.dataset.mode = "";
+      photoEl.hidden = false;
+      photoEl.src = url;
+    });
+  }).catch(() => {});
+}
+// видео (p.video) или живое фото (p.live, fileId — отдельный ролик p.live) — нативные элементы
+// управления возвращены ради ленты прокрутки (Грегори: «ушла лента прокрутки, которая должна
+// остаться поверх видео»), свою кнопку play/pause внутри них прячет CSS (::-webkit-media-...),
+// чтобы не дублировать .play-once снизу справа
+function loadClip(p, fileId, mode) {
+  host()?.myGalleryFull(fileId).then((url) => {
+    if (photos[index] !== p) return;
+    withTransition(() => {
       photoEl.hidden = true;
       videoEl.hidden = false;
-      videoEl.dataset.mode = "clip";
-      videoEl.controls = false;
+      videoEl.dataset.mode = mode;
+      videoEl.controls = true;
       videoEl.loop = false;
       // приглушённый автозапуск сразу при показе — не нужно ловить мелкую кнопку плей; звук
-      // потом можно включить кнопкой .play-once. Без приглушения автозапуск без прямого жеста
+      // потом можно включить через нативную ленту. Без приглушения автозапуск без прямого жеста
       // (а тик слайдшоу идёт из другого окна) браузер может молча заблокировать
       videoEl.muted = true;
-      videoEl.poster = p.thumb || "";
-      videoEl.removeAttribute("src");
-      stageBadge.hidden = false;
-      stageBadge.textContent = "▶";
-    } else {
-      videoEl.hidden = true;
-      photoEl.hidden = false;
-      photoEl.removeAttribute("src");
-      if (p.thumb) { photoEl.src = p.thumb; photoEl.classList.add("preview"); }
-      stageBadge.hidden = !p.live;
-      stageBadge.textContent = "LIVE";
-    }
-  });
-  playOnceBtn.hidden = !(p.video || p.live);
-  if (p.video) {
-    host()?.myGalleryFull(p.photo).then((url) => {
-      if (photos[index] !== p) return;
       videoEl.src = url;
-      videoEl.play().catch(() => {});
-    }).catch(() => {});
-  } else {
-    host()?.myGalleryFull(p.photo).then((url) => {
-      if (photos[index] !== p) return;
-      photoEl.src = url;
-      photoEl.classList.remove("preview");
-    }).catch(() => {});
-  }
-  afterShow(p);
-  // живое фото — тоже сразу, тем же приёмом, что и видео выше (Грегори: «клик на видео или
-  // Live — проигрывать сразу»; «зацикливание Live — не хорошая идея», поэтому без loop)
-  if (p.live) playLive(p);
-  syncPlayOnce();
-}
-function playLive(p) {
-  photoEl.hidden = true;
-  videoEl.hidden = false;
-  videoEl.dataset.mode = "live";
-  videoEl.controls = false;
-  videoEl.loop = false;
-  videoEl.muted = true;
-  videoEl.removeAttribute("src");
-  host()?.myGalleryFull(p.live).then((url) => {
-    if (videoEl.dataset.mode !== "live" || photos[index] !== p) return; // успели переключиться
-    videoEl.src = url;
+    });
     videoEl.play().catch(() => {});
+    syncPlayOnce();
   }).catch(() => {});
+}
+function playLive(p) { loadClip(p, p.live, "live"); }
+
+// свой снимок: обычное фото, отдельный ролик (.MOV без пары) или живое фото — видео/живое фото
+// запускаются сами, без клика (Грегори: «клик на видео или Live — проигрывать сразу»); разовое
+// воспроизведение (пауза/повтор) — одной кнопкой .play-once снизу справа вместо нескольких своих
+// элементов управления (Грегори, 2026-10-16: «должен быть один значок, или видео, или Live»;
+// «ни одной кнопки слева снизу — я правша»)
+function showMine(p) {
+  playOnceBtn.hidden = !(p.video || p.live);
+  // бейдж — только LIVE, для обычного видео он не нужен: состояние и так видно по иконке кнопки
+  // снизу, а два подписанных элемента рядом смотрелись как две разные кнопки плей (Грегори:
+  // «значки плей справа связаны, а не должны»)
+  stageBadge.hidden = !p.live;
+  if (p.video) loadClip(p, p.photo, "clip");
+  else if (p.live) playLive(p);
+  else loadPhoto(p);
+  afterShow(p);
   syncPlayOnce();
 }
 // кнопка разового воспроизведения снизу слева — отдельно от плеера слайдшоу сверху (Грегори,
@@ -512,12 +518,15 @@ playOnceBtn.addEventListener("click", () => {
   if (videoEl.paused) videoEl.play().catch(() => {}); else videoEl.pause();
 });
 // ролик (видео или живое фото) доиграл сам — живое фото возвращается к статичному снимку (без
-// зацикливания, Грегори: «зацикливание Live — не хорошая идея»), и в любом случае слайдшоу в
-// главном окне узнаёт об этом напрямую (не через postMessage — то же окно, тот же источник) и
+// зацикливания, Грегори: «зацикливание Live — не хорошая идея»), обычное видео просто стоит на
+// последнем кадре, готовое начаться заново по клику .play-once (currentTime сбрасываем, иначе
+// play() на уже доигранном видео тут же снова сработал бы как "ended"); и в любом случае слайдшоу
+// в главном окне узнаёт об этом напрямую (не через postMessage — то же окно, тот же источник) и
 // само решает, идти ли дальше (если не на паузе) или просто остаться (Грегори: «проиграл — иди
 // дальше»; «при выборе конкретного эпизода — проиграть и остановиться»)
 videoEl.addEventListener("ended", () => {
-  if (videoEl.dataset.mode === "live") stopLive();
+  videoEl.currentTime = 0;
+  if (videoEl.dataset.mode === "live") loadPhoto(photos[index]);
   syncPlayOnce();
   if (albumId) host()?.albumClipEnded?.();
 });
@@ -620,7 +629,16 @@ $(".play-toggle").addEventListener("click", () => {
 // выход Esc не должен закрывать окно»). У F11 (в отличие от Fullscreen API) нет события,
 // которое это подтвердило бы напрямую — отличаем по resize тут же перед Esc
 let lastResize = 0;
-window.addEventListener("resize", () => { lastResize = Date.now(); });
+// тот же resize, что отличает F11 от закрытия окна чуть ниже, заодно отслеживает сам F11: окно
+// без системной рамки занимает весь физический экран (обычный Maximize — нет, там остаётся место
+// под панель задач) — в этом режиме прячем ленту миниатюр, чтобы фото/видео занимало весь экран
+// (Грегори, 2026-10-16: «в режиме F11 убери ленту фотографий»)
+function syncFullscreen() {
+  const full = window.innerWidth >= screen.width - 2 && window.innerHeight >= screen.height - 2;
+  $(".thumbs").hidden = full;
+}
+window.addEventListener("resize", () => { lastResize = Date.now(); syncFullscreen(); });
+syncFullscreen();
 document.addEventListener("keydown", (e) => {
   if (e.key === "ArrowLeft") navTo(index - 1);
   else if (e.key === "ArrowRight") navTo(index + 1);
