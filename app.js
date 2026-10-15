@@ -3410,7 +3410,6 @@ function closeTourToList() {
 // карте: щелчок — изоляция+перелёт (focusAlbum), двойной — сразу фотогалерея. Вместо плеера
 // аудиогида в шапке — один треугольник: открывает галерею уже выбранного альбома (albumsSelected —
 // своё состояние, не зависящее от myAlbumFocus — выбор в списке не должен слетать от closeAlbumPanel)
-const ALBUMS_LIST_MIN_KEY = "travel-earth.albums-list-min";
 // раскрытые группы стран в списке альбомов — та же схема, что у tourOpen в «Экскурсиях»
 // (Грегори: «список альбомов можно сгруппировать по странам»)
 const albumCountryOpen = new Set();
@@ -3532,7 +3531,6 @@ function renderAlbumsList() {
   minBtn.addEventListener("click", () => {
     const min = !albumsList.classList.contains("min");
     albumsList.classList.toggle("min", min);
-    localStorage.setItem(ALBUMS_LIST_MIN_KEY, min ? "1" : "0");
     setMinBtn();
   });
   // кнопка рядом (вторая) раньше сворачивала/разворачивала строки списка (.rows-folded) — путала,
@@ -3567,7 +3565,10 @@ function renderAlbumsList() {
   if (groupKeys.length && !q) bar.append(foldAllBtn);
   bar.append(minBtn, close);
   head.append(bar);
-  albumsList.classList.toggle("min", localStorage.getItem(ALBUMS_LIST_MIN_KEY) === "1");
+  // свёрнутость — только в рамках текущей сессии (classList самого albumsList, не localStorage):
+  // при открытии окно всегда разворачивается заново, не подтягивая, каким его закрыли в прошлый
+  // раз (Грегори, 2026-10-16: «окно было свёрнуто перед закрытием... всегда разгруппировывать
+  // окно при открытии») — сброс в setAlbumsMode ниже, тут только синхронизация значка кнопки
   setMinBtn();
   rows.push(head);
   // страна — всегда отдельной строкой-группой, даже с одной (та же логика, что у «Экскурсий»,
@@ -3963,6 +3964,9 @@ function setAlbumsMode(on) {
   // (кнопка в «Слоях» для этого слоя убрана, см. OVERLAYS выше)
   if (on !== activeOverlays.has("myphotos")) toggleOverlay("myphotos");
   if (on) {
+    // открытие всегда разворачивает окно, даже если в прошлый раз его закрыли свёрнутым (Грегори,
+    // 2026-10-16) — кнопка «свернуть» внутри renderAlbumsList ниже ничего не сбрасывает сама
+    albumsList.classList.remove("min");
     renderAlbumsList();
     if (!albumsListAutoScaled) { albumsListAutoScaled = true; scalePanelHeight(albumsList); }
   }
