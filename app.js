@@ -3816,8 +3816,9 @@ function renderAlbumGroups(albumId) {
     return new Date(y, m - 1, day).toLocaleDateString("ru", { day: "numeric", month: "long", year: "numeric" });
   };
   const toggle = (key) => () => { albumDateOpen.has(key) ? albumDateOpen.delete(key) : albumDateOpen.add(key); renderAlbumPanel(albumId); };
-  // даты — сначала новые; группа «без даты» — в самом конце, а не вперемешку по пустой строке
-  const dates = [...byDate.keys()].filter(Boolean).sort((x, y) => y.localeCompare(x));
+  // даты — сначала старые (Грегори, 2026-10-16: «сортировку поменять наоборот, по возрастанию»);
+  // группа «без даты» — в самом конце, а не вперемешку по пустой строке
+  const dates = [...byDate.keys()].filter(Boolean).sort((x, y) => x.localeCompare(y));
   if (byDate.has("")) dates.push("");
   for (const d of dates) {
     const ids = byDate.get(d);
