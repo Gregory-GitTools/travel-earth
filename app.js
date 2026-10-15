@@ -1405,6 +1405,10 @@ const MY_COLOR = "#7c4dff";
 const MY_ALBUM_ICON = ["M12 15.2a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4z",
   "M9 2 7.17 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2h-3.17L15 2H9zm3 15c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5z"];
 const MY_IMAGE_RE = /\.(jpe?g|webp|png)$/i;
+// видео: обычные ролики и короткие клипы «живых фото» iPhone — пара IMG_1234.HEIC/.JPG +
+// IMG_1234.MOV с одинаковым именем файла (Грегори, 2026-10-14: «просмотр видео форматов,
+// iPhone .MOV. Живых фото»); сама пара ищется ниже, в walk() startMyScan
+const MY_VIDEO_RE = /\.(mov|mp4|m4v)$/i;
 const MY_TEXT_RE = /\.(txt|md)$/i;
 const MY_ALBUM_PROBE = 25; // сколько снимков альбома пробовать в поисках координат на первом проходе
 const myPhotoFeatures = new Map(); // "my/12" → feature снимка с координатами
@@ -1593,7 +1597,7 @@ function showFolderAccessButton(id, icon, label, handle, start) {
 // дальше обход как у папки (startMyScan) — точки, миниатюры, лента. Выбор не запоминается после
 // перезагрузки (браузер телефона не хранит доступ к файлам), но EXIF уже прочитанных — в кэше
 const phonePhotoInput = Object.assign(document.createElement("input"), { type: "file", multiple: true,
-  accept: ".jpg,.jpeg,.webp,.png,image/jpeg", hidden: true });
+  accept: ".jpg,.jpeg,.webp,.png,.mov,.mp4,.m4v,image/jpeg", hidden: true });
 document.body.append(phonePhotoInput);
 phonePhotoInput.addEventListener("change", () => {
   const files = [...phonePhotoInput.files];
@@ -1735,6 +1739,10 @@ async function startMyScan(handle) {
       if (e?.DateTimeOriginal instanceof Date) rec.date = e.DateTimeOriginal.getTime();
       if (e?.Orientation) rec.orient = e.Orientation;
     } catch { /* без EXIF */ }
+    // у видео дата съёмки в метаданных часто не читается — берём дату изменения файла, она у
+    // нетронутого ролика с телефона обычно совпадает с датой съёмки (Грегори, 2026-10-14:
+    // «просмотр видео форматов, iPhone .MOV»)
+    if (!rec.date && file.video && rec.mtime) rec.date = rec.mtime;
     checked++;
     pending.push([file.path, rec]);
     if (pending.length >= 200) flush();
@@ -1766,7 +1774,7 @@ async function startMyScan(handle) {
     try {
       for await (const [name, h] of dir.entries()) {
         if (h.kind === "directory") { if (!name.startsWith(".")) dirs.push([name, h]); }
-        else if (MY_IMAGE_RE.test(name)) files.push([name, h]);
+        else if (MY_IMAGE_RE.test(name) || MY_VIDEO_RE.test(name)) files.push([name, h]);
         else if (MY_TEXT_RE.test(name)) texts.push([name, h]);
       }
     } catch { return; }
@@ -1787,8 +1795,26 @@ async function startMyScan(handle) {
       myAlbums.set(album.id, album);
       for (const [name, h] of files.sort((a, b) => a[0].localeCompare(b[0], undefined, { numeric: true }))) {
         const id = `my/${++myFileSeq}`;
-        myFiles.set(id, { handle: h, name, path: `${path}/${name}`, album: album.id, rec: null });
+        myFiles.set(id, { handle: h, name, path: `${path}/${name}`, album: album.id, rec: null, video: MY_VIDEO_RE.test(name) });
         album.files.push(id);
+      }
+      // живое фото iPhone — снимок и короткий ролик с одинаковым именем файла (IMG_1234.HEIC/.JPG
+      // + IMG_1234.MOV); отдельной строкой в ленте видео не показываем — только значком на снимке,
+      // запускается кнопкой LIVE в галерее (Грегори, 2026-10-14: «просмотр видео форматов, iPhone
+      // .MOV. Живых фото»). Ролик без пары (обычное видео) остаётся в ленте своим пунктом
+      const byStem = new Map();
+      for (const id of album.files) {
+        const key = myFiles.get(id).name.replace(/\.[^.]+$/, "").toLowerCase();
+        if (!byStem.has(key)) byStem.set(key, []);
+        byStem.get(key).push(id);
+      }
+      for (const pair of byStem.values()) {
+        if (pair.length !== 2) continue;
+        const [f1, f2] = pair.map((id) => myFiles.get(id));
+        if (f1.video === f2.video) continue; // нужна ровно одна фотка + один ролик
+        const [imgId, vidId] = f1.video ? [pair[1], pair[0]] : [pair[0], pair[1]];
+        myFiles.get(imgId).live = vidId;
+        album.files = album.files.filter((fid) => fid !== vidId);
       }
       if (texts.length) album.excursion = await readExcursion(texts, files.map(([name]) => name)).catch(() => null);
       for (const id of album.files.slice(0, MY_ALBUM_PROBE)) {
@@ -1941,20 +1967,49 @@ function ensureMyThumb(f) {
   return queueMyThumb(f.properties.photo, f.properties.thumb);
 }
 
+// кадр для миниатюры видео (.mov/.mp4) — своей встроенной миниатюры у него нет, поэтому
+// грузим как <video> и рисуем текущий кадр на канвасе; чуть отступаем от самого начала — у
+// части роликов первый кадр чёрный (затвор камеры ещё не открылся) (Грегори, 2026-10-14:
+// «просмотр видео форматов, iPhone .MOV. Живых фото»)
+async function videoFrameBitmap(blobFile, targetWidth) {
+  const url = URL.createObjectURL(blobFile);
+  try {
+    const video = document.createElement("video");
+    video.muted = true;
+    video.src = url;
+    await new Promise((resolve, reject) => {
+      video.onloadeddata = () => resolve();
+      video.onerror = () => reject(new Error("видео не читается"));
+    });
+    await new Promise((resolve) => {
+      video.onseeked = resolve;
+      video.currentTime = Math.min(0.3, (video.duration || 1) / 10);
+      setTimeout(resolve, 500); // перестраховка — не все браузеры шлют seeked у короткого клипа
+    });
+    const canvas = new OffscreenCanvas(video.videoWidth, video.videoHeight);
+    canvas.getContext("2d").drawImage(video, 0, 0);
+    return createImageBitmap(canvas, targetWidth ? { resizeWidth: targetWidth, resizeQuality: "medium" } : {});
+  } finally { URL.revokeObjectURL(url); }
+}
+
 async function makeMyThumb(id) {
   const file = myFiles.get(id), f = myPhotoFeatures.get(id);
   const blobFile = await file.handle.getFile();
-  let blob = null;
-  // встроенная миниатюра EXIF — быстро, но без поворота: только у неповёрнутых снимков
-  // (снимок, до которого обход ещё не дошёл, — поворот читается здесь же)
-  const orient = file.rec ? file.rec.orient : await (await loadExifr()).orientation(blobFile).catch(() => undefined);
-  if (!(orient > 1)) {
-    try {
-      const t = await (await loadExifr()).thumbnail(blobFile);
-      if (t) blob = new Blob([t], { type: "image/jpeg" });
-    } catch { /* нет встроенной */ }
+  let blob = null, bmp;
+  if (file.video) {
+    bmp = await videoFrameBitmap(blobFile, 320);
+  } else {
+    // встроенная миниатюра EXIF — быстро, но без поворота: только у неповёрнутых снимков
+    // (снимок, до которого обход ещё не дошёл, — поворот читается здесь же)
+    const orient = file.rec ? file.rec.orient : await (await loadExifr()).orientation(blobFile).catch(() => undefined);
+    if (!(orient > 1)) {
+      try {
+        const t = await (await loadExifr()).thumbnail(blobFile);
+        if (t) blob = new Blob([t], { type: "image/jpeg" });
+      } catch { /* нет встроенной */ }
+    }
+    bmp = await createImageBitmap(blob || blobFile, blob ? {} : { resizeWidth: 320, resizeQuality: "medium" });
   }
-  const bmp = await createImageBitmap(blob || blobFile, blob ? {} : { resizeWidth: 320, resizeQuality: "medium" });
   if (!blob) {
     const canvas = new OffscreenCanvas(bmp.width, bmp.height);
     canvas.getContext("2d").drawImage(bmp, 0, 0);
@@ -2002,7 +2057,7 @@ function myCoverThumb(id) {
 async function makeMyCoverThumb(id) {
   const file = myFiles.get(id);
   const blobFile = await file.handle.getFile();
-  const bmp = await createImageBitmap(blobFile, { resizeWidth: 960, resizeQuality: "high" });
+  const bmp = file.video ? await videoFrameBitmap(blobFile, 960) : await createImageBitmap(blobFile, { resizeWidth: 960, resizeQuality: "high" });
   const canvas = new OffscreenCanvas(bmp.width, bmp.height);
   canvas.getContext("2d").drawImage(bmp, 0, 0);
   const blob = await canvas.convertToBlob({ type: "image/jpeg", quality: 0.88 });
@@ -2047,7 +2102,11 @@ function openAlbumGallery(albumId, startId) {
     const file = myFiles.get(id);
     return { photo: id, my: true, title: file.name, thumb: file.thumb || myPhotoFeatures.get(id)?.properties.thumb || "",
       caption: album.excursion?.captions[file.name.toLowerCase()] || "",
-      date: file.rec?.date ? new Date(file.rec.date).toLocaleDateString("ru") : "", license: `Альбом «${albumDisplayName(album)}»` };
+      date: file.rec?.date ? new Date(file.rec.date).toLocaleDateString("ru") : "", license: `Альбом «${albumDisplayName(album)}»`,
+      // отдельный ролик (.MOV/.MP4) или живое фото iPhone с коротким клипом-парой (Грегори,
+      // 2026-10-14: «просмотр видео форматов, iPhone .MOV. Живых фото») — gallery.html решает,
+      // что показать, по этим двум полям
+      video: !!file.video, live: file.live || null };
   });
   localStorage.setItem(PHOTO_GALLERY_KEY, JSON.stringify({ photos, start: Math.max(0, album.files.indexOf(startId)),
     excursion: album.excursion ? { title: album.excursion.title, blocks: album.excursion.blocks } : null }));

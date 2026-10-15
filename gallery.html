@@ -35,7 +35,7 @@
   .count { font-size: 0.85rem; color: #aaa; white-space: nowrap; }
 
   .stage { position: relative; min-height: 0; }
-  .stage img {
+  .stage img, .stage video {
     position: absolute;
     inset: 0;
     width: 100%;
@@ -44,6 +44,30 @@
   }
   /* пока грузится крупный снимок, растянута миниатюра */
   .stage img.preview { filter: blur(6px); }
+
+  /* живое фото (Apple Live Photo — снимок + короткое .MOV с тем же именем файла; видео
+     обычный ролик показывается своим пунктом ленты, но тоже .MOV — Грегори, 2026-10-14:
+     «просмотр видео форматов, iPhone .MOV. Живых фото») — кнопка запускает клип поверх снимка,
+     тот же приём, что у Apple: кольцо вместо точки, пока клип играет */
+  .live-toggle {
+    position: absolute;
+    top: 14px;
+    left: 14px;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    border: none;
+    border-radius: 12px;
+    padding: 4px 10px 4px 8px;
+    background: rgba(0, 0, 0, 0.55);
+    color: #fff;
+    font: 600 0.72rem "Poppins", sans-serif;
+    letter-spacing: 0.04em;
+    cursor: pointer;
+  }
+  .live-toggle::before { content: "●"; color: #fff; font-size: 0.8rem; }
+  .live-toggle.on::before { content: "◎"; }
 
   .nav {
     position: absolute;
@@ -96,6 +120,18 @@
     border-radius: 6px;
   }
   .thumb.active::after { border-color: #e91e63; }
+  /* значок в ленте миниатюр — отдельный ролик (▶) или живое фото (LIVE), чтобы было видно
+     без открытия самого снимка (Грегори, 2026-10-14: «просмотр видео форматов... живых фото») */
+  .thumb-badge {
+    position: absolute;
+    bottom: 3px;
+    left: 3px;
+    color: #fff;
+    font-size: 0.6rem;
+    font-weight: 600;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+    pointer-events: none;
+  }
   .empty { display: grid; place-items: center; color: #aaa; }
 
   /* экскурсия (текст из папки альбома): панель справа; подпись снимка — под названием */
@@ -180,6 +216,8 @@
 <div class="main">
   <div class="stage">
     <img class="photo" alt="">
+    <video class="photo" playsinline hidden></video>
+    <button class="live-toggle" hidden title="Воспроизвести живое фото">LIVE</button>
     <button class="nav prev" title="Назад (←)">‹</button>
     <button class="nav next" title="Вперёд (→)">›</button>
   </div>
@@ -193,7 +231,11 @@ const data = JSON.parse(localStorage.getItem("travel-earth.gallery") || "null") 
 const photos = data.photos;
 let index = Math.min(Math.max(0, data.start || 0), photos.length - 1);
 const $ = (sel) => document.querySelector(sel);
-const photoEl = $(".photo");
+// снимок и ролик — отдельные теги с одним классом .photo (позиционирование общее в CSS),
+// поэтому сами ссылки берём по тегу, а не по классу
+const photoEl = document.querySelector("img.photo");
+const videoEl = document.querySelector("video.photo");
+const liveToggle = $(".live-toggle");
 // плеер слайд-шоу — автосмена каждые 5 с, пока нажата кнопка; любая навигация (ручная или
 // автоматическая) переставляет таймер, чтобы темп не сбивался
 let playTimer = null;
@@ -238,6 +280,11 @@ const thumbs = photos.map((p, i) => {
   b.append(Object.assign(document.createElement("img"), { alt: "", loading: "lazy" }));
   if (p.thumb) b.firstChild.src = p.thumb;
   else if (p.my) seen.observe(b);
+  // отдельный ролик или живое фото — значок в углу миниатюры, картинка всё равно обычный
+  // кадр (постер), иначе их было бы не отличить от фото (Грегори, 2026-10-14: «видео форматов,
+  // iPhone .MOV. Живых фото»)
+  if (p.video || p.live) b.append(Object.assign(document.createElement("span"),
+    { className: "thumb-badge", textContent: p.video ? "▶" : "LIVE" }));
   b.addEventListener("click", () => show(i));
   $(".thumbs").append(b);
   return b;
@@ -258,6 +305,11 @@ function show(i) {
   }
   $(".count").textContent = `${index + 1} / ${photos.length}`;
   if (p.my) return showMine(p);
+  // снимок не свой (Commons/Mapillary) — видео и значок живого фото там не бывают, но могли
+  // остаться видимыми от прошлого (своего) снимка в ленте
+  stopLive();
+  photoEl.hidden = false;
+  videoEl.hidden = true;
   photoEl.src = p.thumb;
   photoEl.classList.add("preview");
   const big = new Image();
@@ -294,17 +346,68 @@ function afterShow(p) {
   if (playTimer) { clearInterval(playTimer); playTimer = setInterval(() => show(index + 1), 5000); }
 }
 
-// свой снимок: пока читается файл — миниатюра (если уже есть), потом оригинал
+// остановить проигрывание живого фото (кнопка LIVE) и спрятать его видео — вызывается и при
+// листании на другой снимок, и перед показом нового кадра, чтобы не остался играющий ролик от
+// прошлого живого фото (Грегори, 2026-10-14: «просмотр видео форматов, iPhone .MOV. Живых фото»)
+function stopLive() {
+  liveToggle.classList.remove("on");
+  liveToggle.hidden = true;
+  if (videoEl.dataset.mode === "live") {
+    videoEl.pause();
+    videoEl.removeAttribute("src");
+    videoEl.hidden = true;
+    photoEl.hidden = false;
+  }
+}
+
+// свой снимок: пока читается файл — миниатюра (если уже есть), потом оригинал. Отдельный ролик
+// (.MOV без пары) — video с обычными элементами управления, как у любого видео; живое фото —
+// тот же снимок, короткий ролик-пара грузится по кнопке LIVE и крутится в кольцо без элементов
+// управления, как в Apple Photos
 function showMine(p) {
-  photoEl.removeAttribute("src");
-  if (p.thumb) { photoEl.src = p.thumb; photoEl.classList.add("preview"); }
-  host()?.myGalleryFull(p.photo).then((url) => {
-    if (photos[index] !== p) return;
-    photoEl.src = url;
-    photoEl.classList.remove("preview");
-  }).catch(() => {});
+  stopLive();
+  if (p.video) {
+    photoEl.hidden = true;
+    videoEl.hidden = false;
+    videoEl.dataset.mode = "clip";
+    videoEl.controls = true;
+    videoEl.loop = false;
+    videoEl.muted = false;
+    videoEl.poster = p.thumb || "";
+    videoEl.removeAttribute("src");
+    host()?.myGalleryFull(p.photo).then((url) => { if (photos[index] === p) videoEl.src = url; }).catch(() => {});
+  } else {
+    videoEl.hidden = true;
+    photoEl.hidden = false;
+    photoEl.removeAttribute("src");
+    if (p.thumb) { photoEl.src = p.thumb; photoEl.classList.add("preview"); }
+    host()?.myGalleryFull(p.photo).then((url) => {
+      if (photos[index] !== p) return;
+      photoEl.src = url;
+      photoEl.classList.remove("preview");
+    }).catch(() => {});
+  }
+  liveToggle.hidden = !p.live;
   afterShow(p);
 }
+liveToggle.addEventListener("click", () => {
+  const p = photos[index];
+  if (!p?.live) return;
+  if (videoEl.dataset.mode === "live") { stopLive(); return; }
+  photoEl.hidden = true;
+  videoEl.hidden = false;
+  videoEl.dataset.mode = "live";
+  videoEl.controls = false;
+  videoEl.loop = true;
+  videoEl.muted = true;
+  videoEl.removeAttribute("src");
+  liveToggle.classList.add("on");
+  host()?.myGalleryFull(p.live).then((url) => {
+    if (videoEl.dataset.mode !== "live") return; // успели переключиться на другой снимок/назад
+    videoEl.src = url;
+    videoEl.play().catch(() => {});
+  }).catch(() => {});
+});
 
 // карта в главном окне следит за текущим снимком (выделяет и подвигается к нему)
 function tellMap(msg) {
