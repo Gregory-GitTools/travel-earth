@@ -45,29 +45,46 @@
   /* пока грузится крупный снимок, растянута миниатюра */
   .stage img.preview { filter: blur(6px); }
 
-  /* живое фото (Apple Live Photo — снимок + короткое .MOV с тем же именем файла; видео
-     обычный ролик показывается своим пунктом ленты, но тоже .MOV — Грегори, 2026-10-14:
-     «просмотр видео форматов, iPhone .MOV. Живых фото») — кнопка запускает клип поверх снимка,
-     тот же приём, что у Apple: кольцо вместо точки, пока клип играет */
-  .live-toggle {
+  /* бейдж типа кадра — пассивная подпись поверх снимка (▶ видео / LIVE), тот же приём, что у
+     значка в ленте миниатюр, только крупнее (Грегори, 2026-10-16: «должен быть один значок,
+     или видео, или Live»). [hidden] объявлен отдельным правилом — иначе его проигрывает по
+     специфичности display:flex класса ниже, и бейдж никогда не скрывается (Грегори, 2026-10-16:
+     «значок Live не уходит») */
+  .stage-badge {
     position: absolute;
     bottom: 14px;
     right: 14px;
     z-index: 2;
-    display: flex;
-    align-items: center;
-    gap: 5px;
-    border: none;
     border-radius: 12px;
-    padding: 4px 10px 4px 8px;
+    padding: 4px 10px;
     background: rgba(0, 0, 0, 0.55);
     color: #fff;
     font: 600 0.72rem "Poppins", sans-serif;
     letter-spacing: 0.04em;
+    pointer-events: none;
+  }
+  .stage-badge[hidden] { display: none; }
+
+  /* разовое воспроизведение текущего кадра (видео или живое фото) — отдельная кнопка снизу
+     слева, не связанная со слайдшоу альбома (Грегори, 2026-10-16: «клик снизу управляет разовым
+     воспроизведением, а сверху и в панели экскурсии — слайдшоу, синхронизированы друг с другом») */
+  .play-once {
+    position: absolute;
+    bottom: 14px;
+    left: 14px;
+    z-index: 2;
+    display: grid;
+    place-items: center;
+    width: 40px;
+    height: 40px;
+    border: none;
+    border-radius: 50%;
+    background: rgba(0, 0, 0, 0.55);
+    color: #fff;
     cursor: pointer;
   }
-  .live-toggle::before { content: "●"; color: #fff; font-size: 0.8rem; }
-  .live-toggle.on::before { content: "◎"; }
+  .play-once[hidden] { display: none; }
+  .play-once:hover { background: rgba(0, 0, 0, 0.75); }
 
   .nav {
     position: absolute;
@@ -188,9 +205,10 @@
   /* плеер своего альбома — те же кнопки назад/плей/дальше/стоп, что и на панели альбома в
      главном окне (.tour-player/.tour-edit там), в правом верхнем углу шапки плеера (Грегори,
      2026-10-16: «кнопки расположи в правом верхнем углу... должны повторять кнопки в панели
-     альбома»). Тёмная тема этого окна — тот же кружок, что и у .tour-edit, но на светлом стекле */
-  .player { display: flex; align-items: center; align-self: center; gap: 2px; }
-  .player-label { font-size: 0.78rem; color: #aaa; margin-right: 6px; white-space: nowrap; }
+     альбома»). Счётчик — отдельной строкой НАД кнопками, не дублируется текстом внутри плеера
+     (Грегори, 2026-10-16: «дублируется количество кадров, оставь отдельной строкой выше») */
+  .player-wrap { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; align-self: center; }
+  .player { display: flex; align-items: center; gap: 2px; }
   .player-btn {
     display: inline-grid;
     place-items: center;
@@ -206,10 +224,10 @@
   .player-btn:disabled { opacity: 0.35; cursor: default; background: transparent; }
   .player-btn.on { background: #6ab4ff; color: #111; }
 
-  /* переход между кадрами слайдшоу — плавное исчезание/появление, а не жёсткая смена (Грегори,
-     2026-10-16: «сделай переходы между кадрами, прибавь пару секунд на переход») */
-  .stage img.photo, .stage video.photo { transition: opacity 0.7s ease; }
-  .stage img.photo.fade, .stage video.photo.fade { opacity: 0; }
+  /* переход между кадрами слайдшоу — перетекание (View Transitions API сам крест-фейдит документ
+     целиком, без второго элемента-дубля); длительность длиннее дефолтных 0.25 с (Грегори,
+     2026-10-16: «сделай переходы между фото с перетеканием») */
+  ::view-transition-old(root), ::view-transition-new(root) { animation-duration: 0.6s; }
 
   /* как в index.html: открытое из установленного приложения окно тоже без системного заголовка
      (window-controls-overlay наследуется дочерними окнами того же PWA) — без этой полоски его
@@ -237,20 +255,22 @@
   <div class="caption"><div class="title"></div><div class="meta"></div><div class="caption-text" hidden></div></div>
   <button class="tour-toggle" hidden>Экскурсия</button>
   <button class="tour-toggle play-toggle" title="Слайд-шоу: смена каждые 5 с">▶</button>
-  <div class="player" hidden>
-    <span class="player-label"></span>
-    <button class="player-btn player-prev" title="Назад"></button>
-    <button class="player-btn player-play" title="Слайдшоу альбома"></button>
-    <button class="player-btn player-next" title="Дальше"></button>
-    <button class="player-btn player-stop" title="Стоп"></button>
+  <div class="player-wrap">
+    <div class="count"></div>
+    <div class="player" hidden>
+      <button class="player-btn player-prev" title="Назад"></button>
+      <button class="player-btn player-play" title="Слайдшоу альбома"></button>
+      <button class="player-btn player-next" title="Дальше"></button>
+      <button class="player-btn player-stop" title="Стоп"></button>
+    </div>
   </div>
-  <div class="count"></div>
 </div>
 <div class="main">
   <div class="stage">
     <img class="photo" alt="">
     <video class="photo" playsinline hidden></video>
-    <button class="live-toggle" hidden title="Воспроизвести живое фото">LIVE</button>
+    <span class="stage-badge" hidden></span>
+    <button class="play-once" hidden title="Воспроизвести"></button>
     <button class="nav prev" title="Назад (←)">‹</button>
     <button class="nav next" title="Вперёд (→)">›</button>
   </div>
@@ -272,10 +292,17 @@ const $ = (sel) => document.querySelector(sel);
 // поэтому сами ссылки берём по тегу, а не по классу
 const photoEl = document.querySelector("img.photo");
 const videoEl = document.querySelector("video.photo");
-const liveToggle = $(".live-toggle");
+const stageBadge = $(".stage-badge");
+const playOnceBtn = $(".play-once");
 // плеер слайд-шоу — автосмена каждые 5 с, пока нажата кнопка; любая навигация (ручная или
 // автоматическая) переставляет таймер, чтобы темп не сбивался
 let playTimer = null;
+// перетекание между кадрами — View Transitions API сам крест-фейдит документ до/после fn();
+// без него (старые браузеры) — просто мгновенная смена, без анимации
+function withTransition(fn) {
+  if (document.startViewTransition) document.startViewTransition(fn);
+  else fn();
+}
 
 // крупный снимок: у Commons миниатюры стандартных размеров; оригинал — если он не больше 1920
 const bigUrl = (p) => (p.fullWidth > 1920 && p.thumb ? p.thumb.replace(/\/\d+px-/, "/1920px-") : p.full || p.thumb);
@@ -345,12 +372,14 @@ function show(i) {
   // снимок не свой (Commons/Mapillary) — видео и значок живого фото там не бывают, но могли
   // остаться видимыми от прошлого (своего) снимка в ленте
   stopLive();
-  photoEl.hidden = false;
-  videoEl.hidden = true;
-  photoEl.classList.add("fade");
-  photoEl.src = p.thumb;
-  photoEl.classList.add("preview");
-  requestAnimationFrame(() => photoEl.classList.remove("fade"));
+  stageBadge.hidden = true;
+  playOnceBtn.hidden = true;
+  withTransition(() => {
+    photoEl.hidden = false;
+    videoEl.hidden = true;
+    photoEl.src = p.thumb;
+    photoEl.classList.add("preview");
+  });
   const big = new Image();
   big.onload = () => { if (photos[index] === p) { photoEl.src = big.src; photoEl.classList.remove("preview"); } };
   big.onerror = () => { if (photos[index] === p && p.full && big.src !== p.full) big.src = p.full; };
@@ -386,62 +415,69 @@ function afterShow(p) {
   if (playTimer) { clearInterval(playTimer); playTimer = setInterval(() => show(index + 1), 5000); }
 }
 
-// остановить проигрывание живого фото (кнопка LIVE) и спрятать его видео — вызывается и при
-// листании на другой снимок, и перед показом нового кадра, чтобы не остался играющий ролик от
-// прошлого живого фото (Грегори, 2026-10-14: «просмотр видео форматов, iPhone .MOV. Живых фото»)
+// остановить проигрывание живого фото и спрятать его видео — вызывается и при листании на
+// другой снимок, и перед показом нового кадра, чтобы не остался играющий ролик от прошлого
+// живого фото (Грегори, 2026-10-14: «просмотр видео форматов, iPhone .MOV. Живых фото»)
 function stopLive() {
-  liveToggle.classList.remove("on");
-  liveToggle.hidden = true;
   if (videoEl.dataset.mode === "live") {
     videoEl.pause();
     videoEl.removeAttribute("src");
     videoEl.hidden = true;
     photoEl.hidden = false;
   }
+  videoEl.dataset.mode = "";
 }
 
 // свой снимок: пока читается файл — миниатюра (если уже есть), потом оригинал. Отдельный ролик
-// (.MOV без пары) — video с обычными элементами управления, как у любого видео; живое фото —
-// тот же снимок, короткий ролик-пара грузится по кнопке LIVE и крутится в кольцо без элементов
-// управления, как в Apple Photos
+// (.MOV без пары) и живое фото запускаются сами, без клика (Грегори: «клик на видео или Live —
+// проигрывать сразу»); разовое воспроизведение (пауза/повтор) — кнопкой .play-once снизу слева,
+// одна и та же кнопка на оба случая вместо своих элементов управления у видео (Грегори,
+// 2026-10-16: «должен быть один значок, или видео, или Live»; «ещё одна кнопка снизу слева»)
 function showMine(p) {
   stopLive();
+  withTransition(() => {
+    if (p.video) {
+      photoEl.hidden = true;
+      videoEl.hidden = false;
+      videoEl.dataset.mode = "clip";
+      videoEl.controls = false;
+      videoEl.loop = false;
+      // приглушённый автозапуск сразу при показе — не нужно ловить мелкую кнопку плей; звук
+      // потом можно включить кнопкой .play-once. Без приглушения автозапуск без прямого жеста
+      // (а тик слайдшоу идёт из другого окна) браузер может молча заблокировать
+      videoEl.muted = true;
+      videoEl.poster = p.thumb || "";
+      videoEl.removeAttribute("src");
+      stageBadge.hidden = false;
+      stageBadge.textContent = "▶";
+    } else {
+      videoEl.hidden = true;
+      photoEl.hidden = false;
+      photoEl.removeAttribute("src");
+      if (p.thumb) { photoEl.src = p.thumb; photoEl.classList.add("preview"); }
+      stageBadge.hidden = !p.live;
+      stageBadge.textContent = "LIVE";
+    }
+  });
+  playOnceBtn.hidden = !(p.video || p.live);
   if (p.video) {
-    photoEl.hidden = true;
-    videoEl.hidden = false;
-    videoEl.dataset.mode = "clip";
-    videoEl.controls = true;
-    videoEl.loop = false;
-    // приглушённый автозапуск сразу при показе — не нужно ловить мелкую кнопку плей (Грегори,
-    // 2026-10-16: «невозможно поймать видео... клик на видео или Live — проигрывать сразу»);
-    // звук потом можно включить теми же элементами управления. Без приглушения автозапуск без
-    // прямого жеста (а тик слайдшоу идёт из другого окна) браузер может молча заблокировать
-    videoEl.muted = true;
-    videoEl.poster = p.thumb || "";
-    videoEl.removeAttribute("src");
     host()?.myGalleryFull(p.photo).then((url) => {
       if (photos[index] !== p) return;
       videoEl.src = url;
       videoEl.play().catch(() => {});
     }).catch(() => {});
   } else {
-    videoEl.hidden = true;
-    photoEl.hidden = false;
-    photoEl.classList.add("fade");
-    photoEl.removeAttribute("src");
-    if (p.thumb) { photoEl.src = p.thumb; photoEl.classList.add("preview"); }
-    requestAnimationFrame(() => photoEl.classList.remove("fade"));
     host()?.myGalleryFull(p.photo).then((url) => {
       if (photos[index] !== p) return;
       photoEl.src = url;
       photoEl.classList.remove("preview");
     }).catch(() => {});
   }
-  liveToggle.hidden = !p.live;
   afterShow(p);
   // живое фото — тоже сразу, тем же приёмом, что и видео выше (Грегори: «клик на видео или
   // Live — проигрывать сразу»; «зацикливание Live — не хорошая идея», поэтому без loop)
   if (p.live) playLive(p);
+  syncPlayOnce();
 }
 function playLive(p) {
   photoEl.hidden = true;
@@ -451,18 +487,29 @@ function playLive(p) {
   videoEl.loop = false;
   videoEl.muted = true;
   videoEl.removeAttribute("src");
-  liveToggle.classList.add("on");
   host()?.myGalleryFull(p.live).then((url) => {
     if (videoEl.dataset.mode !== "live" || photos[index] !== p) return; // успели переключиться
     videoEl.src = url;
     videoEl.play().catch(() => {});
   }).catch(() => {});
+  syncPlayOnce();
 }
-liveToggle.addEventListener("click", () => {
+// кнопка разового воспроизведения снизу слева — отдельно от плеера слайдшоу сверху (Грегори,
+// 2026-10-16: «клик снизу управляет разовым воспроизведением, а сверху и в панели экскурсии —
+// слайдшоу, синхронизированы друг с другом»); play/pause самого ролика, слайдшоу не трогает
+function syncPlayOnce() {
+  if (playOnceBtn.hidden) return;
+  const playing = !videoEl.hidden && !videoEl.paused;
+  playOnceBtn.innerHTML = playing ? PLAYER_PAUSE : PLAYER_PLAY;
+  playOnceBtn.title = playing ? "Пауза" : "Воспроизвести";
+}
+videoEl.addEventListener("play", syncPlayOnce);
+videoEl.addEventListener("pause", syncPlayOnce);
+playOnceBtn.addEventListener("click", () => {
   const p = photos[index];
-  if (!p?.live) return;
-  if (videoEl.dataset.mode === "live") { stopLive(); return; }
-  playLive(p);
+  if (!p?.video && !p?.live) return;
+  if (p.live && videoEl.dataset.mode !== "live") { playLive(p); return; }
+  if (videoEl.paused) videoEl.play().catch(() => {}); else videoEl.pause();
 });
 // ролик (видео или живое фото) доиграл сам — живое фото возвращается к статичному снимку (без
 // зацикливания, Грегори: «зацикливание Live — не хорошая идея»), и в любом случае слайдшоу в
@@ -471,6 +518,7 @@ liveToggle.addEventListener("click", () => {
 // дальше»; «при выборе конкретного эпизода — проиграть и остановиться»)
 videoEl.addEventListener("ended", () => {
   if (videoEl.dataset.mode === "live") stopLive();
+  syncPlayOnce();
   if (albumId) host()?.albumClipEnded?.();
 });
 
@@ -489,7 +537,6 @@ if (albumId) {
   const bar = $(".player");
   bar.hidden = false;
   const playBtn = $(".player-play"), prevBtn = $(".player-prev"), nextBtn = $(".player-next"), stopBtn = $(".player-stop");
-  const label = $(".player-label");
   syncPlayer = () => {
     const st = host()?.albumPlayState?.();
     const active = !!st && st.albumId === albumId;
@@ -498,7 +545,6 @@ if (albumId) {
     playBtn.classList.toggle("on", playing);
     playBtn.title = !active ? "Слайдшоу альбома" : st.paused ? "Продолжить" : "Пауза";
     prevBtn.disabled = nextBtn.disabled = stopBtn.disabled = !active;
-    label.textContent = active ? `${st.i + 1} / ${st.total} · фото` : "";
   };
   playBtn.innerHTML = PLAYER_PLAY;
   prevBtn.innerHTML = PLAYER_PREV;
@@ -506,7 +552,10 @@ if (albumId) {
   stopBtn.innerHTML = PLAYER_STOP;
   playBtn.addEventListener("click", () => {
     const st = host()?.albumPlayState?.();
-    if (st && st.albumId === albumId) host()?.albumPlayPause?.(); else host()?.startAlbumPlay?.(albumId);
+    // передаём именно тот снимок, что сейчас открыт в этом окне — чтобы плей продолжил с него,
+    // а не прыгнул на первый кадр альбома (Грегори: «клик сверху должен запускать видео/Live,
+    // если хочу продолжить просмотр»)
+    if (st && st.albumId === albumId) host()?.albumPlayPause?.(); else host()?.startAlbumPlay?.(albumId, photos[index].photo);
     syncPlayer();
   });
   prevBtn.addEventListener("click", () => { host()?.albumPlayGo?.(-1); syncPlayer(); });
@@ -525,7 +574,10 @@ addEventListener("pagehide", () => { clearInterval(playTimer); tellMap({ gallery
 addEventListener("message", (e) => {
   if (e.origin !== location.origin) return;
   if (e.data?.galleryReload) location.reload();
-  else if (Number.isInteger(e.data?.galleryShow) && e.data.galleryShow !== index) show(e.data.galleryShow);
+  // без проверки "индекс и правда другой" — иначе запуск/возврат на ролик, который уже показан
+  // в этом окне (тот же кадр), молча ничего не делал, а видео/Live не запускались заново
+  // (Грегори: «клик на верхней панели не запускает видео/LIVE, если хочу продолжить просмотр»)
+  else if (Number.isInteger(e.data?.galleryShow)) show(e.data.galleryShow);
   else if (typeof e.data?.galleryPause === "boolean") {
     // плей/пауза нажали в панели альбома главного окна — ролик на экране ставим на паузу/
     // продолжаем вместе со слайдшоу (Грегори: «при нажатии на плей крутить слайдшоу с этого
@@ -546,12 +598,12 @@ function navTo(i) {
 }
 $(".prev").addEventListener("click", () => navTo(index - 1));
 $(".next").addEventListener("click", () => navTo(index + 1));
-// клик по самому кадру (не по кнопкам навигации/LIVE) — переключатель паузы слайдшоу: ещё раз
-// клик или «Продолжить» в плеере — едем дальше с этого места (Грегори: «слайдшоу должно
-// останавливаться... ждать клика на фото, или продолжения»; «при нажатии на плей крутить
-// слайдшоу с этого места дальше»)
+// клик по самому кадру (не по кнопкам навигации/разового воспроизведения) — переключатель
+// паузы слайдшоу: ещё раз клик или «Продолжить» в плеере — едем дальше с этого места (Грегори:
+// «слайдшоу должно останавливаться... ждать клика на фото, или продолжения»; «сверху и в панели
+// экскурсии запускают/останавливают слайдшоу, синхронизированы друг с другом»)
 $(".stage").addEventListener("click", (e) => {
-  if (!albumId || e.target.closest(".nav, .live-toggle")) return;
+  if (!albumId || e.target.closest(".nav, .play-once")) return;
   host()?.albumPlayPause?.();
   syncPlayer();
 });

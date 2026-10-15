@@ -3665,11 +3665,17 @@ function albumGalleryShow(i) {
   if (albumGalleryWin && !albumGalleryWin.closed) albumGalleryWin.postMessage({ galleryShow: i }, location.origin);
   else albumGalleryWin = openAlbumGallery(albumPlay.albumId, a.files[i]);
 }
-function startAlbumPlay(albumId) {
+function startAlbumPlay(albumId, startId) {
   const a = myAlbums.get(albumId);
   if (!a?.files.length || !canOpenGallery()) return;
-  albumPlay = { albumId, i: 0, paused: false };
-  albumGalleryWin = openAlbumGallery(albumId, a.files[0]);
+  // продолжить с того кадра, что уже открыт в окне галереи (если оно открыто на этом альбоме),
+  // а не начинать заново с первого снимка (Грегори, 2026-10-16: «клик на верхней панели не
+  // запускает видео/LIVE, а должен, если хочу продолжить просмотр в режиме слайдшоу» — раньше
+  // плей всегда прыгал на первый кадр, даже если человек уже смотрел другой)
+  const fromId = startId || (galleryFocus && a.files.includes(galleryFocus) ? galleryFocus : null);
+  const i = fromId ? Math.max(0, a.files.indexOf(fromId)) : 0;
+  albumPlay = { albumId, i, paused: false };
+  albumGalleryShow(i);
   albumPlaySchedule();
   albumWatchWindow();
   renderAlbumPlayer();
