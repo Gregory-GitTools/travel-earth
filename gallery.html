@@ -54,17 +54,16 @@
     height: 100%;
     object-fit: contain;
   }
-  /* бейдж LIVE — пассивная подпись сверху справа, не внизу: там теперь одна-единственная кнопка
-     разового воспроизведения, два элемента рядом смотрелись как две разные кнопки плей (Грегори,
-     2026-10-16: «один значок, или видео, или Live»; «значки плей справа связаны, а не должны»).
-     Для обычного видео бейдж вообще не нужен — его состояние и так видно по иконке кнопки снизу.
+  /* бейдж LIVE — пассивная подпись, лежит в колонке .player-wrap (ниже) вместе со счётчиком,
+     а не отдельным оверлеем поверх .stage: был position:absolute со своим top, завязанным на
+     высоту области заголовка — при изменении размера окна двигался отдельно от счётчика и кнопок
+     и наезжал на них (Грегори, 2026-10-16: «индикатор Live постоянно двигается при масштабировании
+     окна и привязан к панели кнопок браузера, тогда как количество кадров и кнопки привязаны к
+     краю окна»). Для обычного видео бейдж вообще не нужен — его состояние и так видно по иконке
+     кнопки снизу.
      [hidden] объявлен отдельным правилом — иначе его проигрывает по специфичности display:flex
      класса ниже, и бейдж никогда не скрывается (Грегори, 2026-10-16: «значок Live не уходит») */
   .stage-badge {
-    position: absolute;
-    top: 14px;
-    right: 14px;
-    z-index: 2;
     border-radius: 12px;
     padding: 4px 10px;
     background: rgba(0, 0, 0, 0.55);
@@ -83,7 +82,7 @@
   .play-once {
     position: absolute;
     bottom: 64px;
-    right: 34px;
+    right: 16px;
     z-index: 2;
     display: grid;
     place-items: center;
@@ -275,10 +274,6 @@
        сдвигаем саму панель вниз, а не body, иначе её кнопки попали бы под область перетаскивания
        и не нажимались бы */
     .bar { top: env(titlebar-area-height, 33px); }
-    /* .stage теперь тоже начинается с самого верха окна — без этого значок LIVE (top:14px
-       у .stage-badge) оказывался под нативными кнопками свернуть/развернуть/закрыть
-       (Грегори, 2026-10-16: «значек Live спрятался за контролы окна») */
-    .stage-badge { top: calc(env(titlebar-area-height, 33px) + 14px); }
   }
 </style>
 </head>
@@ -293,6 +288,7 @@
       <button class="tour-toggle" hidden>Экскурсия</button>
       <button class="tour-toggle play-toggle" title="Слайд-шоу: смена каждые 5 с">▶</button>
       <div class="player-wrap">
+        <span class="stage-badge" hidden>LIVE</span>
         <div class="count"></div>
         <div class="player" hidden>
           <button class="player-btn player-prev" title="Назад"></button>
@@ -302,7 +298,6 @@
         </div>
       </div>
     </div>
-    <span class="stage-badge" hidden>LIVE</span>
     <button class="play-once" hidden title="Воспроизвести"></button>
     <button class="nav prev" title="Назад (←)">‹</button>
     <button class="nav next" title="Вперёд (→)">›</button>
