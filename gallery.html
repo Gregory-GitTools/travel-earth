@@ -38,6 +38,12 @@
     gap: 16px;
     padding: 14px 16px;
     pointer-events: none;
+    /* подпись/счётчик — не текст для чтения мышью, а подписи поверх фото; случайное
+       перетаскивание мышью (клик мимо кнопки) выделяло их ярким синим и не давало снять
+       выделение кликом по фото (Грегори, 2026-10-16: «не позволяй выделять надписи... потом
+       не снять») */
+    user-select: none;
+    -webkit-user-select: none;
   }
   .bar > * { pointer-events: auto; }
   .caption { flex: 1; min-width: 0; }
@@ -486,13 +492,18 @@ function stopLive() {
 function loadPhoto(p) {
   host()?.myGalleryFull(p.photo).then((url) => {
     if (photos[index] !== p) return;
-    withTransition(() => {
-      videoEl.hidden = true;
-      videoEl.removeAttribute("src");
-      videoEl.dataset.mode = "";
-      photoEl.hidden = false;
-      photoEl.src = url;
-    });
+    // без withTransition — та же причина, что у loadClip() ниже: тут тоже нет предзагрузки
+    // (big.onload), src подставляется сразу, так что переход крест-фейдит в ещё не готовую
+    // картинку. Для обычной смены фото это почти не заметно, а вот когда живое фото само доигрывает
+    // и возвращается сюда (videoEl "ended" ниже), это происходит часто и быстро подряд — крутящиеся
+    // наложенные друг на друга переходы и давали «гонки» и постоянную иконку загрузки (Грегори,
+    // 2026-10-16: «живые фото начинаются гонки... постоянно появляется колесико... причина тоже в
+    // переходе»)
+    videoEl.hidden = true;
+    videoEl.removeAttribute("src");
+    videoEl.dataset.mode = "";
+    photoEl.hidden = false;
+    photoEl.src = url;
   }).catch(() => {});
 }
 // видео (p.video) или живое фото (p.live, fileId — отдельный ролик p.live) — нативные элементы
@@ -659,7 +670,17 @@ $(".next").addEventListener("click", () => navTo(index + 1));
 // «слайдшоу должно останавливаться... ждать клика на фото, или продолжения»; «сверху и в панели
 // экскурсии запускают/останавливают слайдшоу, синхронизированы друг с другом»)
 $(".stage").addEventListener("click", (e) => {
-  if (!albumId || e.target.closest(".nav, .play-once")) return;
+  // .bar лежит внутри .stage — клик по любой её кнопке (плеер альбома, переключатель экскурсии,
+  // слайдшоу) всплывал и сюда тоже, так что albumPlayPause() звался ДВАЖДЫ подряд (один раз из
+  // своего обработчика кнопки, второй раз отсюда) и гасил сам себя — пауза/плей выглядели так,
+  // будто кнопка не реагирует (Грегори, 2026-10-16: «кнопка слайдшоу в окне альбома не работает»).
+  // e.target.closest(...) тут не годится: клик по самой кнопке плей сначала доходит до ЕЁ
+  // обработчика (он ближе к цели), тот зовёт syncPlayer(), а она тут же меняет innerHTML кнопки
+  // (иконка play/pause) — старый <svg>, в который кликнули, отрывается от документа ДО того, как
+  // событие доходит всплытием досюда, и closest() на оторванном узле больше не находит .bar.
+  // composedPath() — список узлов на момент самого клика, не зависит от того, что успело
+  // перестроиться в DOM, пока событие ещё всплывает
+  if (!albumId || e.composedPath().some((el) => el instanceof Element && el.matches(".nav, .play-once, .bar"))) return;
   host()?.albumPlayPause?.();
   syncPlayer();
 });
@@ -720,7 +741,15 @@ document.addEventListener("keydown", (e) => {
   else if (e.key === "ArrowRight") navTo(index + 1);
   else if (e.key === "Home") navTo(0);
   else if (e.key === "End") navTo(photos.length - 1);
-  else if (e.key === "Escape" && !isFullscreen()) window.close();
+  else if (e.key === "Escape") {
+    // тот же Escape, которым вышли из F11, доходит и сюда — но выход из настоящего F11 браузер
+    // обрабатывает не мгновенно, и display-mode (на котором держится isFullscreen()) может на
+    // момент этого keydown ещё не успеть обновиться, так же как раньше «опаздывал» resize
+    // (см. комментарий у isFullscreen ниже) — проверяем не сразу, а спустя короткую паузу, чтобы
+    // браузер успел на самом деле выйти из fullscreen, и мы не закрыли окно по старому, ещё не
+    // обновившемуся состоянию (Грегори, 2026-10-16: «Esc не работает» после выхода из F11)
+    setTimeout(() => { if (!isFullscreen()) window.close(); }, 250);
+  }
 });
 $(".thumbs").addEventListener("wheel", (e) => {
   if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) $(".thumbs").scrollLeft += e.deltaY;
