@@ -59,8 +59,11 @@
      высоту области заголовка — при изменении размера окна двигался отдельно от счётчика и кнопок
      и наезжал на них (Грегори, 2026-10-16: «индикатор Live постоянно двигается при масштабировании
      окна и привязан к панели кнопок браузера, тогда как количество кадров и кнопки привязаны к
-     краю окна»). Для обычного видео бейдж вообще не нужен — его состояние и так видно по иконке
-     кнопки снизу.
+     краю окна»). Последним в колонке (после кнопок и счётчика) — его появление/исчезновение
+     меняет только то, что ниже него (то есть ничего), а не сдвигает кнопки и счётчик вниз-вверх
+     (Грегори, 2026-10-16: «появление кнопки Live заставляет панель прыгать»; счётчик меняет
+     ширину от количества цифр и поэтому тоже выше бейджа, но ниже самих кнопок). Для обычного
+     видео бейдж вообще не нужен — его состояние и так видно по иконке кнопки снизу.
      [hidden] объявлен отдельным правилом — иначе его проигрывает по специфичности display:flex
      класса ниже, и бейдж никогда не скрывается (Грегори, 2026-10-16: «значок Live не уходит») */
   .stage-badge {
@@ -230,8 +233,8 @@
      (Грегори, 2026-10-16: «все кнопки должны быть как микрофон» — компактный полупрозрачный
      круг), крупнее прежнего (теперь лежат поверх фото, а не на сплошном фоне панели). Плей —
      последним, справа (Грегори: «треугольник для удобства самый правый»). Счётчик — отдельной
-     строкой НАД кнопками, не дублируется текстом внутри плеера (Грегори, 2026-10-16:
-     «дублируется количество кадров, оставь отдельной строкой выше») */
+     строкой, не дублируется текстом внутри плеера (Грегори, 2026-10-16: «дублируется количество
+     кадров, оставь отдельной строкой выше»); порядок строк в колонке — см. .stage-badge выше */
   .player-wrap { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; align-self: center; }
   .player { display: flex; align-items: center; gap: 6px; }
   .player-btn {
@@ -288,14 +291,14 @@
       <button class="tour-toggle" hidden>Экскурсия</button>
       <button class="tour-toggle play-toggle" title="Слайд-шоу: смена каждые 5 с">▶</button>
       <div class="player-wrap">
-        <span class="stage-badge" hidden>LIVE</span>
-        <div class="count"></div>
         <div class="player" hidden>
           <button class="player-btn player-prev" title="Назад"></button>
           <button class="player-btn player-next" title="Дальше"></button>
           <button class="player-btn player-stop" title="Стоп"></button>
           <button class="player-btn player-play" title="Слайдшоу альбома"></button>
         </div>
+        <div class="count"></div>
+        <span class="stage-badge" hidden>LIVE</span>
       </div>
     </div>
     <button class="play-once" hidden title="Воспроизвести"></button>
@@ -495,8 +498,12 @@ function loadClip(p, fileId, mode) {
       videoEl.muted = true;
       videoEl.src = url;
     });
-    videoEl.play().catch(() => {});
-    syncPlayOnce();
+    // play() синхронно переводит paused в false ещё ДО реальной попытки запуска — если потом
+    // автозапуск всё-таки не удастся (блокировка браузера, ошибка сети и т.п.), promise
+    // отклонится, но событие pause при этом не случится, и кнопка .play-once так и останется
+    // «застрявшей» на паузе, хотя ролик не играет (Грегори, 2026-10-16: «кнопка плай не работает
+    // с самого начала») — поэтому пересверяем реальное состояние уже ПОСЛЕ попытки, а не раньше
+    videoEl.play().then(syncPlayOnce).catch(syncPlayOnce);
   }).catch(() => {});
 }
 function playLive(p) { loadClip(p, p.live, "live"); }
@@ -533,7 +540,7 @@ playOnceBtn.addEventListener("click", () => {
   const p = photos[index];
   if (!p?.video && !p?.live) return;
   if (p.live && videoEl.dataset.mode !== "live") { playLive(p); return; }
-  if (videoEl.paused) videoEl.play().catch(() => {}); else videoEl.pause();
+  if (videoEl.paused) videoEl.play().then(syncPlayOnce).catch(syncPlayOnce); else videoEl.pause();
 });
 // ролик (видео или живое фото) доиграл сам — живое фото возвращается к статичному снимку (без
 // зацикливания, Грегори: «зацикливание Live — не хорошая идея»), обычное видео просто стоит на
@@ -611,7 +618,7 @@ addEventListener("message", (e) => {
     // плей/пауза нажали в панели альбома главного окна — ролик на экране ставим на паузу/
     // продолжаем вместе со слайдшоу (Грегори: «при нажатии на плей крутить слайдшоу с этого
     // места дальше»); обычное фото просто ждёт своей очереди — там нечего ставить на паузу
-    if (!videoEl.hidden) { if (e.data.galleryPause) videoEl.pause(); else videoEl.play().catch(() => {}); }
+    if (!videoEl.hidden) { if (e.data.galleryPause) videoEl.pause(); else videoEl.play().then(syncPlayOnce).catch(syncPlayOnce); }
     syncPlayer();
   }
 });
