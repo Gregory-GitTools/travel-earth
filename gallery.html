@@ -14,25 +14,35 @@
   html, body { height: 100%; margin: 0; }
   body {
     display: grid;
-    grid-template-rows: auto 1fr auto;
+    grid-template-rows: 1fr auto;
     background: #111;
     color: #eee;
     font-family: "Poppins", system-ui, "Segoe UI", sans-serif;
     overflow: hidden;
   }
 
-  /* подпись: название, автор · дата · лицензия (Commons требует указывать), счётчик */
+  /* подпись и кнопки плеера — плавающая панель ПОВЕРХ фото, а не отдельная строка над ним: раньше
+     съедала «большой отступ на три строки» сверху (Грегори, 2026-10-16: «фото до самого верха»).
+     Лежит внутри .stage (ниже), а не body — иначе перекрывала бы и панель экскурсии справа */
   .bar {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 6;
     display: flex;
-    align-items: baseline;
+    align-items: center;
     gap: 16px;
-    padding: 10px 16px;
+    padding: 14px 16px;
+    background: linear-gradient(to bottom, rgba(0, 0, 0, 0.65), rgba(0, 0, 0, 0));
+    pointer-events: none;
   }
+  .bar > * { pointer-events: auto; }
   .caption { flex: 1; min-width: 0; }
-  .title { font-weight: 600; font-size: 0.95rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .meta { font-size: 0.78rem; color: #aaa; margin-top: 2px; }
+  .title { font-weight: 600; font-size: 0.95rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9); }
+  .meta { font-size: 0.78rem; color: #aaa; margin-top: 2px; text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9); }
   .meta a { color: #8ab4f8; }
-  .count { font-size: 0.85rem; color: #aaa; white-space: nowrap; }
+  .count { font-size: 0.85rem; color: #ddd; white-space: nowrap; text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9); }
 
   .stage { position: relative; min-height: 0; }
   .stage img, .stage video {
@@ -66,8 +76,8 @@
   /* разовое воспроизведение текущего кадра (видео или живое фото) — одна кнопка внизу справа
      (Грегори, 2026-10-16, после попытки слева: «ни одной кнопки слева снизу — я правша»), не
      связанная со слайдшоу альбома: клик тут — play/pause самого ролика, сверху и в панели
-     экскурсии — слайдшоу, синхронизированы друг с другом. Отступ снизу больше обычного — чтобы
-     не наезжать на встроенную ленту прокрутки видео (controls=true ниже) */
+     экскурсии — слайдшоу, синхронизированы друг с другом. Отступ снизу — чтобы не наезжать на
+     свою ленту прокрутки видео (.scrub ниже) */
   .play-once {
     position: absolute;
     bottom: 44px;
@@ -86,11 +96,45 @@
   .play-once[hidden] { display: none; }
   .play-once:hover { background: rgba(0, 0, 0, 0.75); }
 
-  /* нативные элементы управления видео возвращены ради ленты прокрутки (Грегори, 2026-10-16:
-     «ушла лента прокрутки, которая должна остаться поверх видео») — но свою кнопку play/pause
-     внутри них прячем, иначе рядом с .play-once было бы два одинаковых плей-контрола */
-  video.photo::-webkit-media-controls-play-button,
-  video.photo::-webkit-media-controls-overlay-play-button { display: none !important; }
+  /* своя лента прокрутки вместо нативной video controls — нативная версия («лента прокрутки,
+     которая должна остаться поверх видео», Грегори 2026-10-16) тянула за собой ВЕСЬ набор чужих
+     элементов (звук, собственная кнопка полного экрана, троеточие меню, спиннер буферизации) —
+     это и была «война кнопок»: наезжала на .play-once, свой фулскрин-хендлер конфликтовал с
+     кнопкой полного экрана внутри видео (Esc «вылетал из альбома»), а спиннер буферизации
+     подменял собой перетекание между кадрами («вместо перехода крутится колесико»).
+     Тонкая кликабельная полоса снизу — только перемотка, ничего больше */
+  .scrub {
+    position: absolute;
+    left: 14px;
+    right: 14px;
+    bottom: 12px;
+    height: 14px;
+    z-index: 2;
+    cursor: pointer;
+  }
+  .scrub[hidden] { display: none; }
+  .scrub::before {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 0;
+    right: 0;
+    height: 4px;
+    margin-top: -2px;
+    border-radius: 2px;
+    background: rgba(255, 255, 255, 0.3);
+  }
+  .scrub-fill {
+    position: absolute;
+    top: 50%;
+    left: 0;
+    width: 0%;
+    height: 4px;
+    margin-top: -2px;
+    border-radius: 2px;
+    background: #fff;
+    pointer-events: none;
+  }
 
   .nav {
     position: absolute;
@@ -194,44 +238,46 @@
   .tour .stop.current { outline: 2px solid #e91e63; }
   .tour .stop img { flex: none; width: 56px; height: 56px; border-radius: 6px; object-fit: cover; background: #222; }
   .tour-toggle {
-    border: 1px solid #444;
+    border: none;
     border-radius: 14px;
-    padding: 3px 12px;
-    background: transparent;
-    color: #ddd;
+    padding: 6px 14px;
+    background: rgba(0, 0, 0, 0.45);
+    color: #fff;
     font: inherit;
-    font-size: 0.8rem;
+    font-size: 0.82rem;
     cursor: pointer;
   }
-  .tour-toggle.on { background: #333; }
+  .tour-toggle:hover { background: rgba(0, 0, 0, 0.7); }
+  .tour-toggle.on { background: #e91e63; }
   /* плеер слайд-шоу: та же пилюля, что у переключателя «Экскурсия» (Грегори, 2026-10-11
      продолжение: «после клика на альбом должно появляться новое окно с одним альбомом и
      плейером для слайдшоу») — автосмена снимков каждые 5 с, пока нажата */
   .play-toggle { min-width: 34px; text-align: center; }
   .play-toggle.on { background: #e91e63; }
-  .caption-text { font-size: 0.85rem; color: #ddd; font-style: italic; margin-top: 4px; }
+  .caption-text { font-size: 0.85rem; color: #ddd; font-style: italic; margin-top: 4px; text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9); }
 
-  /* плеер своего альбома — те же кнопки назад/плей/дальше/стоп, что и на панели альбома в
-     главном окне (.tour-player/.tour-edit там), в правом верхнем углу шапки плеера (Грегори,
-     2026-10-16: «кнопки расположи в правом верхнем углу... должны повторять кнопки в панели
-     альбома»). Счётчик — отдельной строкой НАД кнопками, не дублируется текстом внутри плеера
-     (Грегори, 2026-10-16: «дублируется количество кадров, оставь отдельной строкой выше») */
-  .player-wrap { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; align-self: center; }
-  .player { display: flex; align-items: center; gap: 2px; }
+  /* плеер своего альбома — назад/дальше/стоп/плей, тот же кружок-значок, что у .nav/.play-once
+     (Грегори, 2026-10-16: «все кнопки должны быть как микрофон» — компактный полупрозрачный
+     круг), крупнее прежнего (теперь лежат поверх фото, а не на сплошном фоне панели). Плей —
+     последним, справа (Грегори: «треугольник для удобства самый правый»). Счётчик — отдельной
+     строкой НАД кнопками, не дублируется текстом внутри плеера (Грегори, 2026-10-16:
+     «дублируется количество кадров, оставь отдельной строкой выше») */
+  .player-wrap { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; align-self: center; }
+  .player { display: flex; align-items: center; gap: 6px; }
   .player-btn {
     display: inline-grid;
     place-items: center;
-    width: 30px;
-    height: 30px;
+    width: 40px;
+    height: 40px;
     border: none;
     border-radius: 50%;
-    background: transparent;
-    color: #ddd;
+    background: rgba(0, 0, 0, 0.45);
+    color: #fff;
     cursor: pointer;
   }
-  .player-btn:hover { background: rgba(255, 255, 255, 0.12); }
-  .player-btn:disabled { opacity: 0.35; cursor: default; background: transparent; }
-  .player-btn.on { background: #6ab4ff; color: #111; }
+  .player-btn:hover { background: rgba(0, 0, 0, 0.7); }
+  .player-btn:disabled { opacity: 0.35; cursor: default; background: rgba(0, 0, 0, 0.45); }
+  .player-btn.on { background: #e91e63; color: #fff; }
 
   /* переход между кадрами слайдшоу — перетекание (View Transitions API сам крест-фейдит документ
      целиком, без второго элемента-дубля); длительность длиннее дефолтных 0.25 с (Грегори,
@@ -254,32 +300,36 @@
       -webkit-app-region: drag;
       z-index: 20;
     }
-    body { padding-top: env(titlebar-area-height, 33px); }
+    /* .bar теперь лежит поверх фото (см. выше), а не в потоке body — в установленном приложении
+       сдвигаем саму панель вниз, а не body, иначе её кнопки попали бы под область перетаскивания
+       и не нажимались бы */
+    .bar { top: env(titlebar-area-height, 33px); }
   }
 </style>
 </head>
 <body>
 <div class="titlebar-drag"></div>
-<div class="bar">
-  <div class="caption"><div class="title"></div><div class="meta"></div><div class="caption-text" hidden></div></div>
-  <button class="tour-toggle" hidden>Экскурсия</button>
-  <button class="tour-toggle play-toggle" title="Слайд-шоу: смена каждые 5 с">▶</button>
-  <div class="player-wrap">
-    <div class="count"></div>
-    <div class="player" hidden>
-      <button class="player-btn player-prev" title="Назад"></button>
-      <button class="player-btn player-play" title="Слайдшоу альбома"></button>
-      <button class="player-btn player-next" title="Дальше"></button>
-      <button class="player-btn player-stop" title="Стоп"></button>
-    </div>
-  </div>
-</div>
 <div class="main">
   <div class="stage">
     <img class="photo" alt="">
     <video class="photo" playsinline hidden></video>
+    <div class="bar">
+      <div class="caption"><div class="title"></div><div class="meta"></div><div class="caption-text" hidden></div></div>
+      <button class="tour-toggle" hidden>Экскурсия</button>
+      <button class="tour-toggle play-toggle" title="Слайд-шоу: смена каждые 5 с">▶</button>
+      <div class="player-wrap">
+        <div class="count"></div>
+        <div class="player" hidden>
+          <button class="player-btn player-prev" title="Назад"></button>
+          <button class="player-btn player-next" title="Дальше"></button>
+          <button class="player-btn player-stop" title="Стоп"></button>
+          <button class="player-btn player-play" title="Слайдшоу альбома"></button>
+        </div>
+      </div>
+    </div>
     <span class="stage-badge" hidden>LIVE</span>
     <button class="play-once" hidden title="Воспроизвести"></button>
+    <div class="scrub" hidden><div class="scrub-fill"></div></div>
     <button class="nav prev" title="Назад (←)">‹</button>
     <button class="nav next" title="Вперёд (→)">›</button>
   </div>
@@ -303,6 +353,8 @@ const photoEl = document.querySelector("img.photo");
 const videoEl = document.querySelector("video.photo");
 const stageBadge = $(".stage-badge");
 const playOnceBtn = $(".play-once");
+const scrubEl = $(".scrub");
+const scrubFill = $(".scrub-fill");
 // плеер слайд-шоу — автосмена каждые 5 с, пока нажата кнопка; любая навигация (ручная или
 // автоматическая) переставляет таймер, чтобы темп не сбивался
 let playTimer = null;
@@ -383,6 +435,7 @@ function show(i) {
   stopLive();
   stageBadge.hidden = true;
   playOnceBtn.hidden = true;
+  scrubEl.hidden = true;
   // прежний снимок остаётся на экране, пока грузится новый — старая версия подменяла его сразу
   // блёклой миниатюрой (CSS blur), и переход получался «через плохое качество» (Грегори,
   // 2026-10-16: «чёткое фото размывается и показывается в плохом качестве»); теперь перетекание
@@ -455,27 +508,31 @@ function loadPhoto(p) {
       videoEl.dataset.mode = "";
       photoEl.hidden = false;
       photoEl.src = url;
+      scrubEl.hidden = true;
     });
   }).catch(() => {});
 }
-// видео (p.video) или живое фото (p.live, fileId — отдельный ролик p.live) — нативные элементы
-// управления возвращены ради ленты прокрутки (Грегори: «ушла лента прокрутки, которая должна
-// остаться поверх видео»), свою кнопку play/pause внутри них прячет CSS (::-webkit-media-...),
-// чтобы не дублировать .play-once снизу справа
+// видео (p.video) или живое фото (p.live, fileId — отдельный ролик p.live) — своя тонкая лента
+// прокрутки (.scrub) вместо нативных элементов управления: нативная версия тянула за собой чужую
+// кнопку полного экрана (конфликтовала с F11/Esc), спиннер буферизации (подменял перетекание) и
+// наезжала на .play-once (Грегори, 2026-10-16: «слайдшоу стало тормозица, афул скрин вылетать,
+// кнопка плай маленькая и перекрывается»)
 function loadClip(p, fileId, mode) {
+  scrubFill.style.width = "0%";
   host()?.myGalleryFull(fileId).then((url) => {
     if (photos[index] !== p) return;
     withTransition(() => {
       photoEl.hidden = true;
       videoEl.hidden = false;
       videoEl.dataset.mode = mode;
-      videoEl.controls = true;
+      videoEl.controls = false;
       videoEl.loop = false;
       // приглушённый автозапуск сразу при показе — не нужно ловить мелкую кнопку плей; звук
-      // потом можно включить через нативную ленту. Без приглушения автозапуск без прямого жеста
+      // потом можно включить кликом по кадру. Без приглушения автозапуск без прямого жеста
       // (а тик слайдшоу идёт из другого окна) браузер может молча заблокировать
       videoEl.muted = true;
       videoEl.src = url;
+      scrubEl.hidden = false;
     });
     videoEl.play().catch(() => {});
     syncPlayOnce();
@@ -511,6 +568,18 @@ function syncPlayOnce() {
 }
 videoEl.addEventListener("play", syncPlayOnce);
 videoEl.addEventListener("pause", syncPlayOnce);
+// своя лента прокрутки — заполнение по времени ролика, клик перематывает
+function syncScrub() {
+  if (scrubEl.hidden || !videoEl.duration) return;
+  scrubFill.style.width = `${(videoEl.currentTime / videoEl.duration) * 100}%`;
+}
+videoEl.addEventListener("timeupdate", syncScrub);
+videoEl.addEventListener("loadedmetadata", syncScrub);
+scrubEl.addEventListener("click", (e) => {
+  if (!videoEl.duration) return;
+  const r = scrubEl.getBoundingClientRect();
+  videoEl.currentTime = ((e.clientX - r.left) / r.width) * videoEl.duration;
+});
 playOnceBtn.addEventListener("click", () => {
   const p = photos[index];
   if (!p?.video && !p?.live) return;
@@ -612,7 +681,7 @@ $(".next").addEventListener("click", () => navTo(index + 1));
 // «слайдшоу должно останавливаться... ждать клика на фото, или продолжения»; «сверху и в панели
 // экскурсии запускают/останавливают слайдшоу, синхронизированы друг с другом»)
 $(".stage").addEventListener("click", (e) => {
-  if (!albumId || e.target.closest(".nav, .play-once")) return;
+  if (!albumId || e.target.closest(".nav, .play-once, .scrub")) return;
   host()?.albumPlayPause?.();
   syncPlayer();
 });
