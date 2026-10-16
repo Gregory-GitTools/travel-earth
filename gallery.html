@@ -108,6 +108,21 @@
   video.photo::-webkit-media-controls-overlay-play-button,
   video.photo::-webkit-media-controls-fullscreen-button,
   video.photo::-webkit-media-controls-overflow-button { display: none !important; }
+  /* в альбомной ориентации окна .stage широкий и невысокий — элемент video.photo растягивается
+     на всю его ширину (object-fit: contain просто оставляет чёрные поля по бокам у видео), а
+     нативная панель controls по умолчанию растягивается на всю ширину САМОГО ЭЛЕМЕНТА video, то
+     есть лента прокрутки тянется и через эти чёрные поля — выглядит нелепо широкой (Грегори,
+     2026-10-16: «проблема изменения пропорций окна»; «в альбомной размер можно оставлять меньше
+     ширины принудительно»). Сам размер иконок внутри панели браузер считает по ширине элемента
+     video, а не по ширине самой панели — это нельзя переопределить через CSS, поэтому одинаковых
+     иконок в обеих ориентациях не добиться, не меняя размер самого видео (а трогать размер видео
+     Грегори прямо попросил не надо, только панель). Но ширину панели сузить и отцентровать можно:
+     --controls-w выставляет syncVideoControlsWidth() по ширине реально видимой (не запечатанной
+     чёрными полями) картинки */
+  .stage.landscape video.photo::-webkit-media-controls-panel {
+    max-width: var(--controls-w, 100%);
+    margin: 0 auto;
+  }
 
   .nav {
     position: absolute;
@@ -678,8 +693,28 @@ function isFullscreen() {
 function syncFullscreen() {
   $(".thumbs").hidden = isFullscreen();
 }
+// альбомная ориентация (.stage шире, чем выше) — сужаем и центрируем нативную панель controls по
+// ширине реально видимой картинки, а не по ширине всего элемента video (см. CSS-комментарий у
+// .stage.landscape video.photo::-webkit-media-controls-panel выше); в книжной ориентации класс не
+// ставим — там панель на всю ширину видео и так нормально выглядит (Грегори, 2026-10-16: «в
+// книжной панель всегда по ширине видео»)
+function syncVideoControlsWidth() {
+  const stage = $(".stage");
+  if (!stage) return;
+  const landscape = stage.clientWidth > stage.clientHeight;
+  stage.classList.toggle("landscape", landscape);
+  if (!landscape || !videoEl.videoWidth || !videoEl.videoHeight) return;
+  const stageAspect = stage.clientWidth / stage.clientHeight;
+  const videoAspect = videoEl.videoWidth / videoEl.videoHeight;
+  // та же математика, что у object-fit: contain — ширина картинки без чёрных полей
+  const contentWidth = stageAspect > videoAspect ? stage.clientHeight * videoAspect : stage.clientWidth;
+  videoEl.style.setProperty("--controls-w", `${Math.round(contentWidth)}px`);
+}
+videoEl.addEventListener("loadedmetadata", syncVideoControlsWidth);
+window.addEventListener("resize", syncVideoControlsWidth);
 window.addEventListener("resize", syncFullscreen);
 syncFullscreen();
+syncVideoControlsWidth();
 document.addEventListener("keydown", (e) => {
   if (e.key === "ArrowLeft") navTo(index - 1);
   else if (e.key === "ArrowRight") navTo(index + 1);
