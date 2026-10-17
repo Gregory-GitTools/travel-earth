@@ -107,11 +107,10 @@
   .play-once:hover { background: rgba(0, 0, 0, 0.75); }
 
   /* нативная лента прокрутки видео — свой урезанный вариант (.scrub, без времени и звука)
-     Грегори не устроил, вернули как было; прячем только то, что реально мешало: свою кнопку
-     play/pause (дублировала .play-once), кнопку полного экрана внутри видео и троеточие меню —
+     Грегори не устроил, вернули как было; родную кнопку play/pause тоже вернули (Грегори,
+     2026-10-17: «открыть стандартную кнопку плай на видео») — она дублирует .play-once, но
+     так и было задумано; прячем только кнопку полного экрана внутри видео и троеточие меню —
      звук и сама лента прокрутки остаются */
-  video.photo::-webkit-media-controls-play-button,
-  video.photo::-webkit-media-controls-overlay-play-button,
   video.photo::-webkit-media-controls-fullscreen-button,
   video.photo::-webkit-media-controls-overflow-button { display: none !important; }
   /* в альбомной ориентации окна .stage широкий и невысокий — элемент video.photo растягивается
@@ -276,7 +275,17 @@
   /* переход между кадрами слайдшоу — перетекание (View Transitions API сам крест-фейдит документ
      целиком, без второго элемента-дубля); длительность длиннее дефолтных 0.25 с (Грегори,
      2026-10-16: «сделай переходы между фото с перетеканием») */
-  ::view-transition-old(root), ::view-transition-new(root) { animation-duration: 0.6s; }
+  /* по умолчанию переход снимает ВЕСЬ документ (root) целиком — на время анимации браузер
+     прячет настоящий DOM и показывает только снимки «до/после», поэтому клики по ленте
+     миниатюр и кнопкам плеера (вне самого фото) все 0.6с анимации проваливались в пустоту
+     (Грегори, 2026-10-17: «кликаю на первую миниатюру... реакции ноль»); pointer-events:none
+     на оверлее не помогает — дело не в перехвате клика оверлеем, а в том, что сам документ
+     прячется. Сужаем переход только до .stage (сам снимок/видео) — остальное (лента, плеер)
+     в захват не попадает и остаётся живым и кликабельным всё время анимации */
+  :root { view-transition-name: none; }
+  .stage { view-transition-name: photo-stage; }
+  ::view-transition-old(photo-stage), ::view-transition-new(photo-stage) { animation-duration: 0.6s; }
+  ::view-transition { pointer-events: none; }
 
   /* как в index.html: открытое из установленного приложения окно тоже без системного заголовка
      (window-controls-overlay наследуется дочерними окнами того же PWA) — без этой полоски его
@@ -489,21 +498,27 @@ function stopLive() {
 // и пока файл читался, стоял пустой <img> — Edge на пустом/битом <img> показывает свою иконку
 // поиска по картинке, «постоянно висящую» в углу (Грегори, 2026-10-16: «постоянно висит значок
 // поиска в верхнем углу»; «чёткое фото размывается и показывается в плохом качестве»)
-function loadPhoto(p) {
+function loadPhoto(p, instant) {
   host()?.myGalleryFull(p.photo).then((url) => {
     if (photos[index] !== p) return;
-    // без withTransition — та же причина, что у loadClip() ниже: тут тоже нет предзагрузки
-    // (big.onload), src подставляется сразу, так что переход крест-фейдит в ещё не готовую
-    // картинку. Для обычной смены фото это почти не заметно, а вот когда живое фото само доигрывает
-    // и возвращается сюда (videoEl "ended" ниже), это происходит часто и быстро подряд — крутящиеся
-    // наложенные друг на друга переходы и давали «гонки» и постоянную иконку загрузки (Грегори,
-    // 2026-10-16: «живые фото начинаются гонки... постоянно появляется колесико... причина тоже в
-    // переходе»)
-    videoEl.hidden = true;
-    videoEl.removeAttribute("src");
-    videoEl.dataset.mode = "";
-    photoEl.hidden = false;
-    photoEl.src = url;
+    const apply = () => {
+      videoEl.hidden = true;
+      videoEl.removeAttribute("src");
+      videoEl.dataset.mode = "";
+      photoEl.hidden = false;
+      photoEl.src = url;
+    };
+    // живое фото доигрывает само и возвращается сюда (videoEl "ended" ниже) часто и быстро
+    // подряд — крест-фейд в ещё не готовую картинку (без предзагрузки) накладывал переходы друг
+    // на друга и давал «гонки» и постоянную иконку загрузки (Грегори, 2026-10-16: «живые фото
+    // начинаются гонки... причина тоже в переходе»); для этого случая переход пропускаем
+    if (instant) { apply(); return; }
+    // обычная смена фото — переход оставляем (Грегори, 2026-10-17: «я не просил убрать
+    // анимацию»), но предзагружаем картинку заранее, как show() делает для чужих (Commons)
+    // фото — иначе та же беда с крест-фейдом в неготовую картинку
+    const img = new Image();
+    img.onload = img.onerror = () => { if (photos[index] === p) withTransition(apply); };
+    img.src = url;
   }).catch(() => {});
 }
 // видео (p.video) или живое фото (p.live, fileId — отдельный ролик p.live) — нативные элементы
@@ -582,7 +597,15 @@ playOnceBtn.addEventListener("click", () => {
 // дальше»; «при выборе конкретного эпизода — проиграть и остановиться»)
 videoEl.addEventListener("ended", () => {
   videoEl.currentTime = 0;
-  if (videoEl.dataset.mode === "live") loadPhoto(photos[index]);
+  // если слайдшоу сейчас не на паузе, оно и так через host()?.albumClipEnded?.() ниже уйдёт на
+  // следующий кадр — откат живого фото на статику тут был лишним промежуточным шагом и давал
+  // заметное дёрганье (Грегори, 2026-10-17: «стартует с кадра, потом прокручивает Live и затем
+  // опять прыгает на фото, и только потом на следующее фото» — лишний отскок после просмотра
+  // обратно на фото вызывает передёргивание); откат нужен только когда ролик реально остаётся
+  // на экране (стоп/пауза/просмотр без альбома)
+  const st = albumId ? host()?.albumPlayState?.() : null;
+  const advancing = st && st.albumId === albumId && !st.paused;
+  if (videoEl.dataset.mode === "live" && !advancing) loadPhoto(photos[index], true);
   syncPlayOnce();
   if (albumId) host()?.albumClipEnded?.();
 });
@@ -657,8 +680,9 @@ if (data.stop) document.title = `${data.stop} — Travel Earth`;
 
 // переход внутри самого окна галереи (стрелки/миниатюры/клавиши) — в отличие от навигации по
 // сообщению извне (galleryShow выше), держит плеер альбома в главном окне в курсе места, но не
-// отправляет сообщение обратно в это же окно (кадр тут и так уже показан) — всегда ставит на
-// паузу, без зацикливания (Грегори: «при клике на конкретный кадр останови слайдшоу»)
+// отправляет сообщение обратно в это же окно (кадр тут и так уже показан); слайдшоу при этом не
+// останавливается — если играло, играет дальше с нового места (Грегори, 2026-10-17: «убрать
+// остановку при клике на фото»)
 function navTo(i) {
   show(i);
   if (albumId) host()?.albumJumpTo?.(index);
@@ -736,19 +760,31 @@ window.addEventListener("resize", syncVideoControlsWidth);
 window.addEventListener("resize", syncFullscreen);
 syncFullscreen();
 syncVideoControlsWidth();
+// F11 — это переключатель рамки окна браузера, а НЕ Fullscreen API: document.fullscreenElement
+// тут всегда null и fullscreenchange вообще не срабатывает (это совсем другой механизм,
+// requestFullscreen нигде в этом файле не вызывается) — предыдущая попытка чинить через
+// fullscreenElement/fullscreenchange поэтому не работала (Грегори, 2026-10-17 повторно: «Esc после
+// F11 не работает»). Настоящий сигнал о смене — медиа-фича display-mode (на ней и строится
+// isFullscreen() ниже) и её родное событие change у объекта matchMedia — оно, в отличие от resize,
+// не «опаздывает» относительно keydown
+let recentlyExitedFullscreen = false;
+function markRecentFullscreenExit() {
+  if (!isFullscreen()) {
+    recentlyExitedFullscreen = true;
+    setTimeout(() => { recentlyExitedFullscreen = false; }, 400);
+  }
+}
+const fsQuery = window.matchMedia("(display-mode: fullscreen)");
+if (fsQuery.media !== "not all") fsQuery.addEventListener("change", markRecentFullscreenExit);
+else window.addEventListener("resize", markRecentFullscreenExit);
 document.addEventListener("keydown", (e) => {
   if (e.key === "ArrowLeft") navTo(index - 1);
   else if (e.key === "ArrowRight") navTo(index + 1);
   else if (e.key === "Home") navTo(0);
   else if (e.key === "End") navTo(photos.length - 1);
   else if (e.key === "Escape") {
-    // тот же Escape, которым вышли из F11, доходит и сюда — но выход из настоящего F11 браузер
-    // обрабатывает не мгновенно, и display-mode (на котором держится isFullscreen()) может на
-    // момент этого keydown ещё не успеть обновиться, так же как раньше «опаздывал» resize
-    // (см. комментарий у isFullscreen ниже) — проверяем не сразу, а спустя короткую паузу, чтобы
-    // браузер успел на самом деле выйти из fullscreen, и мы не закрыли окно по старому, ещё не
-    // обновившемуся состоянию (Грегори, 2026-10-16: «Esc не работает» после выхода из F11)
-    setTimeout(() => { if (!isFullscreen()) window.close(); }, 250);
+    if (isFullscreen() || recentlyExitedFullscreen) return;
+    window.close();
   }
 });
 $(".thumbs").addEventListener("wheel", (e) => {

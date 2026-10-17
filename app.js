@@ -2362,7 +2362,11 @@ async function tourGeocodeOnce(query, near, box = 0) {
     const params = new URLSearchParams({ q: query, format: "jsonv2", limit: "1", "accept-language": uiLanguageCode(),
       ...(near && { viewbox: [near[0] - (box || 2.5), near[1] + (box || 2.5), near[0] + (box || 2.5), near[1] - (box || 2.5)].join(","),
         bounded: box ? "1" : "0" }) });
-    const res = await fetch(`${NOMINATIM_URL}?${params}`).catch(() => null);
+    // без таймаута зависший (не ответивший, но и не упавший) запрос намертво вешал бы всю общую
+    // очередь tourGeoQueue до конца сеанса — ни экскурсии, ни альбомы страну бы больше не узнали
+    // (Грегори, 2026-10-17: «ничего не происходит»); withTimeout — тот же приём, что уже применён
+    // ниже для геокодинга под курсором
+    const res = await withTimeout(fetch(`${NOMINATIM_URL}?${params}`).catch(() => null), 8000, null);
     const [found] = res?.ok ? await res.json() : [];
     const point = found ? [Number(found.lon), Number(found.lat)] : null;
     if (res?.ok) await idb("geo", "readwrite", (st) => st.put(point, key)).catch(() => {});
@@ -2376,37 +2380,60 @@ async function tourGeocodeOnce(query, near, box = 0) {
 // страна альбома — по его точке на карте (album.point: координаты первого снимка в папке, у
 // которого они вообще есть — Грегори: «за геолокацию альбома принять первую фотографию в папке
 // альбома»; у снимков без EXIF-координат взять геопозицию просто не из чего, поэтому «первый» —
-// первый подходящий). Обратное геокодирование Nominatim (/reverse), та же общая очередь и тот же
-// кэш в IndexedDB ("geo"), что у геокодинга экскурсий — чтобы не превышать «раз в секунду» вторым,
-// параллельным потоком запросов. undefined — ещё не спрашивали, null — запрос уже в очереди,
-// "" — спросили, страна не нашлась, непустая строка — результат
+// первый подходящий). Офлайн, по границам стран (country-borders.json, см.
+// tools/build-country-borders.mjs) — точка-в-полигоне, без Nominatim и его лимита «раз в секунду»
+// (Грегори, 2026-10-17: «переход на офлайн идеальное решение» — общая очередь с геокодингом мест
+// экскурсий вешала альбомы в «Определяем страну…» надолго, а один зависший запрос мог
+// застопорить её насовсем). undefined — ещё не спрашивали, null — счёт уже идёт,
+// "" — страна не нашлась, непустая строка — результат
+let countryBordersPromise = null;
+function loadCountryBorders() {
+  return (countryBordersPromise ??= fetch("country-borders.json").then((r) => r.json()).then((d) => d.features).catch(() => []));
+}
+function pointInRing([x, y], ring) {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const [xi, yi] = ring[i], [xj, yj] = ring[j];
+    if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside;
+}
+function pointInPolygon(pt, rings) {
+  if (!pointInRing(pt, rings[0])) return false;
+  for (let k = 1; k < rings.length; k++) if (pointInRing(pt, rings[k])) return false;
+  return true;
+}
+// запасной путь для точек у самой береговой линии, которые упрощённая геометрия (округление до
+// ~100м при сборке country-borders.json) не накрывает «в упор» — например, Лиссабон на устье
+// Тежу попадает в «воду» после упрощения; берём страну с ближайшей вершиной границы вместо того,
+// чтобы бросать точку в «Без страны»
+function nearestCountry(pt, features) {
+  let best = null, bestDist = Infinity;
+  for (const f of features) {
+    const polys = f.geometry.type === "Polygon" ? [f.geometry.coordinates] : f.geometry.coordinates;
+    for (const rings of polys) for (const ring of rings) for (const v of ring) {
+      const d = (v[0] - pt[0]) ** 2 + (v[1] - pt[1]) ** 2;
+      if (d < bestDist) { bestDist = d; best = f; }
+    }
+  }
+  return best;
+}
+function countryAtPoint(pt, features) {
+  for (const f of features) {
+    const g = f.geometry;
+    if (g.type === "Polygon" ? pointInPolygon(pt, g.coordinates) : g.coordinates.some((rings) => pointInPolygon(pt, rings))) return f;
+  }
+  return nearestCountry(pt, features);
+}
+
 async function albumCountryOf(a) {
   if (a.country !== undefined) return a.country;
   // точки нет — считать не из чего, и дальше спрашивать смысла нет: без записи a.country
   // (осталось бы undefined) countryOf звала бы эту функцию заново на каждой перерисовке
   if (!a.point) return (a.country = "");
-  const key = `rev@${a.point.map((v) => v.toFixed(1)).join(",")}`;
-  const hit = await idb("geo", "readonly", (st) => st.get(key)).catch(() => undefined);
-  // попадание в кэш — тоже повод перерисовать список: раньше звали updateAlbumsFinder только в
-  // конце долгого пути (запрос к Nominatim), а быстрый путь из кэша молча менял a.country и ничего
-  // не перерисовывал — список так и оставался в «Без страны», пока случайно не перерисуется
-  // по другому поводу (Грегори, 2026-10-13: «при первом открытии пишет одну строку Без страны...
-  // нужно подправить»)
-  if (hit !== undefined) { a.country = hit; updateAlbumsFinder(); return hit; }
-  a.country = null;
-  const run = tourGeoQueue.then(async () => {
-    const [lon, lat] = a.point;
-    const params = new URLSearchParams({ lat: lat.toFixed(5), lon: lon.toFixed(5), format: "jsonv2", zoom: "3",
-      addressdetails: "1", "accept-language": uiLanguageCode() });
-    const res = await fetch(`${NOMINATIM_URL.replace("/search", "/reverse")}?${params}`).catch(() => null);
-    const place = res?.ok ? await res.json() : null;
-    const country = place?.address?.country || "";
-    if (res?.ok) await idb("geo", "readwrite", (st) => st.put(country, key)).catch(() => {});
-    await new Promise((r) => setTimeout(r, 1100)); // то же правило Nominatim — не чаще раза в секунду
-    return country;
-  });
-  tourGeoQueue = run.catch(() => "");
-  const country = await run;
+  a.country = null; // счёт уже идёт — не запускать повторно при следующей перерисовке
+  const features = await loadCountryBorders();
+  const country = countryAtPoint(a.point, features)?.properties.name || "";
   a.country = country;
   updateAlbumsFinder(); // список/панель перерисуются, когда страна наконец узнана
   return country;
@@ -3447,8 +3474,9 @@ function renderAlbumsList() {
   // группировка по странам — та же схема, что у «Экскурсий» (tree/groupKeys/flag, см.
   // renderTourList выше). Страна — приоритетно из текста экскурсии альбома (a.excursion.country,
   // та же логика, что у tourCountry выше: «написал вручную» сильнее геопозиции), а если его нет —
-  // по album.point (albumCountryOf, геокодинг в фоне: при первом обращении запрос становится в
-  // общую очередь с «Экскурсиями» и сама перерисует список, когда ответ придёт). Грегори,
+  // по album.point (albumCountryOf, офлайн по границам стран — без сетевого геокодинга и его
+  // лимита, см. комментарий у albumCountryOf; при первом обращении сама перерисует список, когда
+  // страна посчитана). Грегори,
   // 2026-10-12: «экскурсию поставил в Австрию, написал без страны, а альбом в Эстонии» — группа
   // шла по GPS снимков, а не по тому, что он сам указал в экскурсии; пока страна не узнана —
   // временно в «Без страны», как и у экскурсии без региона
@@ -3741,16 +3769,17 @@ function albumPhotoClicked(albumId, photoId) {
 }
 // клик на снимке или на конкретный кадр внутри самого окна галереи (там же, где он уже открыт) —
 // просто держит i в app.js в курсе, не шлёт обратно galleryShow (кадр там и так уже показан
-// локально). Клик по конкретному кадру (бывшей миниатюре/стрелкам) всегда ставит на паузу и
-// просто переходит, без зацикливания (Грегори: «при клике на конкретный кадр останови слайдшоу и
-// покажи только то что попросили»); клик по самому фото/видео — переключатель паузы, им же можно
-// продолжить (Грегори: «слайдшоу должно останавливаться, ждать клика на фото или продолжения»)
+// локально). Раньше любой такой переход сам ставил слайдшоу на паузу — из-за этого кнопка плея
+// обновлялась с опозданием на один клик (syncPlayer() в окне галереи читает состояние ДО того,
+// как сюда долетает эта пауза) и слайдшоу намертво замирало на месте (Грегори, 2026-10-17:
+// «кнопка с первого раза не реагирует... альбом дальше не идёт... с живого фото альбом можно
+// запустить только если успеть нажать плай, пока оно не отскочило обратно на фото»; «убрать
+// остановку при клике на фото»). Теперь переход просто переставляет кадр, оставляя паузу как
+// была — играло дальше и будет играть дальше, с нового места
 window.albumJumpTo = (i) => {
   if (!albumPlay) return;
-  albumPlay.paused = true;
-  clearTimeout(albumPlayTimer);
-  albumPlayTimer = null;
   albumPlay.i = i;
+  albumPlaySchedule();
   renderAlbumPlayer();
 };
 window.albumPlayPause = albumPlayPause;
