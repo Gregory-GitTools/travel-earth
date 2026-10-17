@@ -89,6 +89,9 @@
      экрана внутри видео и троеточие меню — звук и сама лента прокрутки остаются */
   video.photo::-webkit-media-controls-fullscreen-button,
   video.photo::-webkit-media-controls-overflow-button { display: none !important; }
+  /* сама полоса прокрутки — вдвое толще, остальная панель (кнопка плей, время, звук) не трогается
+     (Грегори, 2026-10-17: «кнопку [play-once] убираем, полосу увеличиваем в 2а раза») */
+  video.photo::-webkit-media-controls-timeline { transform: scaleY(2); transform-origin: bottom; }
   /* в альбомной ориентации окна .stage широкий и невысокий — элемент video.photo растягивается
      на всю его ширину (object-fit: contain просто оставляет чёрные поля по бокам у видео), а
      нативная панель controls по умолчанию растягивается на всю ширину САМОГО ЭЛЕМЕНТА video, то
