@@ -153,25 +153,28 @@
   .prev { left: 12px; }
   .next { right: 12px; }
 
-  /* лента миниатюр — как на карте: тонкая рамка у выбранного, ничего не прыгает. Клетки вдвое
-     крупнее прежних (были 72px) — Грегори, 2026-10-18: «увеличить в два раза полосу прокрутки,
-     не прокрутку видео, а прокрутку ленты» (видео-прокрутка — отдельная, см. .scrub выше) */
+  /* лента миниатюр — как на карте: тонкая рамка у выбранного, ничего не прыгает */
   .thumbs {
     display: flex;
     gap: 2px;
     padding: 6px 16px 10px;
     overflow-x: auto;
-    scrollbar-width: thin;
     scrollbar-color: #444 transparent;
   }
+  /* ползунок прокрутки самой ленты — вдвое толще обычного тонкого, тот же приём, что раньше
+     применили (а потом вернули) у полосы прокрутки видео (Грегори, 2026-10-18: «увеличь толщину
+     ползунка прокрутки ленты»; «не прокрутку видео, а прокрутку ленты» — это разные полосы) */
+  .thumbs::-webkit-scrollbar { height: 14px; }
+  .thumbs::-webkit-scrollbar-track { background: transparent; }
+  .thumbs::-webkit-scrollbar-thumb { background: #444; border-radius: 7px; }
   /* [hidden] объявлен отдельно — тот же приём, что у .stage-badge выше: без этого
      display:flex класса всегда побеждал бы спрятанный атрибут (режим F11, см. syncFullscreen) */
   .thumbs[hidden] { display: none; }
   .thumb {
     position: relative;
     flex: none;
-    width: 144px;
-    height: 144px;
+    width: 72px;
+    height: 72px;
     padding: 0;
     border: none;
     border-radius: 6px;
@@ -528,7 +531,7 @@ function stopLive() {
 // и пока файл читался, стоял пустой <img> — Edge на пустом/битом <img> показывает свою иконку
 // поиска по картинке, «постоянно висящую» в углу (Грегори, 2026-10-16: «постоянно висит значок
 // поиска в верхнем углу»; «чёткое фото размывается и показывается в плохом качестве»)
-function loadPhoto(p, instant) {
+function loadPhoto(p, instant, onShown) {
   host()?.myGalleryFull(p.photo).then((url) => {
     if (photos[index] !== p) return;
     const apply = () => {
@@ -537,6 +540,7 @@ function loadPhoto(p, instant) {
       videoEl.dataset.mode = "";
       photoEl.hidden = false;
       photoEl.src = url;
+      onShown?.();
     };
     // живое фото доигрывает само и возвращается сюда (videoEl "ended" ниже) часто и быстро
     // подряд — крест-фейд в ещё не готовую картинку (без предзагрузки) накладывал переходы друг
@@ -594,7 +598,11 @@ function loadClip(p, fileId, mode) {
     });
   }).catch(() => {});
 }
-function playLive(p) { loadClip(p, p.live, "live"); }
+// живое фото: сначала статичный снимок с обычным переходом, как у простого фото, и только
+// после того как он реально показан — запускается сам ролик (Грегори, 2026-10-18: «сначала
+// должно идти фото с переходом, а только потом видео, а не наоборот» — раньше ролик стартовал
+// сразу, минуя переход, фото не успевало показаться)
+function playLive(p) { loadPhoto(p, false, () => { if (photos[index] === p) loadClip(p, p.live, "live"); }); }
 
 // свой снимок: обычное фото, отдельный ролик (.MOV без пары) или живое фото — видео/живое фото
 // запускаются сами, без клика (Грегори: «клик на видео или Live — проигрывать сразу»); разовое
