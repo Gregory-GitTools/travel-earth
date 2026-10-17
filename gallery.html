@@ -591,7 +591,28 @@ function showMine(p) {
 // кнопка разового воспроизведения снизу слева — отдельно от плеера слайдшоу сверху (Грегори,
 // 2026-10-16: «клик снизу управляет разовым воспроизведением, а сверху и в панели экскурсии —
 // слайдшоу, синхронизированы друг с другом»); play/pause самого ролика, слайдшоу не трогает
+// клавиши play/pause на клавиатуре и системная плашка «сейчас играет» (у Windows — своя, со
+// своим значком) управляются через MediaSession API отдельно от видео-элемента — без явной
+// настройки Chrome сам угадывает, какое видео сейчас «активное», и не сразу (Грегори,
+// 2026-10-17: «звук при первом старте с клавиатуры не реагирует, потом реагирует», «значок
+// проигрывателя не всегда совпадает с системным значком» — у системной плашки была СВОЯ логика,
+// не привязанная к нашей кнопке). Держим playbackState и обработчики play/pause в точности
+// синхронно с видео, чтобы оба значка всегда показывали одно и то же с самого первого кадра
+function syncMediaSession() {
+  if (!("mediaSession" in navigator)) return;
+  if (videoEl.hidden) {
+    navigator.mediaSession.playbackState = "none";
+    navigator.mediaSession.setActionHandler("play", null);
+    navigator.mediaSession.setActionHandler("pause", null);
+    return;
+  }
+  navigator.mediaSession.metadata = new MediaMetadata({ title: photos[index]?.title || "Travel Earth" });
+  navigator.mediaSession.playbackState = videoEl.paused ? "paused" : "playing";
+  navigator.mediaSession.setActionHandler("play", () => videoEl.play().then(syncPlayOnce).catch(syncPlayOnce));
+  navigator.mediaSession.setActionHandler("pause", () => videoEl.pause());
+}
 function syncPlayOnce() {
+  syncMediaSession();
   if (playOnceBtn.hidden) return;
   const playing = !videoEl.hidden && !videoEl.paused;
   playOnceBtn.innerHTML = playing ? PLAYER_PAUSE : PLAYER_PLAY;
