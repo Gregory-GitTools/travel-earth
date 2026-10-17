@@ -728,6 +728,11 @@ $(".play-toggle").addEventListener("click", () => {
 // сами знают, показана ли своя рамка/вкладки — доверяем медиа-фиче display-mode: fullscreen
 // вместо подсчёта пикселей вручную; запасной вариант — на случай браузера без этой медиа-фичи
 function isFullscreen() {
+  // document.fullscreenElement — двойной клик по video.photo сам, без единой строчки нашего кода,
+  // включает нативный полный экран этого элемента (Chrome/Edge умеют так для <video>) — то самое
+  // «Esc/курсор вверху» с крестиком, что видел Грегори: это Fullscreen API, а не F11 (см.
+  // комментарий у markRecentFullscreenExit ниже — там разбор, почему в это не верилось раньше)
+  if (document.fullscreenElement) return true;
   const mq = window.matchMedia("(display-mode: fullscreen)");
   if (mq.media !== "not all") return mq.matches;
   return window.innerWidth >= screen.width - 2 && window.innerHeight >= screen.height - 2;
@@ -760,13 +765,16 @@ window.addEventListener("resize", syncVideoControlsWidth);
 window.addEventListener("resize", syncFullscreen);
 syncFullscreen();
 syncVideoControlsWidth();
-// F11 — это переключатель рамки окна браузера, а НЕ Fullscreen API: document.fullscreenElement
-// тут всегда null и fullscreenchange вообще не срабатывает (это совсем другой механизм,
-// requestFullscreen нигде в этом файле не вызывается) — предыдущая попытка чинить через
-// fullscreenElement/fullscreenchange поэтому не работала (Грегори, 2026-10-17 повторно: «Esc после
-// F11 не работает»). Настоящий сигнал о смене — медиа-фича display-mode (на ней и строится
-// isFullscreen() ниже) и её родное событие change у объекта matchMedia — оно, в отличие от resize,
-// не «опаздывает» относительно keydown
+// два РАЗНЫХ полноэкранных режима шлют сюда тот же Esc, что и закрытие окна — без этой защиты
+// выход из любого из них заодно закрывал галерею. F11 — переключатель рамки окна браузера, тут
+// сигнал о смене — медиа-фича display-mode (на ней и строится isFullscreen() выше). Но у
+// Грегори воспроизводилось НЕ через F11, а через двойной клик по video.photo — Chrome/Edge сами
+// включают Fullscreen API для видео по такому клику, без единого requestFullscreen() в нашем
+// коде (отсюда и баннер «переместите мышь вверх или нажмите Esc», который видел Грегори, 2026-10-17:
+// «вот что я вижу каждый раз») — и именно поэтому прошлая версия, проверявшая
+// document.fullscreenElement/fullscreenchange, когда-то работала: это НАСТОЯЩИЙ сигнал для ЭТОГО
+// случая, а не «неправильный API», как раньше решили здесь по ошибке. Слушаем оба сигнала —
+// fullscreenchange (видео) и change у matchMedia (F11)
 let recentlyExitedFullscreen = false;
 function markRecentFullscreenExit() {
   if (!isFullscreen()) {
@@ -774,6 +782,7 @@ function markRecentFullscreenExit() {
     setTimeout(() => { recentlyExitedFullscreen = false; }, 400);
   }
 }
+document.addEventListener("fullscreenchange", markRecentFullscreenExit);
 const fsQuery = window.matchMedia("(display-mode: fullscreen)");
 if (fsQuery.media !== "not all") fsQuery.addEventListener("change", markRecentFullscreenExit);
 else window.addEventListener("resize", markRecentFullscreenExit);
