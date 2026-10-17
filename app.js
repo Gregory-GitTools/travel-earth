@@ -3665,7 +3665,7 @@ function chooseAlbum(albumId) {
 // останавливается, а не продолжает слать сообщения в закрытое окно (Грегори, Round 63: «Окно
 // альбома открывается после закрытия потому что плай не остановился»). Стоп — закрывает само окно,
 // а не только останавливает счётчик (Грегори: «кнопка стоп должна закрывать слайдшоу»)
-let albumPlay = null; // { albumId, i, paused }
+let albumPlay = null; // { albumId, i, paused, restingOnPhoto }
 let albumPlayTimer = null; // автопоказ обычных фото (видео/живое фото — по сообщению "ended", без таймера)
 let albumWatchTimer = null; // следит, не закрыл ли человек окно сам
 let albumGalleryWin = null;
@@ -3679,7 +3679,11 @@ function albumPlaySchedule() {
   albumPlayTimer = null;
   if (!albumPlay || albumPlay.paused) return;
   const file = albumCurrentFile();
-  if (file?.video || file?.live) return; // идёт ролик — дальше пойдём по сообщению "ended"
+  // идёт ролик — дальше пойдём по сообщению "ended"; а живое фото, уже доигравшее ролик и
+  // отдыхающее на статичном снимке (restingOnPhoto, см. albumClipEnded ниже — Грегори,
+  // 2026-10-17: «не проглатывай, показывай с такой же продолжительностью»), ведёт себя как
+  // обычное фото — получает свой таймер
+  if (file?.video || (file?.live && !albumPlay.restingOnPhoto)) return;
   albumPlayTimer = setTimeout(() => albumAdvance(1), ALBUM_SLIDE_MS);
 }
 function albumWatchWindow() {
@@ -3702,7 +3706,7 @@ function startAlbumPlay(albumId, startId) {
   // плей всегда прыгал на первый кадр, даже если человек уже смотрел другой)
   const fromId = startId || (galleryFocus && a.files.includes(galleryFocus) ? galleryFocus : null);
   const i = fromId ? Math.max(0, a.files.indexOf(fromId)) : 0;
-  albumPlay = { albumId, i, paused: false };
+  albumPlay = { albumId, i, paused: false, restingOnPhoto: false };
   albumGalleryShow(i);
   albumPlaySchedule();
   albumWatchWindow();
@@ -3732,6 +3736,7 @@ function albumAdvance(delta) {
   const a = myAlbums.get(albumPlay.albumId);
   if (!a?.files.length) { stopAlbumPlay(); return; }
   albumPlay.i = (albumPlay.i + delta + a.files.length) % a.files.length;
+  albumPlay.restingOnPhoto = false; // новый кадр — если это живое фото, ролик играет с начала
   albumGalleryShow(albumPlay.i);
   albumPlaySchedule();
   renderAlbumPlayer();
@@ -3761,6 +3766,7 @@ function albumPhotoClicked(albumId, photoId) {
     clearTimeout(albumPlayTimer);
     const i = a.files.indexOf(photoId);
     if (i >= 0) albumPlay.i = i;
+    albumPlay.restingOnPhoto = false;
     albumGalleryShow(albumPlay.i);
     renderAlbumPlayer();
     return;
@@ -3779,6 +3785,7 @@ function albumPhotoClicked(albumId, photoId) {
 window.albumJumpTo = (i) => {
   if (!albumPlay) return;
   albumPlay.i = i;
+  albumPlay.restingOnPhoto = false;
   albumPlaySchedule();
   renderAlbumPlayer();
 };
@@ -3788,9 +3795,19 @@ window.stopAlbumPlay = stopAlbumPlay;
 window.startAlbumPlay = startAlbumPlay;
 window.albumPlayState = () => (albumPlay ? { ...albumPlay, total: myAlbums.get(albumPlay.albumId)?.files.length || 0 } : null);
 // ролик (видео или живое фото) доиграл сам, своим ходом — если слайдшоу в этот момент не на
-// паузе, идём дальше; если на паузе (кадр выбрали руками) — просто остаёмся на нём (Грегори: «при
-// выборе конкретного эпизода, проиграть и остановиться»)
-window.albumClipEnded = () => { if (albumPlay && !albumPlay.paused) albumAdvance(1); };
+// паузе: обычное видео сразу переходит дальше (у него нет своей статики, показывать нечего), а
+// живое фото сначала отдыхает на своём статичном снимке (restingOnPhoto) — gallery.html уже
+// откатила его сама, тут просто планируем обычный таймер показа фото (albumPlaySchedule), вместо
+// того чтобы прыгать на следующий кадр немедленно (Грегори, 2026-10-17: «не проглатывай... плайер
+// альбома не понимает что остановка произошла на фотографии, а не на её живом продолжении» — без
+// этого флага пауза на отдыхающей статике навсегда замирала: albumPlaySchedule считал, что ролик
+// ещё идёт, и ждал "ended", которое уже никогда не придёт). Если на паузе (кадр выбрали руками) —
+// просто остаёмся на нём (Грегори: «при выборе конкретного эпизода, проиграть и остановиться»)
+window.albumClipEnded = () => {
+  if (!albumPlay || albumPlay.paused) return;
+  if (albumCurrentFile()?.live) { albumPlay.restingOnPhoto = true; albumPlaySchedule(); }
+  else albumAdvance(1);
+};
 // полоска плеера в шапке альбома — по образцу renderTourPlayer (экскурсии), но треугольник
 // вместо говорящего лица (Грегори, Thread 1: «вместо озвучки... должен быть треугольник (плай)»)
 function renderAlbumPlayer() {

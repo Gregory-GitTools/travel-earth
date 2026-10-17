@@ -598,6 +598,12 @@ videoEl.addEventListener("pause", syncMediaSession);
 // albumPlayPause() (она лишь переключает, а не выставляет конкретное значение)
 function syncAlbumPauseFromVideo() {
   if (suppressAlbumPauseSync) { suppressAlbumPauseSync = false; return; }
+  // доигрывание ролика до конца тоже даёт событие "pause" (проверено: videoEl.ended уже true в
+  // этот момент, раньше самого "ended") — это не ручная пауза, а естественное завершение, с ним
+  // разбирается отдельно ended-обработчик ниже (albumClipEnded/restingOnPhoto); если принять его
+  // здесь за ручную паузу, слайдшоу замирало бы на каждом живом фото/видео, не дождавшись своего
+  // такта дальше
+  if (videoEl.ended) return;
   if (!albumId) return;
   const st = host()?.albumPlayState?.();
   if (st && st.albumId === albumId && st.paused !== videoEl.paused) { host()?.albumPlayPause?.(); syncPlayer(); }
@@ -613,15 +619,14 @@ videoEl.addEventListener("pause", syncAlbumPauseFromVideo);
 // дальше»; «при выборе конкретного эпизода — проиграть и остановиться»)
 videoEl.addEventListener("ended", () => {
   videoEl.currentTime = 0;
-  // если слайдшоу сейчас не на паузе, оно и так через host()?.albumClipEnded?.() ниже уйдёт на
-  // следующий кадр — откат живого фото на статику тут был лишним промежуточным шагом и давал
-  // заметное дёрганье (Грегори, 2026-10-17: «стартует с кадра, потом прокручивает Live и затем
-  // опять прыгает на фото, и только потом на следующее фото» — лишний отскок после просмотра
-  // обратно на фото вызывает передёргивание); откат нужен только когда ролик реально остаётся
-  // на экране (стоп/пауза/просмотр без альбома)
-  const st = albumId ? host()?.albumPlayState?.() : null;
-  const advancing = st && st.albumId === albumId && !st.paused;
-  if (videoEl.dataset.mode === "live" && !advancing) loadPhoto(photos[index], true);
+  // живое фото всегда возвращается к статичному снимку с обычным переходом и получает свой
+  // полноценный слот времени, как у простого фото (Грегори, 2026-10-17: «не проглатывай,
+  // показывай с такой же продолжительностью и с переходами саму фотографию у живого фото» —
+  // раньше во время активного слайдшоу этот снимок пропускался целиком, альбом прыгал сразу на
+  // следующий кадр); тайминг «сколько показывать статику перед тем, как ехать дальше» считает
+  // albumClipEnded в app.js (restingOnPhoto). Обычное видео не трогаем — у него нет своей
+  // статичной версии
+  if (videoEl.dataset.mode === "live") loadPhoto(photos[index]);
   syncMediaSession();
   if (albumId) host()?.albumClipEnded?.();
 });
