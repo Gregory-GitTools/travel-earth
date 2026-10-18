@@ -663,19 +663,25 @@ function playLive(p) {
     suppressAlbumPauseSync = true;
     const revealPlaying = () => {
       if (photos[index] !== p) return;
-      liveDebug("play() пошёл → переключаем фото → видео (уже играет)");
+      liveDebug("playing → переключаем фото → видео (уже играет)");
       withTransition(() => { photoEl.hidden = true; videoEl.hidden = false; });
       syncMediaSession();
     };
+    // ждём не резолв промиса play() (он может сработать ДО того, как декодер реально отдал
+    // первый кадр — у крупных роликов это и давало «паузу, потом рывок» сразу после появления
+    // видео), а событие "playing" — оно означает, что кадры уже реально идут. Обычное видео
+    // (loadClip выше) всегда ждало именно "playing", и там этой паузы-рывка не было (Грегори,
+    // 2026-10-18: «есть пауза и встряхивание в начале видео»)
     const startPlayback = () => {
       if (photos[index] !== p) return;
       liveDebug("ролик буферизован, вызываем play() (пока скрыт)");
-      videoEl.play().then(revealPlaying).catch(() => {
+      videoEl.addEventListener("playing", revealPlaying, { once: true });
+      videoEl.play().catch(() => {
         if (!videoEl.muted) {
           videoEl.muted = true;
           suppressAlbumPauseSync = true;
-          videoEl.play().then(revealPlaying).catch(syncMediaSession);
-        } else syncMediaSession();
+          videoEl.play().catch(() => { videoEl.removeEventListener("playing", revealPlaying); syncMediaSession(); });
+        } else { videoEl.removeEventListener("playing", revealPlaying); syncMediaSession(); }
       });
     };
     videoEl.addEventListener("canplaythrough", () => {
