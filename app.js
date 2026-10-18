@@ -3670,6 +3670,11 @@ let albumPlayTimer = null; // автопоказ обычных фото (вид
 let albumWatchTimer = null; // следит, не закрыл ли человек окно сам
 let albumGalleryWin = null;
 const ALBUM_SLIDE_MS = 6000; // показ фото + переход (Грегори, 2026-10-16: «прибавь пару секунд на переход»)
+// защитный потолок для живого фото, пока ролик играет: если он по какой-то причине не
+// доиграет до конца и не пришлёт "ended" (сбой сети/декодера), слайдшоу раньше зависало на
+// этом кадре навсегда — таймер вообще не ставился (Грегори, 2026-10-18: «альбом
+// останавливался»); теперь после этого времени всё равно идём дальше
+const LIVE_CLIP_MAX_MS = 20000;
 function albumCurrentFile() {
   const a = albumPlay && myAlbums.get(albumPlay.albumId);
   return a ? myFiles.get(a.files[albumPlay.i]) : null;
@@ -3679,11 +3684,16 @@ function albumPlaySchedule() {
   albumPlayTimer = null;
   if (!albumPlay || albumPlay.paused) return;
   const file = albumCurrentFile();
-  // идёт ролик — дальше пойдём по сообщению "ended"; а живое фото, уже доигравшее ролик и
-  // отдыхающее на статичном снимке (restingOnPhoto, см. albumClipEnded ниже — Грегори,
-  // 2026-10-17: «не проглатывай, показывай с такой же продолжительностью»), ведёт себя как
-  // обычное фото — получает свой таймер
-  if (file?.video || (file?.live && !albumPlay.restingOnPhoto)) return;
+  // обычный ролик (не живое фото) — дальше идём только по сообщению "ended", тут таймер не
+  // нужен (у него нет своей статики, показывать нечего, кроме самого видео)
+  if (file?.video) return;
+  // живое фото, ролик ещё не доиграл до конца (restingOnPhoto ещё не выставлен) — обычно
+  // дальше пойдём по "ended" → albumClipEnded, но на случай, если ролик зависнет, страхуемся
+  // потолком LIVE_CLIP_MAX_MS, а не оставляем слайд без всякого таймера
+  if (file?.live && !albumPlay.restingOnPhoto) {
+    albumPlayTimer = setTimeout(() => albumAdvance(1), LIVE_CLIP_MAX_MS);
+    return;
+  }
   albumPlayTimer = setTimeout(() => albumAdvance(1), ALBUM_SLIDE_MS);
 }
 function albumWatchWindow() {
