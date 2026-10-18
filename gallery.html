@@ -633,21 +633,19 @@ function loadClip(p, fileId, mode) {
     });
   }).catch(() => {});
 }
-// живое фото: раньше показывали отдельную картинку (<img>), потом переключались на <video> —
-// это два разных элемента, и переключение между ними выглядит дёргано, даже когда кадры
-// совпадают (Грегори, 2026-10-18: «стыковки выглядят дергано»). У живого фото первый кадр
-// ролика и есть тот же снимок — значит, можно обойтись одним элементом на весь цикл: сразу
-// показываем сам <video>, поставленный на паузу на первом кадре (выглядит как обычное фото),
-// и только потом, тем же элементом, без переключения, запускаем воспроизведение (Грегори,
-// 2026-10-18: «что будет если начало (фото) поставить в конец видео, а перед этим показать его
-// в начале» — то есть не отдельная картинка, а тот же ролик, просто ещё не запущенный). Переход
-// (withTransition) остаётся только один раз — на входе, со старого кадра на этот же <video>
+// живое фото: сначала фото показывается полностью как обычное (loadPhoto, тот же переход,
+// та же продолжительность — вызывается из showMine через onShown), и только когда оно уже
+// провисело минимум столько же, сколько обычный переход (0.6с), запускаем ролик — даже если
+// файл ролика был готов раньше, не срезаем это время (Грегори, 2026-10-18: «аккуратно с учетом
+// задержки на покоз фото добавляем видео. Не режем время показа фото»). Дальше один переход
+// фото → видео (на паузе на первом кадре), пауза-хват и play() тем же элементом
 function playLive(p) {
+  const shownAt = performance.now();
   liveDebugReset();
-  liveDebug("старт: просим файл ролика");
+  liveDebug("фото показано → просим файл ролика");
   host()?.myGalleryFull(p.live).then((url) => {
     if (photos[index] !== p) return;
-    liveDebug("файл получен, ставим src");
+    liveDebug("файл ролика получен, ставим src");
     videoEl.dataset.mode = "live";
     videoEl.controls = true;
     videoEl.loop = false;
@@ -657,18 +655,23 @@ function playLive(p) {
     suppressAlbumPauseSync = true;
     videoEl.addEventListener("loadeddata", () => {
       if (photos[index] !== p) return;
-      liveDebug("кадр декодирован → показываем (на паузе)");
-      withTransition(() => { photoEl.hidden = true; videoEl.hidden = false; });
-      // держим на первом кадре столько же, сколько обычное фото показывается перед переходом —
-      // тут дальше не withTransition, а просто play() того же элемента, скачка нет
+      liveDebug("кадр ролика декодирован");
+      // не режем время показа фото — ждём, пока оно провисит хотя бы 600мс, даже если ролик
+      // был готов раньше
+      const wait = Math.max(0, 600 - (performance.now() - shownAt));
       setTimeout(() => {
         if (photos[index] !== p) return;
-        liveDebug("вызываем play()");
-        videoEl.play().then(syncMediaSession).catch(() => {
-          if (!videoEl.muted) { videoEl.muted = true; suppressAlbumPauseSync = true; videoEl.play().then(syncMediaSession).catch(syncMediaSession); }
-          else syncMediaSession();
-        });
-      }, 600);
+        liveDebug("переключаем фото → видео (на паузе)");
+        withTransition(() => { photoEl.hidden = true; videoEl.hidden = false; });
+        setTimeout(() => {
+          if (photos[index] !== p) return;
+          liveDebug("вызываем play()");
+          videoEl.play().then(syncMediaSession).catch(() => {
+            if (!videoEl.muted) { videoEl.muted = true; suppressAlbumPauseSync = true; videoEl.play().then(syncMediaSession).catch(syncMediaSession); }
+            else syncMediaSession();
+          });
+        }, 600);
+      }, wait);
     }, { once: true });
     videoEl.addEventListener("playing", () => liveDebug("playing: реально пошло движение"), { once: true });
   }).catch(() => liveDebug("ОШИБКА получения файла ролика"));
@@ -680,10 +683,11 @@ function playLive(p) {
 // «кнопку [play-once] убираем» — она дублировала нативную кнопку и свою ленту прокрутки)
 function showMine(p) {
   stageBadge.hidden = !p.live;
-  // живое фото временно показываем как обычное статичное фото — тот же переход и та же
-  // продолжительность, что у всех фото (Грегори, 2026-10-18: «пока не разберёмся в чём дело,
-  // видео в живых фото убери»); ролик (playLive) не запускаем, пока не разберёмся с «передёргиванием»
+  // живое фото: сначала фото показывается ровно как обычное (тот же переход, та же
+  // продолжительность — loadPhoto не трогаем), и только когда оно уже показано (onShown),
+  // следом подключаем ролик через playLive — он сам не торопит переключение (см. playLive)
   if (p.video) loadClip(p, p.photo, "clip");
+  else if (p.live) loadPhoto(p, false, () => playLive(p));
   else loadPhoto(p);
   afterShow(p);
   syncMediaSession();
