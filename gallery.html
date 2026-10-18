@@ -107,6 +107,24 @@
   }
   .info-banner[hidden] { display: none; }
   .info-banner p { margin: 0; }
+  /* временный диагностический счётчик (2026-10-18, см. HTML) — простой текстовый лог поверх
+     кадра, без претензии на красоту, уберём после отладки */
+  .live-debug {
+    position: absolute;
+    left: 8px;
+    bottom: 8px;
+    max-width: calc(100% - 16px);
+    max-height: 40%;
+    overflow-y: auto;
+    padding: 6px 8px;
+    border-radius: 6px;
+    background: rgba(0, 0, 0, 0.75);
+    color: #7f7;
+    font: 11px/1.4 monospace;
+    white-space: pre;
+    z-index: 5;
+  }
+  .live-debug[hidden] { display: none; }
   .info-banner p + p { margin-top: 4px; }
 
   /* нативная лента прокрутки видео — свой урезанный вариант (.scrub, без времени и звука)
@@ -336,6 +354,9 @@
   <div class="stage">
     <img class="photo" alt="">
     <video class="photo" playsinline hidden></video>
+    <!-- временный диагностический счётчик живого фото (2026-10-18) — уберём, когда разберёмся
+         с «передёргиванием»; показывает реальные тайминги у Грегори, а не в моих тестах -->
+    <div class="live-debug" hidden></div>
     <div class="bar">
       <button class="tour-toggle" hidden>Экскурсия</button>
       <button class="tour-toggle play-toggle" title="Слайд-шоу: смена каждые 5 с">▶</button>
@@ -524,6 +545,18 @@ function stopLive() {
     photoEl.hidden = false;
   }
   videoEl.dataset.mode = "";
+  liveDebugEl.hidden = true;
+}
+
+// временный диагностический лог живого фото (2026-10-18) — показывает реальные тайминги у
+// Грегори на экране, а не только в моих тестах; уберём, когда разберёмся с «передёргиванием»
+const liveDebugEl = $(".live-debug");
+let liveDebugT0 = 0;
+function liveDebugReset() { liveDebugT0 = performance.now(); liveDebugEl.textContent = ""; liveDebugEl.hidden = false; }
+function liveDebug(msg) {
+  liveDebugEl.hidden = false;
+  liveDebugEl.textContent += `${Math.round(performance.now() - liveDebugT0)}мс: ${msg}\n`;
+  liveDebugEl.scrollTop = liveDebugEl.scrollHeight;
 }
 
 // текущий кадр на экране остаётся видимым, пока грузится новый (фото или ролик) — ни фото, ни
@@ -610,8 +643,11 @@ function loadClip(p, fileId, mode) {
 // в начале» — то есть не отдельная картинка, а тот же ролик, просто ещё не запущенный). Переход
 // (withTransition) остаётся только один раз — на входе, со старого кадра на этот же <video>
 function playLive(p) {
+  liveDebugReset();
+  liveDebug("старт: просим файл ролика");
   host()?.myGalleryFull(p.live).then((url) => {
     if (photos[index] !== p) return;
+    liveDebug("файл получен, ставим src");
     videoEl.dataset.mode = "live";
     videoEl.controls = true;
     videoEl.loop = false;
@@ -621,18 +657,21 @@ function playLive(p) {
     suppressAlbumPauseSync = true;
     videoEl.addEventListener("loadeddata", () => {
       if (photos[index] !== p) return;
+      liveDebug("кадр декодирован → показываем (на паузе)");
       withTransition(() => { photoEl.hidden = true; videoEl.hidden = false; });
       // держим на первом кадре столько же, сколько обычное фото показывается перед переходом —
       // тут дальше не withTransition, а просто play() того же элемента, скачка нет
       setTimeout(() => {
         if (photos[index] !== p) return;
+        liveDebug("вызываем play()");
         videoEl.play().then(syncMediaSession).catch(() => {
           if (!videoEl.muted) { videoEl.muted = true; suppressAlbumPauseSync = true; videoEl.play().then(syncMediaSession).catch(syncMediaSession); }
           else syncMediaSession();
         });
       }, 600);
     }, { once: true });
-  }).catch(() => {});
+    videoEl.addEventListener("playing", () => liveDebug("playing: реально пошло движение"), { once: true });
+  }).catch(() => liveDebug("ОШИБКА получения файла ролика"));
 }
 
 // свой снимок: обычное фото, отдельный ролик (.MOV без пары) или живое фото — видео/живое фото
@@ -706,7 +745,7 @@ videoEl.addEventListener("ended", () => {
   // следующий кадр); тайминг «сколько показывать статику перед тем, как ехать дальше» считает
   // albumClipEnded в app.js (restingOnPhoto). Обычное видео не трогаем — у него нет своей
   // статичной версии
-  if (videoEl.dataset.mode === "live") loadPhoto(photos[index]);
+  if (videoEl.dataset.mode === "live") { liveDebug("ended → возвращаемся к статичному фото"); loadPhoto(photos[index]); }
   syncMediaSession();
   if (albumId) host()?.albumClipEnded?.();
 });
