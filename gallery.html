@@ -437,6 +437,15 @@ function revealVideoCrossfade() {
   setTimeout(() => {
     photoEl.hidden = true;
     resetFade();
+    // нативная лента controls включается только ПОСЛЕ кроссфейда, а не сразу при показе видео
+    // (Грегори, 2026-10-18: «проблема с двойным началом» — не изменилось после замены View
+    // Transition на обычный opacity-кроссфейд, то есть дело не в самом переходе, а в чём-то общем
+    // для обеих версий — в появлении видео как такового. Controls у Chrome при первом появлении
+    // проигрывают свою анимацию «сейчас играет» независимо от того, когда controls=true был
+    // выставлен в разметке — если это совпадает по времени с нашим кроссфейдом, выглядит как
+    // повторный «переход». Отодвигаем включение controls на момент ПОСЛЕ кроссфейда, чтобы эта
+    // анимация (если она и есть) не накладывалась на наш переход фото → видео)
+    videoEl.controls = true;
   }, 600);
 }
 // сброс инлайн-стилей кроссфейда выше — на случай, если переход прервали (сменили кадр раньше,
@@ -635,7 +644,6 @@ function loadClip(p, fileId, mode) {
   host()?.myGalleryFull(fileId).then((url) => {
     if (photos[index] !== p) return;
     videoEl.dataset.mode = mode;
-    videoEl.controls = true;
     videoEl.loop = false;
     // автозапуск сразу при показе — не нужно ловить мелкую кнопку плей; приглушаем только пока
     // пользователь ещё не включал звук сам (wantsSound выше) — иначе автозапуск без прямого
@@ -658,7 +666,10 @@ function loadClip(p, fileId, mode) {
     // возвращается
     videoEl.addEventListener("playing", () => {
       if (photos[index] !== p) return;
-      revealVideoCrossfade();
+      // ещё немного ждём СКРЫТЫМ после самого "playing" — декодер иногда даёт первые несколько
+      // кадров не по порядку (переупорядочивание B-кадров), это и может выглядеть как «рывок» в
+      // момент появления; на экране этого не видно, пока видео скрыто
+      setTimeout(() => { if (photos[index] === p) revealVideoCrossfade(); }, 200);
     }, { once: true });
     // play() синхронно переводит paused в false ещё ДО реальной попытки запуска — если потом
     // автозапуск всё-таки не удастся (блокировка браузера, ошибка сети и т.п.), promise
@@ -695,7 +706,6 @@ function playLive(p, photoTransition) {
     if (photos[index] !== p) return;
     liveDebug("файл ролика получен, ставим src (скрыт)");
     videoEl.dataset.mode = "live";
-    videoEl.controls = true;
     videoEl.loop = false;
     videoEl.muted = !wantsSound;
     videoEl.currentTime = 0;
@@ -703,9 +713,15 @@ function playLive(p, photoTransition) {
     suppressAlbumPauseSync = true;
     const revealPlaying = () => {
       if (photos[index] !== p) return;
-      liveDebug("playing → переключаем фото → видео (уже играет)");
-      revealVideoCrossfade();
-      syncMediaSession();
+      liveDebug("playing → ждём стабилизации декодера (скрыто)");
+      // та же дополнительная скрытая пауза после "playing", что и у обычного видео (loadClip) —
+      // даём декодеру отыграть возможное переупорядочивание первых кадров, пока это не видно
+      setTimeout(() => {
+        if (photos[index] !== p) return;
+        liveDebug("переключаем фото → видео (уже играет)");
+        revealVideoCrossfade();
+        syncMediaSession();
+      }, 200);
     };
     // ждём не резолв промиса play() (он может сработать ДО того, как декодер реально отдал
     // первый кадр — у крупных роликов это и давало «паузу, потом рывок» сразу после появления
