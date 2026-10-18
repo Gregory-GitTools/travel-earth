@@ -680,8 +680,10 @@ function playLive(p) {
 // «кнопку [play-once] убираем» — она дублировала нативную кнопку и свою ленту прокрутки)
 function showMine(p) {
   stageBadge.hidden = !p.live;
+  // живое фото временно показываем как обычное статичное фото — тот же переход и та же
+  // продолжительность, что у всех фото (Грегори, 2026-10-18: «пока не разберёмся в чём дело,
+  // видео в живых фото убери»); ролик (playLive) не запускаем, пока не разберёмся с «передёргиванием»
   if (p.video) loadClip(p, p.photo, "clip");
-  else if (p.live) playLive(p);
   else loadPhoto(p);
   afterShow(p);
   syncMediaSession();
