@@ -639,13 +639,21 @@ function loadClip(p, fileId, mode) {
 // файл ролика был готов раньше, не срезаем это время (Грегори, 2026-10-18: «аккуратно с учетом
 // задержки на покоз фото добавляем видео. Не режем время показа фото»). Дальше один переход
 // фото → видео (на паузе на первом кадре), пауза-хват и play() тем же элементом
+// алгоритм переписан с нуля (Грегори, 2026-10-18: «собери алгоритм заново, есть ошибка»):
+// предыдущая версия показывала ролик НА ПАУЗЕ (первый кадр) до запуска play() — нативные
+// элементы управления в такой момент рисуют крупную кнопку-треугольник в круге поверх кадра,
+// и её появление/исчезание и давало «кружок, потом отскок». Поэтому теперь видео вообще не
+// показываем на паузе: оно грузится и буферизуется скрытым, play() вызывается ДО переключения
+// кадра, и только когда ролик реально пошёл (play() выполнился) — один переход фото → видео,
+// уже играющее. Фото при этом не теряет время показа: ждём либо готовности ролика, либо 600мс
+// (как обычный переход), смотря что дольше
 function playLive(p) {
   const shownAt = performance.now();
   liveDebugReset();
   liveDebug("фото показано → просим файл ролика");
   host()?.myGalleryFull(p.live).then((url) => {
     if (photos[index] !== p) return;
-    liveDebug("файл ролика получен, ставим src");
+    liveDebug("файл ролика получен, ставим src (скрыт)");
     videoEl.dataset.mode = "live";
     videoEl.controls = true;
     videoEl.loop = false;
@@ -653,27 +661,31 @@ function playLive(p) {
     videoEl.currentTime = 0;
     videoEl.src = url;
     suppressAlbumPauseSync = true;
-    videoEl.addEventListener("loadeddata", () => {
+    const revealPlaying = () => {
       if (photos[index] !== p) return;
-      liveDebug("кадр ролика декодирован");
+      liveDebug("play() пошёл → переключаем фото → видео (уже играет)");
+      withTransition(() => { photoEl.hidden = true; videoEl.hidden = false; });
+      syncMediaSession();
+    };
+    const startPlayback = () => {
+      if (photos[index] !== p) return;
+      liveDebug("ролик буферизован, вызываем play() (пока скрыт)");
+      videoEl.play().then(revealPlaying).catch(() => {
+        if (!videoEl.muted) {
+          videoEl.muted = true;
+          suppressAlbumPauseSync = true;
+          videoEl.play().then(revealPlaying).catch(syncMediaSession);
+        } else syncMediaSession();
+      });
+    };
+    videoEl.addEventListener("canplaythrough", () => {
+      if (photos[index] !== p) return;
+      liveDebug("ролик готов проиграть без подгрузки");
       // не режем время показа фото — ждём, пока оно провисит хотя бы 600мс, даже если ролик
       // был готов раньше
       const wait = Math.max(0, 600 - (performance.now() - shownAt));
-      setTimeout(() => {
-        if (photos[index] !== p) return;
-        liveDebug("переключаем фото → видео (на паузе)");
-        withTransition(() => { photoEl.hidden = true; videoEl.hidden = false; });
-        setTimeout(() => {
-          if (photos[index] !== p) return;
-          liveDebug("вызываем play()");
-          videoEl.play().then(syncMediaSession).catch(() => {
-            if (!videoEl.muted) { videoEl.muted = true; suppressAlbumPauseSync = true; videoEl.play().then(syncMediaSession).catch(syncMediaSession); }
-            else syncMediaSession();
-          });
-        }, 600);
-      }, wait);
+      setTimeout(startPlayback, wait);
     }, { once: true });
-    videoEl.addEventListener("playing", () => liveDebug("playing: реально пошло движение"), { once: true });
   }).catch(() => liveDebug("ОШИБКА получения файла ролика"));
 }
 
