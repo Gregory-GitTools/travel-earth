@@ -419,6 +419,32 @@ function withTransition(fn) {
   fn();
   return null;
 }
+// появление видео (ролик/живое фото) после фото — НЕ через View Transitions API: тот снимает
+// статичный СКРИНШОТ видео в момент старта перехода, а реальное видео продолжает играть все
+// 0.6с крест-фейда и к его концу убегает далеко вперёд от этого замороженного кадра — в момент
+// завершения перехода картинка «скачет» на актуальный кадр видео. Выглядит как «видео пошло
+// вперёд, потом будто перезапустилось с переходом» (Грегори, 2026-10-18: «проблема с двойным
+// началом»). Вместо снимка крест-фейдим сами живые элементы через CSS opacity — видео все 0.6с
+// рисует реальные текущие кадры напрямую, скачка в конце нет
+function revealVideoCrossfade() {
+  videoEl.hidden = false;
+  videoEl.style.opacity = "0";
+  requestAnimationFrame(() => {
+    videoEl.style.transition = photoEl.style.transition = "opacity 0.6s";
+    videoEl.style.opacity = "1";
+    photoEl.style.opacity = "0";
+  });
+  setTimeout(() => {
+    photoEl.hidden = true;
+    resetFade();
+  }, 600);
+}
+// сброс инлайн-стилей кроссфейда выше — на случай, если переход прервали (сменили кадр раньше,
+// чем успел доиграть таймаут) до следующего show()/stopLive(), иначе следующее фото могло бы
+// остаться с opacity:0 от прошлого кроссфейда
+function resetFade() {
+  photoEl.style.opacity = videoEl.style.opacity = photoEl.style.transition = videoEl.style.transition = "";
+}
 
 // крупный снимок: у Commons миниатюры стандартных размеров; оригинал — если он не больше 1920
 const bigUrl = (p) => (p.fullWidth > 1920 && p.thumb ? p.thumb.replace(/\/\d+px-/, "/1920px-") : p.full || p.thumb);
@@ -494,7 +520,7 @@ function show(i) {
   // 2026-10-16: «чёткое фото размывается и показывается в плохом качестве»); теперь перетекание
   // стартует только когда новая картинка реально готова, сразу в полном качестве
   const big = new Image();
-  const apply = (src) => withTransition(() => { photoEl.hidden = false; videoEl.hidden = true; photoEl.src = src; });
+  const apply = (src) => withTransition(() => { photoEl.hidden = false; videoEl.hidden = true; photoEl.src = src; resetFade(); });
   big.onload = () => { if (photos[index] === p) apply(big.src); };
   big.onerror = () => {
     if (photos[index] !== p) return;
@@ -544,6 +570,7 @@ function stopLive() {
     videoEl.removeAttribute("src");
     videoEl.hidden = true;
     photoEl.hidden = false;
+    resetFade();
   }
   videoEl.dataset.mode = "";
   liveDebugEl.hidden = true;
@@ -574,6 +601,7 @@ function loadPhoto(p, instant, onShown) {
       videoEl.dataset.mode = "";
       photoEl.hidden = false;
       photoEl.src = url;
+      resetFade();
     };
     // живое фото доигрывает само и возвращается сюда (videoEl "ended" ниже) часто и быстро
     // подряд — крест-фейд в ещё не готовую картинку (без предзагрузки) накладывал переходы друг
@@ -630,7 +658,7 @@ function loadClip(p, fileId, mode) {
     // возвращается
     videoEl.addEventListener("playing", () => {
       if (photos[index] !== p) return;
-      withTransition(() => { photoEl.hidden = true; videoEl.hidden = false; });
+      revealVideoCrossfade();
     }, { once: true });
     // play() синхронно переводит paused в false ещё ДО реальной попытки запуска — если потом
     // автозапуск всё-таки не удастся (блокировка браузера, ошибка сети и т.п.), promise
@@ -676,7 +704,7 @@ function playLive(p, photoTransition) {
     const revealPlaying = () => {
       if (photos[index] !== p) return;
       liveDebug("playing → переключаем фото → видео (уже играет)");
-      withTransition(() => { photoEl.hidden = true; videoEl.hidden = false; });
+      revealVideoCrossfade();
       syncMediaSession();
     };
     // ждём не резолв промиса play() (он может сработать ДО того, как декодер реально отдал
