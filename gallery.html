@@ -742,10 +742,12 @@ videoEl.addEventListener("pause", syncMediaSession);
 // остальной площади кадра) не доходит всплытием до .stage (там общий переключатель паузы
 // слайдшоу, см. ниже) — так что слайдшоу не узнавало о ручной паузе и преспокойно уезжало на
 // следующий кадр, будто ролик никто не трогал (Грегори, 2026-10-17: «кнопка проигрывателя видео
-// ведёт себя по-разному» при клике на плей альбома и клик на видео/фото). Подстраиваем paused
-// альбома под реальное paused видео при каждом play/pause, кроме тех, что сделали мы сами
-// (suppressAlbumPauseSync выше) — сверяем через albumPlayState(), а не слепо зовём
-// albumPlayPause() (она лишь переключает, а не выставляет конкретное значение)
+// ведёт себя по-разному» при клике на плей альбома и клик на видео/фото). Ручная пауза видео
+// ставит на паузу и слайдшоу — но НЕ наоборот: нативная кнопка плей на видео/живом фото должна
+// только разово проиграть сам ролик, а не запускать/возобновлять слайдшоу альбома (Грегори,
+// 2026-10-19: «плай видео не запускает альбом, а только разово проигрывает видео или живое
+// фото»). Сверяем через albumPlayState(), а не слепо зовём albumPlayPause() (она лишь переключает,
+// а не выставляет конкретное значение)
 function syncAlbumPauseFromVideo() {
   if (suppressAlbumPauseSync) { suppressAlbumPauseSync = false; return; }
   // доигрывание ролика до конца тоже даёт событие "pause" (проверено: videoEl.ended уже true в
@@ -755,8 +757,9 @@ function syncAlbumPauseFromVideo() {
   // такта дальше
   if (videoEl.ended) return;
   if (!albumId) return;
+  if (!videoEl.paused) return;
   const st = host()?.albumPlayState?.();
-  if (st && st.albumId === albumId && st.paused !== videoEl.paused) { host()?.albumPlayPause?.(); syncPlayer(); }
+  if (st && st.albumId === albumId && !st.paused) { host()?.albumPlayPause?.(); syncPlayer(); }
 }
 videoEl.addEventListener("play", syncAlbumPauseFromVideo);
 videoEl.addEventListener("pause", syncAlbumPauseFromVideo);
