@@ -601,7 +601,7 @@ function liveDebug(msg) {
 // и пока файл читался, стоял пустой <img> — Edge на пустом/битом <img> показывает свою иконку
 // поиска по картинке, «постоянно висящую» в углу (Грегори, 2026-10-16: «постоянно висит значок
 // поиска в верхнем углу»; «чёткое фото размывается и показывается в плохом качестве»)
-function loadPhoto(p, instant, onShown) {
+function loadPhoto(p, instant) {
   host()?.myGalleryFull(p.photo).then((url) => {
     if (photos[index] !== p) return;
     const apply = () => {
@@ -616,19 +616,14 @@ function loadPhoto(p, instant, onShown) {
     // подряд — крест-фейд в ещё не готовую картинку (без предзагрузки) накладывал переходы друг
     // на друга и давал «гонки» и постоянную иконку загрузки (Грегори, 2026-10-16: «живые фото
     // начинаются гонки... причина тоже в переходе»); для этого случая переход пропускаем
-    if (instant) { apply(); onShown?.(null); return; }
+    if (instant) { apply(); return; }
     // обычная смена фото — переход оставляем (Грегори, 2026-10-17: «я не просил убрать
     // анимацию»), но предзагружаем картинку заранее, как show() делает для чужих (Commons)
     // фото — иначе та же беда с крест-фейдом в неготовую картинку
     const img = new Image();
     img.onload = img.onerror = () => {
       if (photos[index] !== p) return;
-      // withTransition(apply) — ОТДЕЛЬНОЙ строкой, не аргументом onShown?.(...): если onShown не
-      // передан (обычное фото без live/video), «?.» схлопывает ВЕСЬ вызов вместе с аргументом —
-      // withTransition(apply) тогда вообще не вычисляется, и фото остаётся чёрным экраном
-      // (Грегори, 2026-10-18: «при клике на фото картинка не меняется»)
       withTransition(apply);
-      onShown?.();
     };
     img.src = url;
   }).catch(() => {});
@@ -680,25 +675,62 @@ function loadClip(p, fileId, mode) {
     });
   }).catch(() => {});
 }
-// живое фото: сначала фото показывается полностью как обычное (loadPhoto, тот же переход,
-// та же продолжительность — вызывается из showMine через onShown), и только когда оно уже
-// провисело минимум 0.6с (не срезаем время показа фото), запускаем ролик ровно так же, как
-// обычное видео (loadClip) — без своей отдельной логики ожидания canplaythrough/play()-промиса.
-// Четыре попытки починить «передёргивание туда-сюда» в начале ролика (controls, задержка на
-// стабилизацию декодера, крест-фейд вместо View Transition, ожидание события "playing" вместо
-// промиса play()) при сохранении этой отдельной логики не помогли; у обычного видео (loadClip)
-// такого бага не было никогда — поэтому (Грегори, 2026-10-18: «может его читать как простое
-// видео?») живое фото теперь просто откладывает старт loadClip на недостающее до 600мс время и
-// дальше ничем не отличается от обычного видео
+// живое фото: БЕЗ отдельной Apple-картинки (p.photo) вообще — Грегори, 2026-10-19: «нам совсем
+// не нужно фото у живого фото. Мы просто берём стоп-кадр начала видео и держим его соразмерно
+// выдержке фото, и дальше отпускаем до конца». Раньше показывали отдельное превью-фото от Apple
+// перед запуском ролика, а оно оказывается кадром из СЕРЕДИНЫ ролика, а не его началом — переход
+// фото → видео (которое всегда стартует с currentTime=0) визуально скакал в более ранний момент
+// и затем проигрывал его снова, вот и было «передёргивание туда-сюда» (Грегори, 2026-10-19:
+// «первый кадр соответствует привью живого фото, и это не начало и не конец»). Пять прошлых
+// попыток чинили только тайминг/способ появления видео и не могли на это повлиять. Теперь вместо
+// Apple-превью сами снимаем кадр НАЧАЛА этого же ролика (скрытый <video> + canvas) и показываем
+// его как обычное фото — раз это и есть настоящий первый кадр ролика, дальнейший запуск loadClip()
+// с того же файла совпадает с ним без зазора
 function playLive(p) {
-  const shownAt = performance.now();
   liveDebugReset();
-  liveDebug("фото показано → ждём минимальное время показа, затем грузим ролик как обычное видео");
-  setTimeout(() => {
+  liveDebug("снимаем стоп-кадр начала ролика");
+  host()?.myGalleryFull(p.live).then((url) => {
     if (photos[index] !== p) return;
-    liveDebug("минимальное время вышло → loadClip");
-    loadClip(p, p.live, "live");
-  }, Math.max(0, 600 - (performance.now() - shownAt)));
+    const grab = document.createElement("video");
+    grab.muted = true;
+    grab.playsInline = true;
+    grab.preload = "auto";
+    grab.style.cssText = "position:fixed;width:1px;height:1px;opacity:0;pointer-events:none;";
+    document.body.appendChild(grab);
+    const cleanupGrab = () => { grab.removeAttribute("src"); grab.load(); grab.remove(); };
+    const fallbackToClip = () => { cleanupGrab(); if (photos[index] === p) loadClip(p, p.live, "live"); };
+    grab.addEventListener("loadeddata", () => {
+      if (photos[index] !== p) { cleanupGrab(); return; }
+      try {
+        const canvas = document.createElement("canvas");
+        canvas.width = grab.videoWidth;
+        canvas.height = grab.videoHeight;
+        canvas.getContext("2d").drawImage(grab, 0, 0);
+        const frameUrl = canvas.toDataURL("image/jpeg", 0.92);
+        cleanupGrab();
+        liveDebug("стоп-кадр снят → показываем как фото");
+        withTransition(() => {
+          videoEl.hidden = true;
+          videoEl.removeAttribute("src");
+          videoEl.dataset.mode = "";
+          photoEl.hidden = false;
+          photoEl.src = frameUrl;
+          resetFade();
+        });
+        setTimeout(() => {
+          if (photos[index] !== p) return;
+          liveDebug("выдержка стоп-кадра вышла → отпускаем ролик (loadClip)");
+          loadClip(p, p.live, "live");
+        }, 600);
+      } catch {
+        // холст «подпорчен» (ролик пришёл без CORS) — редкий случай, просто отпускаем ролик как
+        // обычное видео без стоп-кадра, вместо падения всей функции
+        fallbackToClip();
+      }
+    }, { once: true });
+    grab.addEventListener("error", fallbackToClip, { once: true });
+    grab.src = url;
+  }).catch(() => liveDebug("ОШИБКА получения файла ролика"));
 }
 
 // свой снимок: обычное фото, отдельный ролик (.MOV без пары) или живое фото — видео/живое фото
@@ -707,11 +739,10 @@ function playLive(p) {
 // «кнопку [play-once] убираем» — она дублировала нативную кнопку и свою ленту прокрутки)
 function showMine(p) {
   stageBadge.hidden = !p.live;
-  // живое фото: сначала фото показывается ровно как обычное (тот же переход, та же
-  // продолжительность — loadPhoto не трогаем), и только когда оно уже показано (onShown),
-  // следом подключаем ролик через playLive — он сам не торопит переключение (см. playLive)
+  // живое фото: playLive сам снимает стоп-кадр начала ролика и показывает его как фото —
+  // отдельная Apple-картинка (p.photo) для живых фото больше не используется (см. playLive)
   if (p.video) loadClip(p, p.photo, "clip");
-  else if (p.live) loadPhoto(p, false, () => playLive(p));
+  else if (p.live) playLive(p);
   else loadPhoto(p);
   afterShow(p);
   syncMediaSession();
