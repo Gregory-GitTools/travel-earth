@@ -412,6 +412,14 @@ videoEl.addEventListener("volumechange", () => { wantsSound = !videoEl.muted; })
 // нажал на нативную кнопку плей/пауза видео» — выставляется в true прямо перед каждым таким
 // вызовом, а гасится самим обработчиком play/pause ниже при первом срабатывании после него
 let suppressAlbumPauseSync = false;
+// выдержка стоп-кадра у живого фото (playLive) — нажатие паузы альбома во время самой выдержки
+// (пока видео ещё скрыто) раньше никак не учитывалось: обработчик "galleryPause" ниже трогает
+// только УЖЕ видимое videoEl, а отложенный переход на loadClip всё равно срабатывал по таймеру
+// (Грегори, 2026-10-20: «плай на видео через раз... срабатывает плай альбома» — нажатие паузы
+// в момент выдержки стоп-кадра молча игнорировалось). liveHoldRelease — отложенная функция
+// «отпустить» ролик, ждёт либо таймера (600мс), либо возобновления альбома
+let liveHoldTimer = null;
+let liveHoldRelease = null;
 // перетекание между кадрами — View Transitions API сам крест-фейдит документ до/после fn();
 // без него (старые браузеры) — просто мгновенная смена, без анимации
 function withTransition(fn) {
@@ -573,6 +581,9 @@ function afterShow(p) {
 // играющий ролик от прошлого своего снимка в ленте (Грегори, 2026-10-14: «просмотр видео
 // форматов, iPhone .MOV. Живых фото»)
 function stopLive() {
+  clearTimeout(liveHoldTimer);
+  liveHoldTimer = null;
+  liveHoldRelease = null;
   if (videoEl.dataset.mode) {
     suppressAlbumPauseSync = true;
     videoEl.pause();
@@ -687,6 +698,9 @@ function loadClip(p, fileId, mode) {
 // его как обычное фото — раз это и есть настоящий первый кадр ролика, дальнейший запуск loadClip()
 // с того же файла совпадает с ним без зазора
 function playLive(p) {
+  clearTimeout(liveHoldTimer);
+  liveHoldTimer = null;
+  liveHoldRelease = null;
   liveDebugReset();
   liveDebug("снимаем стоп-кадр начала ролика");
   host()?.myGalleryFull(p.live).then((url) => {
@@ -717,11 +731,22 @@ function playLive(p) {
           photoEl.src = frameUrl;
           resetFade();
         });
-        setTimeout(() => {
+        liveHoldRelease = () => {
+          liveHoldTimer = null;
+          liveHoldRelease = null;
           if (photos[index] !== p) return;
           liveDebug("выдержка стоп-кадра вышла → отпускаем ролик (loadClip)");
           loadClip(p, p.live, "live");
-        }, 600);
+        };
+        // альбом уже на паузе в момент выдержки (успели нажать паузу раньше) — не ставим
+        // таймер вообще, ждём возобновления (galleryPause:false обработчик ниже дёрнет
+        // liveHoldRelease сам)
+        const albumPausedNow = albumId && host()?.albumPlayState?.();
+        if (albumPausedNow && albumPausedNow.albumId === albumId && albumPausedNow.paused) {
+          liveDebug("альбом на паузе → ждём возобновления перед запуском ролика");
+        } else {
+          liveHoldTimer = setTimeout(liveHoldRelease, 600);
+        }
       } catch {
         // холст «подпорчен» (ролик пришёл без CORS) — редкий случай, просто отпускаем ролик как
         // обычное видео без стоп-кадра, вместо падения всей функции
@@ -882,6 +907,10 @@ addEventListener("message", (e) => {
     // плей/пауза нажали в панели альбома главного окна — ролик на экране ставим на паузу/
     // продолжаем вместе со слайдшоу (Грегори: «при нажатии на плей крутить слайдшоу с этого
     // места дальше»); обычное фото просто ждёт своей очереди — там нечего ставить на паузу
+    // живое фото ещё держит стоп-кадр (videoEl скрыт) — пауза/возобновление тогда применяются
+    // к самой выдержке, а не к видео (которого пока не видно)
+    if (e.data.galleryPause && liveHoldTimer) { clearTimeout(liveHoldTimer); liveHoldTimer = null; }
+    else if (!e.data.galleryPause && liveHoldRelease) liveHoldRelease();
     if (!videoEl.hidden) {
       suppressAlbumPauseSync = true;
       if (e.data.galleryPause) videoEl.pause(); else videoEl.play().then(syncMediaSession).catch(syncMediaSession);
