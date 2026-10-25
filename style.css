@@ -908,7 +908,8 @@ span.tour-flag {
    .lang-menu выше — профили магазинов там длиннее названий языков) */
 .shop-menu {
   position: fixed;
-  left: auto; /* прижато к правому краю чипа — right ставит app.js */
+  right: auto; /* прижато к левому краю чипа — left ставит app.js (Грегори: чип «Магазины» у
+    левого края экрана, открытие вправо вместо влево не даёт меню уйти за край) */
   width: 190px;
   z-index: 11;
 }
@@ -1043,19 +1044,6 @@ span.tour-flag {
 
 .category-chips > * {
   pointer-events: auto;
-}
-
-/* телефон: обе колонки .menu-panel вместе шире узкого экрана — левая («Места», включая
-   «Магазины») уходила за левый край, потому что панель растёт влево от right:0 без ограничения
-   (Грегори, 2026-10-25, скрин: «лента карт на телефоне уходит за край экрана», «список магазинов
-   тоже на половину скрыт» — тот же чип «Магазины» у левого края тянул за собой и своё выпадающее
-   меню профилей, см. toggleShopMenu в app.js) */
-@media (max-width: 600px) {
-  .menu-panel {
-    left: 10px;
-    max-width: calc(100vw - 20px);
-    overflow-x: auto;
-  }
 }
 
 .chip {
@@ -2421,6 +2409,26 @@ body.has-photo-strip .map-status {
   font-weight: 500;
   line-height: 1.2;
   text-align: center;
+}
+
+/* телефон: ряд из 6 плиток (76/72 px) шире узкого экрана — первая плитка уходила за левый край
+   (Грегори, 2026-10-25: «карты сделай просто уже») — те же плитки, просто мельче */
+@media (max-width: 600px) {
+  .basemap-switcher {
+    gap: 5px;
+  }
+
+  .basemap-main,
+  .basemap-item {
+    width: 50px;
+    height: 50px;
+  }
+
+  .basemap-main .basemap-label,
+  .basemap-item .basemap-label {
+    padding: 6px 2px 2px;
+    font-size: 0.58rem;
+  }
 }
 
 /* кнопка "моё местоположение": выключено — пустой центр, слежу, но карта сдвинута —

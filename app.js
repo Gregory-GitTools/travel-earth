@@ -5744,7 +5744,9 @@ function toggleShopMenu(chip) {
   const menu = el("shop-menu");
   if (!menu.hidden) { menu.hidden = true; return; }
   const rect = chip.getBoundingClientRect();
-  menu.style.right = `${window.innerWidth - rect.right}px`;
+  // от левого края чипа вправо (не от правого влево) — чип «Магазины» стоит у левого края
+  // экрана, открытие влево уводило меню за край (Грегори, 2026-10-25)
+  menu.style.left = `${rect.left}px`;
   menu.style.top = `${rect.bottom + 6}px`;
   menu.replaceChildren(...SHOPS.subcategories.map((s) => {
     const item = document.createElement("button");
