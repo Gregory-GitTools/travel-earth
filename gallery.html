@@ -807,6 +807,14 @@ videoEl.addEventListener("pause", syncMediaSession);
 // 2026-10-19: «плай видео не запускает альбом, а только разово проигрывает видео или живое
 // фото»). Сверяем через albumPlayState(), а не слепо зовём albumPlayPause() (она лишь переключает,
 // а не выставляет конкретное значение)
+// перетаскивание нативной полосы прокрутки видео тоже на мгновение ставит ролик на паузу (так
+// устроены сами controls — пауза на время скрабинга, затем автовозобновление), а не только
+// настоящая ручная пауза — раньше оба случая считались ручной паузой и гасили весь альбом
+// (Грегори, 2026-10-25: «не выключай альбом при клике на ленту видео, если просто подвинуть видео,
+// то пусть альбом идёт дальше»). Отличить их по самому событию "pause" нельзя — ждём немного:
+// если видео само возобновилось (значит, это был скрабинг) — отменяем; не возобновилось за это
+// время — это настоящая ручная пауза
+let pauseDebounce = null;
 function syncAlbumPauseFromVideo() {
   if (suppressAlbumPauseSync) { suppressAlbumPauseSync = false; return; }
   // доигрывание ролика до конца тоже даёт событие "pause" (проверено: videoEl.ended уже true в
@@ -816,9 +824,14 @@ function syncAlbumPauseFromVideo() {
   // такта дальше
   if (videoEl.ended) return;
   if (!albumId) return;
-  if (!videoEl.paused) return;
-  const st = host()?.albumPlayState?.();
-  if (st && st.albumId === albumId && !st.paused) { host()?.albumPlayPause?.(); syncPlayer(); }
+  if (!videoEl.paused) { clearTimeout(pauseDebounce); pauseDebounce = null; return; }
+  clearTimeout(pauseDebounce);
+  pauseDebounce = setTimeout(() => {
+    pauseDebounce = null;
+    if (videoEl.ended || !videoEl.paused) return;
+    const st = host()?.albumPlayState?.();
+    if (st && st.albumId === albumId && !st.paused) { host()?.albumPlayPause?.(); syncPlayer(); }
+  }, 300);
 }
 videoEl.addEventListener("play", syncAlbumPauseFromVideo);
 videoEl.addEventListener("pause", syncAlbumPauseFromVideo);
