@@ -1621,6 +1621,10 @@ html:not(.is-mobile) .phone-only {
   background: transparent;
   color: #5f6368;
   cursor: pointer;
+  /* на узкой шапке (телефон) flex мог сжимать кнопку ниже 28px — тонкая SVG-стрелка (FOLD_ICON)
+     обрезалась по краям и превращалась в нечитаемое пятно, хотя на компьютере места хватало
+     (Грегори, 2026-10-25: «на компьютере все ок», со скриншотами мобильной и настольной версий) */
+  flex-shrink: 0;
 }
 
 .tour-edit:hover {
@@ -1684,6 +1688,8 @@ html:not(.is-mobile) .phone-only {
   align-items: center;
   gap: 2px;
   color: var(--player-blue-dark);
+  /* та же причина, что у .tour-edit/.tour-close — кластер плеера не должен сжиматься в узкой шапке */
+  flex-shrink: 0;
 }
 
 .tour-player .tour-edit:disabled {
@@ -1866,6 +1872,8 @@ html:not(.is-mobile) .phone-only {
   background: transparent;
   color: #5f6368;
   cursor: pointer;
+  /* та же причина, что у .tour-edit выше — не даём шапке сжимать крестик на узком экране */
+  flex-shrink: 0;
 }
 
 .tour-close:hover {
