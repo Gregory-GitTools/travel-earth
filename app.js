@@ -40,7 +40,6 @@ const BASEMAPS = [
   { id: "satellite", name: "Спутник", hint: "Вид из космоса — спутниковые снимки Esri с подписями и границами", style: buildSatelliteStyle },
   { id: "liberty", name: "Яркая", hint: "OpenFreeMap Liberty", style: "https://tiles.openfreemap.org/styles/liberty" },
   { id: "bright", name: "Контрастная", hint: "OpenFreeMap Bright", style: "https://tiles.openfreemap.org/styles/bright" },
-  { id: "positron", name: "Светлая", hint: "CARTO Positron", style: "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json" },
   { id: "voyager", name: "Пастельная", hint: "CARTO Voyager", style: "https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json" },
   { id: "dark", name: "Тёмная", hint: "CARTO Dark Matter", style: "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json" },
 ];
@@ -5465,12 +5464,16 @@ function toggleOverlay(id) {
   } else {
     activeOverlays.add(id);
     addOverlay(id);
-    // «Мои фото» задуманы для показа вместе с экскурсиями — включаем их заодно, если выключены
-    // (Грегори, 2026-10-10 продолжение: «при нажатии на экскурсии... всегда активизировать Мои
-    // фото, они для этого сделаны»); однонаправленно — выключение экскурсий своих фото не трогает
-    if (id === "tours" && !activeOverlays.has("myphotos")) {
-      activeOverlays.add("myphotos");
-      addOverlay("myphotos");
+    // «Мои фото» и общая лента Commons задуманы для показа вместе с экскурсиями — включаем их
+    // заодно, если выключены (Грегори, 2026-10-10 продолжение: «при нажатии на экскурсии...
+    // всегда активизировать Мои фото, они для этого сделаны»; 2026-10-25: «в экскурсиях пропала
+    // лента с фотографиями. Договаривались при запуске экскурсий включать слой фотографий» —
+    // та же договорённость, только про «Фото», не только «Мои фото»); однонаправленно —
+    // выключение экскурсий сами слои фото не трогает
+    if (id === "tours") {
+      for (const extra of ["myphotos", "photos"]) {
+        if (!activeOverlays.has(extra)) { activeOverlays.add(extra); addOverlay(extra); }
+      }
     }
   }
   localStorage.setItem(OVERLAYS_STORAGE_KEY, JSON.stringify([...activeOverlays]));
