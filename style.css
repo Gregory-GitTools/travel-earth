@@ -34,12 +34,24 @@
   --accent: #4da3ff;
   --text: #e8e8ec;
   --muted: #9a9aa5;
+  /* единые кривые анимации интерфейса (ревизия по аудиту анимаций, Грегори, 2026-10-25) —
+     вход/выход панелей и кнопок против готовых CSS-кривых, которые слишком слабые */
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
   font-family: "Poppins", system-ui, "Segoe UI", sans-serif;
 }
 
 * { box-sizing: border-box; }
 
 [hidden] { display: none !important; }
+
+/* нажатие — лёгкая отдача на всех кнопках, у которых её не было вовсе (ревизия по аудиту
+   анимаций, Грегори, 2026-10-25); .tour-fold исключена — у неё transform занят поворотом
+   шеврона (см. Finding #7), а не нажатием */
+button:not(.tour-fold):active {
+  transform: scale(0.97);
+  transition: transform 160ms var(--ease-out);
+}
 
 html, body {
   height: 100%;
@@ -273,6 +285,26 @@ html, body {
   background: var(--light-panel);
   border-radius: 12px;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+}
+
+/* раскрывается из-под строки поиска — якорь сверху, а не из центра (та же логика [hidden], что
+   у .modal — см. openWithFade/closeWithFade в app.js). Только само поле геопоиска (#search-results
+   по id, не по классу): «Экскурсии»/«Мои альбомы» (#tour-list/#albums-list) делят с ним класс
+   .search-results только ради общих размеров/позиции, но открываются через hidden, а не через
+   .open — под общим классом они оставались насовсем opacity:0, и кнопки их не показывали вовсе
+   (Грегори: «панели экскурсии и альбомы при нажатии кнопки не видны») */
+#search-results {
+  transform-origin: top;
+  opacity: 0;
+  transform: scale(0.96);
+  transition: opacity 180ms var(--ease-out), transform 180ms var(--ease-out);
+  pointer-events: none;
+}
+
+#search-results.open {
+  opacity: 1;
+  transform: scale(1);
+  pointer-events: auto;
 }
 
 /* поиск экскурсий — под строкой поиска, той же формы (видно со слоем «Экскурсии») */
@@ -561,9 +593,14 @@ span.tour-flag {
   opacity: 0.7;
 }
 
-.tour-row-chevron {
+/* три шеврона папок/разделов экскурсии — один общий поворот вместо трёх почти одинаковых
+   правил (ревизия по аудиту анимаций: Finding #7); явный --ease-in-out вместо подразумеваемого
+   ease — шеврон поворачивается на месте, а не входит/выходит */
+.tour-row-chevron,
+.tour-fold,
+.tour-block-chevron {
   display: inline-grid;
-  transition: transform 0.15s;
+  transition: transform 150ms var(--ease-in-out);
 }
 
 .tour-row-chevron.open {
@@ -1162,6 +1199,15 @@ span.tour-flag {
   align-items: center;
   justify-content: center;
   z-index: 50;
+  opacity: 0;
+  transition: opacity 220ms var(--ease-out);
+}
+
+/* [hidden] снимается через JS до начала перехода, а не разом с ним — у [hidden] display:none
+   !important, который обрывал бы transition мгновенно; .open — транзишен, а не кейфреймы,
+   так что повторный клик по ⚙ во время закрытия доигрывает открытие с той же точки */
+.modal.open {
+  opacity: 1;
 }
 
 .modal-content {
@@ -1172,6 +1218,13 @@ span.tour-flag {
   max-width: 480px;
   max-height: 80vh;
   overflow-y: auto;
+  /* центр — корректный transform-origin для модалки (не триггер-якорь, как у попапов) */
+  transform: scale(0.95);
+  transition: transform 220ms var(--ease-out);
+}
+
+.modal.open .modal-content {
+  transform: scale(1);
 }
 
 .modal-content h2 { margin: 0; font-size: 0.9rem; font-weight: 400; }
@@ -1332,14 +1385,25 @@ span.tour-flag {
   margin-bottom: 6px;
 }
 
-.install-section.flash {
-  animation: install-flash 1.6s ease-out 2;
+.install-section {
+  position: relative;
+}
+
+/* подсветка после перехода по ссылке установки — отдельный ::after на opacity вместо анимации
+   background на самой секции (ревизия по аудиту анимаций: Finding #11, Performance) */
+.install-section.flash::after {
+  content: "";
+  position: absolute;
+  inset: 0;
   border-radius: 8px;
+  background: rgba(138, 180, 248, 0.25);
+  animation: install-flash 1.6s ease-out 2 forwards;
+  pointer-events: none;
 }
 
 @keyframes install-flash {
-  from { background: rgba(138, 180, 248, 0.25); }
-  to { background: transparent; }
+  from { opacity: 1; }
+  to { opacity: 0; }
 }
 
 .modal-content a.install-btn {
@@ -1847,7 +1911,6 @@ html:not(.is-mobile) .phone-only {
 
 .tour-fold {
   flex: none;
-  display: inline-grid;
   place-items: center;
   width: 24px;
   height: 24px;
@@ -1858,7 +1921,6 @@ html:not(.is-mobile) .phone-only {
   color: #5f6368;
   cursor: pointer;
   transform: rotate(180deg);
-  transition: transform 0.15s;
 }
 
 .tour-fold:hover {
@@ -2010,9 +2072,7 @@ button.tour-sec-title:hover {
 }
 
 .tour-block-chevron {
-  display: inline-grid;
   transform: rotate(180deg);
-  transition: transform 0.15s;
 }
 
 .shut > .tour-block-head .tour-block-chevron {
@@ -2292,7 +2352,8 @@ body.has-photo-strip .map-status {
 /* :focus-visible, а не :focus-within — иначе после клика мышью фокус остаётся на кнопке
    и ряд не закрывается, пока не кликнешь куда-нибудь ещё */
 .basemap-switcher:hover .basemap-panel,
-.basemap-switcher:has(:focus-visible) .basemap-panel {
+.basemap-switcher:has(:focus-visible) .basemap-panel,
+.basemap-switcher.open .basemap-panel {
   display: flex;
 }
 
@@ -2368,19 +2429,41 @@ body.has-photo-strip .map-status {
   fill: var(--light-accent);
 }
 
-/* я на карте — синяя точка с расходящимся кругом */
+/* я на карте — синяя точка с расходящимся кругом. Кольцо — отдельный ::after на transform/
+   opacity, а не box-shadow на самой точке (ревизия по аудиту анимаций: Finding #10 — box-shadow
+   не композитится GPU, в отличие от transform/opacity); isolation:isolate + z-index:-1 держат
+   кольцо позади точки, иначе оно рисовалось бы поверх неё */
 .geo-dot {
+  position: relative;
+  isolation: isolate;
   width: 16px;
   height: 16px;
   border: 3px solid #fff;
   border-radius: 50%;
   background: var(--light-accent);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+}
+
+.geo-dot::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: 50%;
+  background: rgba(26, 115, 232, 0.5);
   animation: geo-pulse 2s ease-out infinite;
 }
 
+/* тот же расходящийся круг в масштабе: 0 1px 4px + 0 0 0 18px при 16px-точке — конечный
+   диаметр 16+2×18=52px, то есть ×3.25 от исходного */
 @keyframes geo-pulse {
-  from { box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4), 0 0 0 0 rgba(26, 115, 232, 0.5); }
-  to { box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4), 0 0 0 18px rgba(26, 115, 232, 0); }
+  from { transform: scale(1); opacity: 0.5; }
+  to { transform: scale(3.25); opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* сама точка остаётся — это просто декоративное кольцо вокруг неё */
+  .geo-dot::after { animation: none; opacity: 0; }
 }
 
 /* описание из Википедии в попапе — не больше нескольких строк */

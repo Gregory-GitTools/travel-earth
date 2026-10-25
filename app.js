@@ -1,4 +1,20 @@
 const el = (id) => document.getElementById(id);
+// открывает/закрывает элемент с переходом вместо мгновенного [hidden] — у [hidden]
+// display:none !important, который обрывает transition сразу; .open — обычный css transition
+// (интерруптибельный, в отличие от кейфреймов), closeWithFade ждёт его длительность и лишь
+// потом ставит hidden, проверяя, что элемент не открыли заново за это время
+function openWithFade(elem) {
+  elem.hidden = false;
+  // кадр между снятием [hidden] и .open — иначе браузер схлопывает opacity 0→1 в один кадр
+  requestAnimationFrame(() => elem.classList.add("open"));
+}
+function closeWithFade(elem, duration) {
+  if (elem.hidden) return;
+  elem.classList.remove("open");
+  setTimeout(() => {
+    if (!elem.classList.contains("open")) elem.hidden = true;
+  }, duration);
+}
 // Папки с диска — только на компьютере. Chrome на Android с 2025 года тоже умеет
 // showDirectoryPicker, и телефон Грегори спрашивал разрешение на папки экскурсий и фото («запросы
 // продолжаются») — на телефоне они не нужны: всё приходит из репозитория
@@ -285,7 +301,10 @@ renderLanguageMenu();
 
 // Переключатель как в Google Maps: большая плитка внизу слева показывает "другой" вид
 // (на карте — Спутник, на спутнике — последнюю выбранную карту) и переключает на него
-// одним кликом; при наведении справа раскрывается ряд всех вариантов с подписями
+// одним кликом; при наведении справа раскрывается ряд всех вариантов с подписями.
+// На тронутых экранах :hover недостижим, а клик по плитке уже занят прямым переключением —
+// там клик вместо этого раскрывает ряд (как :focus-visible с клавиатуры), а сам свайп
+// остаётся доступен через пункт ряда с текущей картой
 const SATELLITE = BASEMAPS[0];
 let lastMapBasemap = currentBasemap === SATELLITE ? DEFAULT_BASEMAP : currentBasemap;
 
@@ -299,7 +318,9 @@ function fillBasemapTile(tile, b) {
 function renderBasemapSwitcher() {
   const alternative = currentBasemap === SATELLITE ? lastMapBasemap : SATELLITE;
   fillBasemapTile(el("basemap-main"), alternative);
-  el("basemap-main").onclick = () => selectBasemap(alternative);
+  el("basemap-main").onclick = IS_MOBILE
+    ? () => el("basemap-switcher").classList.toggle("open")
+    : () => selectBasemap(alternative);
 
   el("basemap-panel").replaceChildren(...BASEMAPS.map((b) => {
     const item = document.createElement("button");
@@ -310,7 +331,15 @@ function renderBasemapSwitcher() {
   }));
 }
 
+document.addEventListener("click", (evt) => {
+  if (!el("basemap-switcher").contains(evt.target)) el("basemap-switcher").classList.remove("open");
+});
+document.addEventListener("keydown", (evt) => {
+  if (evt.key === "Escape") el("basemap-switcher").classList.remove("open");
+});
+
 function selectBasemap(b) {
+  el("basemap-switcher").classList.remove("open");
   if (b === currentBasemap) return;
   currentBasemap = b;
   if (b !== SATELLITE) lastMapBasemap = b;
@@ -414,6 +443,11 @@ const activeOverlays = new Set(JSON.parse(localStorage.getItem(OVERLAYS_STORAGE_
 // на самом деле ВЫключал уже активный, просто невидимый флаг). delete(), а не просто не класть
 // в дефолт — чистит и то, что уже сохранено в localStorage у самого Грегори с прошлых сессий
 activeOverlays.delete("tours");
+// «Мои альбомы» на карте — наоборот, всегда включены при запуске, даже если в прошлый раз их
+// выключили (Грегори: «всегда на глобусе видны альбомы, как будто нажата кнопка альбомы.
+// Обнуляем при запуске») — та же причина, что у tours выше: .add(), а не только значение по
+// умолчанию, иначе сохранённое выключение из localStorage переживало бы перезапуск
+activeOverlays.add("myphotos");
 
 // шрифт подписей высот — тот же, что у подписей самой карты: у каждого стиля свой
 // сервер шрифтов, и чужого шрифта на нём может не быть
@@ -2192,6 +2226,12 @@ function focusAlbum(albumId) {
 // карте должен открыть альбом в отдельной панели»); chooseAlbum ниже определена, но hoisted
 map.on("click", "ov-my-albums", (evt) => {
   const id = evt.features[0].properties.album;
+  // открытие альбома с карты обходило правило «только одна панель», которое setTourMode/
+  // setAlbumsMode соблюдают при открытии кнопкой — экскурсии оставались на карте и панели
+  // перекрывали друг друга (Грегори: «если альбомы нажаты и нажать экскурсии, то с карты
+  // альбомы не уходят»; тут то же самое, только наоборот и с клика по карте)
+  if (tourMode) setTourMode(false);
+  else if (!tourPanel.hidden) closeTourPanel();
   focusAlbum(id);
   chooseAlbum(id);
 });
@@ -3204,8 +3244,11 @@ document.body.append(tourPanel);
 // галерея ниже, под окном экскурсии»); высота панели меняется — низ передаётся в CSS
 new ResizeObserver(() => {
   const bottom = tourPanel.hidden ? 0 : tourPanel.getBoundingClientRect().bottom;
-  if (bottom) document.documentElement.style.setProperty("--tour-panel-bottom", `${Math.round(bottom)}px`);
-  else document.documentElement.style.removeProperty("--tour-panel-bottom");
+  // на body, а не на documentElement — у .tour-slides, единственного потребителя переменной,
+  // нет более узкого общего предка: оба элемента лежат прямо в body (Finding #12, ревизия по
+  // аудиту анимаций); реального выигрыша тут немного — почти всё в этом приложении и так в body
+  if (bottom) document.body.style.setProperty("--tour-panel-bottom", `${Math.round(bottom)}px`);
+  else document.body.style.removeProperty("--tour-panel-bottom");
 }).observe(tourPanel);
 // «зуммер» списка экскурсий и панели — крупная метка по центру нижнего края вместо родного
 // уголка resize, который не оттащить пальцем и не стилизовать (Грегори, 2026-10-10: «зуммер
@@ -3863,6 +3906,16 @@ function albumHelpButton(albumId) {
     b.classList.add("on");
   });
   return b;
+}
+
+// Картинка-в-картинке у видео в окне галереи (gallery.html, напрямую через window.opener, см.
+// host() там) — пока играет мини-окно PiP, панель альбома в главном окне только лишний экран над
+// картой; прячем её на время и возвращаем как было, без полного закрытия (albumPanelId не
+// трогаем — setAlbumPanelHiddenForPip(id, false) просто отменяет .hidden) (Грегори: «кнопка
+// Картинка в картинке... должна закрывать окно альбома... и открывать при обратном переходе»)
+function setAlbumPanelHiddenForPip(id, hide) {
+  if (albumPanelId !== id) return; // альбом в главном окне уже сменился или панель уже закрыли — PiP не при делах
+  albumPanel.hidden = hide;
 }
 
 function closeAlbumPanel() {
@@ -5295,6 +5348,11 @@ onHover(TOUR_LAYERS, (evt) => {
 map.on("click", TOUR_LAYERS, (evt) => {
   const p = evt.features[0].properties;
   trailPoiPopup?.remove();
+  // то же правило «только одна панель», симметрично предыдущему исключению у клика по альбому
+  // на карте (map.on("click", "ov-my-albums") выше) — открытие экскурсии с карты не закрывало
+  // «Мои альбомы», и обе панели оставались открыты разом
+  if (albumsMode) setAlbumsMode(false);
+  else if (!albumPanel.hidden) closeAlbumPanel();
   if (p.kind === "stop") {
     if (tourPanelId !== p.tour) renderTourPanel(p.tour);
     if (!jumpTourPlay(p.tour, p.n)) selectTourStop(p.tour, p.n);
@@ -6522,7 +6580,7 @@ function showSearchHistory() {
     clearSearchResults();
   });
   el("search-results").replaceChildren(...history.map(historyRow), clear);
-  el("search-results").hidden = false;
+  openWithFade(el("search-results"));
 }
 
 const DRAG_ICON = `<svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M9 5a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3zm6 0a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3zm-6 5.5a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3zm6 0a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3zM9 16a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3zm6 0a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3z"/></svg>`;
@@ -6583,8 +6641,7 @@ function dragHistoryRow(evt, row) {
 
 function clearSearchResults() {
   searchCursor = null;
-  el("search-results").replaceChildren();
-  el("search-results").hidden = true;
+  closeWithFade(el("search-results"), 180);
 }
 
 // подсветка строки, выбранной стрелками вверх/вниз из поля поиска — и для свежих результатов
@@ -6610,7 +6667,7 @@ async function runSearch() {
     params.set("bounded", "0");
   }
   const list = el("search-results");
-  list.hidden = false;
+  openWithFade(list);
   list.innerHTML = `<div class="search-note">Поиск…</div>`;
   try {
     const resp = await fetch(`${NOMINATIM_URL}?${params}`);
@@ -6739,12 +6796,12 @@ el("search-clear-btn").addEventListener("click", () => {
 // ---------- элементы управления справа внизу ----------
 
 function openAboutModal() {
-  el("about-modal").hidden = false;
+  openWithFade(el("about-modal"));
   idb("settings", "readonly", (st) => st.get("dir")).catch(() => null).then((handle) => renderMySettings(handle || myDir));
   idb("settings", "readonly", (st) => st.get("tours")).catch(() => null).then((handle) => renderTourSettings(handle || tourDir));
   renderVoiceSettings();
 }
-function closeAboutModal() { el("about-modal").hidden = true; }
+function closeAboutModal() { closeWithFade(el("about-modal"), 220); }
 
 // шестерёнка — отдельный контрол MapLibre, чтобы встать в тот же столбик в правом нижнем
 // углу, что и кнопки масштаба, над строкой атрибуции (как в Google Maps)
