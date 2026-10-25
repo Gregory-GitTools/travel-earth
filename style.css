@@ -1045,6 +1045,19 @@ span.tour-flag {
   pointer-events: auto;
 }
 
+/* телефон: обе колонки .menu-panel вместе шире узкого экрана — левая («Места», включая
+   «Магазины») уходила за левый край, потому что панель растёт влево от right:0 без ограничения
+   (Грегори, 2026-10-25, скрин: «лента карт на телефоне уходит за край экрана», «список магазинов
+   тоже на половину скрыт» — тот же чип «Магазины» у левого края тянул за собой и своё выпадающее
+   меню профилей, см. toggleShopMenu в app.js) */
+@media (max-width: 600px) {
+  .menu-panel {
+    left: 10px;
+    max-width: calc(100vw - 20px);
+    overflow-x: auto;
+  }
+}
+
 .chip {
   flex-shrink: 0;
   display: inline-flex;
@@ -1114,6 +1127,8 @@ span.tour-flag {
 .chip-split .chip-arrow {
   padding: 0 12px 0 10px;
   border-left: 1px solid rgba(0, 0, 0, 0.15);
+  /* крупнее текста чипа — Грегори: «на кнопке магазины треугольник/стрелка слишком мелкая» */
+  font-size: 1.15rem;
 }
 
 .chip-split.active .chip-arrow {

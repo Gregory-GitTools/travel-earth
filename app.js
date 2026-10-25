@@ -432,8 +432,7 @@ const OVERLAYS = [
     layers: ["ov-rail-tunnel", "ov-rail"] },
 ];
 const OVERLAYS_STORAGE_KEY = "travel-earth.overlays";
-// при первом запуске альбомы из репозитория видны сразу (Грегори: «видны всегда»)
-const activeOverlays = new Set(JSON.parse(localStorage.getItem(OVERLAYS_STORAGE_KEY) || '["myphotos"]'));
+const activeOverlays = new Set(JSON.parse(localStorage.getItem(OVERLAYS_STORAGE_KEY) || "[]"));
 // «Экскурсии» всегда стартуют пассивно — не запоминаются между запусками, только карта (базовый
 // слой) и обычные слои это делают (Грегори, 2026-10-10 продолжение: «давай стартовать в пассивном
 // режиме... активны только карты и слои, в том смысле что они запоминают последнее состояние»);
@@ -443,11 +442,11 @@ const activeOverlays = new Set(JSON.parse(localStorage.getItem(OVERLAYS_STORAGE_
 // на самом деле ВЫключал уже активный, просто невидимый флаг). delete(), а не просто не класть
 // в дефолт — чистит и то, что уже сохранено в localStorage у самого Грегори с прошлых сессий
 activeOverlays.delete("tours");
-// «Мои альбомы» на карте — наоборот, всегда включены при запуске, даже если в прошлый раз их
-// выключили (Грегори: «всегда на глобусе видны альбомы, как будто нажата кнопка альбомы.
-// Обнуляем при запуске») — та же причина, что у tours выше: .add(), а не только значение по
-// умолчанию, иначе сохранённое выключение из localStorage переживало бы перезапуск
-activeOverlays.add("myphotos");
+// «Мои альбомы» на карте — при запуске всегда выключены, та же логика, что у tours выше
+// (Грегори: «значки альбомов не должны быть видны на глобусе после запуска программы») —
+// .delete(), а не просто не класть в дефолт, иначе сохранённое включение из localStorage
+// переживало бы перезапуск
+activeOverlays.delete("myphotos");
 
 // шрифт подписей высот — тот же, что у подписей самой карты: у каждого стиля свой
 // сервер шрифтов, и чужого шрифта на нём может не быть
@@ -1151,7 +1150,9 @@ function openPhotoGallery(f) {
 // перенести в другое место, на другой монитор... так и было» — round 44 здесь пытался привязать
 // размер/позицию к текущему окну браузера, это было ошибкой, откатил)
 function openSideWindow(url, name) {
-  const w = Math.round(screen.availWidth * 0.8), h = Math.round(screen.availHeight * 0.85);
+  // на телефоне — почти во весь экран (Грегори: «границы окна минимальны»); на компьютере —
+  // как раньше, 80/85% экрана по центру
+  const w = Math.round(screen.availWidth * (IS_MOBILE ? 0.98 : 0.8)), h = Math.round(screen.availHeight * (IS_MOBILE ? 0.98 : 0.85));
   const win = window.open(url, name, `popup,width=${w},height=${h},left=${Math.round((screen.availWidth - w) / 2)},top=${Math.round((screen.availHeight - h) / 2)}`);
   win?.focus();
   return win;
@@ -2145,7 +2146,9 @@ async function showMyPhotoFull(id, imgEl) {
 // плей (Грегори, Round 66: «сделай одно окно без кнопки»)
 function openAlbumGallery(albumId, startId) {
   const album = myAlbums.get(albumId);
-  if (!album || !canOpenGallery()) return;
+  // альбом (в отличие от общей фотоленты выше) открывается и на телефоне — Грегори,
+  // 2026-10-25: «по поводу проигрывания альбома на телефоне. Давай сделаем»
+  if (!album || (!canOpenGallery() && !IS_MOBILE)) return;
   const photos = album.files.map((id) => {
     const file = myFiles.get(id);
     return { photo: id, my: true, title: file.name, thumb: file.thumb || myPhotoFeatures.get(id)?.properties.thumb || "",
@@ -3752,7 +3755,8 @@ function albumGalleryShow(i) {
 }
 function startAlbumPlay(albumId, startId) {
   const a = myAlbums.get(albumId);
-  if (!a?.files.length || !canOpenGallery()) return;
+  // та же мобильная оговорка, что в openAlbumGallery выше
+  if (!a?.files.length || (!canOpenGallery() && !IS_MOBILE)) return;
   // продолжить с того кадра, что уже открыт в окне галереи (если оно открыто на этом альбоме),
   // а не начинать заново с первого снимка (Грегори, 2026-10-16: «клик на верхней панели не
   // запускает видео/LIVE, а должен, если хочу продолжить просмотр в режиме слайдшоу» — раньше

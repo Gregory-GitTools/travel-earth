@@ -51,6 +51,9 @@
   .meta { font-size: 0.78rem; color: #aaa; margin-top: 2px; text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9); }
   .meta a { color: #8ab4f8; }
   .count { font-size: 0.85rem; color: #ddd; white-space: nowrap; text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9); }
+  /* на телефоне окно альбома открывается без подписей (Грегори: «убрать все описания —
+     названия альбома и имя файла»); счётчик (.count) остаётся */
+  .is-mobile .title, .is-mobile .meta { display: none; }
 
   .stage { position: relative; min-height: 0; }
   .stage img, .stage video {
@@ -484,6 +487,10 @@ const bigUrl = (p) => (p.fullWidth > 1920 && p.thumb ? p.thumb.replace(/\/\d+px-
 const host = () => {
   try { return [window.opener, window.parent].find((w) => w && w !== window && w.myGalleryThumb) || null; } catch { return null; }
 };
+// телефон — тот же признак, что и в главном окне (host().IS_MOBILE, не свой matchMedia — одна
+// точка правды на всё приложение), класс .is-mobile тем же приёмом, что document.documentElement
+// там же: окно альбома на телефоне (Грегори: «убрать все описания... границы окна минимальны»)
+document.documentElement.classList.toggle("is-mobile", !!host()?.IS_MOBILE);
 const thumbQueue = [];
 let thumbBusy = false;
 // клетка ещё рядом с видимой частью ленты? (пока ждала очереди, ленту могли прокрутить)
@@ -978,6 +985,26 @@ function navTo(i) {
 }
 $(".prev").addEventListener("click", () => navTo(index - 1));
 $(".next").addEventListener("click", () => navTo(index + 1));
+// свайп по фото на телефоне (Грегори: «добавить свайп фотографий вперёд и назад») — только
+// одним пальцем (второй — это жест масштабирования, не навигация) и только когда движение
+// в основном горизонтальное, иначе случайный свайп перебивал бы вертикальный скролл/пинч
+(() => {
+  let x0 = 0, y0 = 0, tracking = false;
+  const stage = $(".stage");
+  stage.addEventListener("touchstart", (e) => {
+    tracking = e.touches.length === 1;
+    if (!tracking) return;
+    x0 = e.touches[0].clientX;
+    y0 = e.touches[0].clientY;
+  }, { passive: true });
+  stage.addEventListener("touchend", (e) => {
+    if (!tracking) return;
+    tracking = false;
+    const t = e.changedTouches[0];
+    const dx = t.clientX - x0, dy = t.clientY - y0;
+    if (Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy) * 1.5) navTo(index + (dx < 0 ? 1 : -1));
+  }, { passive: true });
+})();
 // клик по самому кадру больше не переключает паузу слайдшоу (Грегори, 2026-10-18: «пауза при
 // клике убираем везде... сейчас пауза срабатывает при нажатии на полосе прокрутки видео») —
 // клик по нативной полосе прокрутки видео (часть .stage) всплывал сюда и гасил альбом; кнопки
