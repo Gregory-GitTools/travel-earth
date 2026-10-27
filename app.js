@@ -610,18 +610,41 @@ const TRAIL_POI_OVERPASS_ONLY = ["tower", "lighthouse"];
 const TRAIL_POI_OVERPASS_ONLY_NEAR = ["firepit"];
 const TRAIL_POI_LAYERS = ["ov-trail-poi", "ov-trail-poi-near", "ov-trail-poi-far", "ov-trail-poi-near-far",
   "ov-trail-poi-extra", "ov-trail-poi-extra-near"];
+// щиты, указатели, карты и инфостенды — у части из них в OSM есть тег image (фото щита);
+// такие помечаем на карте обводкой значка, без нового значка и нового слоя (Грегори, 2026-10-28:
+// «не надо целится в новый значек с камерой и нет неоднозначного понимания»), само фото — в
+// подсказке/попапе по наведению или щелчку, как остальные подробности из OSM
+const TRAIL_POI_PHOTO_KINDS = ["info", "guidepost", "board", "map"];
+const TRAIL_POI_PHOTO_RING = "#ff9800";
 const trailPoiCells = new Map(); // "247:594" → true | "loading" | когда можно повторить
 const trailPoiFeatures = new Map(); // "node/123" → feature
 const trailPoiTags = new Map(); // "node/123" или id тайла → теги OSM, для подсказки
+// id тайла (osmId*10+тип, как у loadPoiTags) щитов/указателей с фото — те же точки, что в
+// тайлах с зума 14, обводка на них ставится через icon-image (feature-state в icon-image не
+// поддерживается, поэтому id — простым списком, обновляется при каждой новой находке QLever)
+const trailPoiPhotoTileIds = new Set();
+const OSM_TYPE_SUFFIX = { node: 1, way: 2, relation: 3 };
 let trailPoiQueue = Promise.resolve();
 const trailOverlayActive = () => OVERLAYS.some((o) => o.trails && activeOverlays.has(o.id));
 const trailPoiData = () => ({ type: "FeatureCollection", features: [...trailPoiFeatures.values()] });
 
+// обводка у значков с фото: своя GeoJSON-точка знает hasPhoto сама, а у тайловых (zoom 14+)
+// тегов image нет — вместо этого список их id (trailPoiPhotoTileIds), который пополняется
+// из того же QLever-запроса, что и обычные значки; icon-image перечитывается при пополнении
+const tileIcon = () => ["case", ["in", ["id"], ["literal", [...trailPoiPhotoTileIds]]],
+  ["concat", "trail-poi-", TRAIL_POI_KIND, "-photo"], ["concat", "trail-poi-", TRAIL_POI_KIND]];
+function refreshTrailPoiPhotoIcon() {
+  for (const id of ["ov-trail-poi", "ov-trail-poi-near"]) {
+    if (map.getLayer(id)) map.setLayoutProperty(id, "icon-image", tileIcon());
+  }
+}
+
 function addTrailPoi() {
   if (map.getLayer("ov-trail-poi")) return;
   for (const kind of Object.keys(TRAIL_POI_ICONS)) trailPoiImage(kind);
-  const icon = ["concat", "trail-poi-", ["get", "kind"]];
-  const tileIcon = ["concat", "trail-poi-", TRAIL_POI_KIND];
+  for (const kind of TRAIL_POI_PHOTO_KINDS) trailPoiImage(kind, true);
+  const icon = ["case", ["==", ["get", "hasPhoto"], true],
+    ["concat", "trail-poi-", ["get", "kind"], "-photo"], ["concat", "trail-poi-", ["get", "kind"]]];
   const nearSize = ["interpolate", ["linear"], ["zoom"], 14, 1, 16, 1.2];
   const far = ["literal", TRAIL_POI_FAR_KINDS];
   const tileFilter = ["all", ["in", ["get", "class"], ["literal", TRAIL_POI_CLASSES]], ["!=", ["get", "subclass"], "route_marker"]];
@@ -639,17 +662,26 @@ function addTrailPoi() {
   for (const { id, source = "ov-trail-poi-far", size = nearSize, maxzoom = 24, always = false, ...rest } of layers) {
     map.addLayer({ id, type: "symbol", source, ...(source === "te-poi" && { "source-layer": "poi" }), maxzoom, ...rest,
       // дальних видов немного — не прячем их за табличками троп и подписями карты
-      layout: { "icon-image": source === "te-poi" ? tileIcon : icon, "icon-size": size, "icon-allow-overlap": always } }, firstPoiLayer());
+      layout: { "icon-image": source === "te-poi" ? tileIcon() : icon, "icon-size": size, "icon-allow-overlap": always } }, firstPoiLayer());
   }
 }
 
-function trailPoiImage(kind) {
-  if (map.hasImage(`trail-poi-${kind}`)) return;
+function trailPoiImage(kind, photo = false) {
+  const id = `trail-poi-${kind}${photo ? "-photo" : ""}`;
+  if (map.hasImage(id)) return;
   const { color, path, text, evenodd, white, outline } = TRAIL_POI_ICONS[kind];
   // кант вместо тени — тот же приём, что у цифр и значков экскурсий (Грегори, 2026-10-04);
   // обычно белый, но у пляжа/кайта — красный (поле outline), на светлом фоне моря он заметнее
   const size = 64; // pixelRatio 2: символ 24 px и поле по краям под кант
   const ctx = Object.assign(document.createElement("canvas"), { width: size, height: size }).getContext("2d");
+  // обводка «есть фото щита» — кольцо вокруг обычного значка, тот же значок (Грегори, 2026-10-28)
+  if (photo) {
+    ctx.beginPath();
+    ctx.arc(32, 32, 27, 0, Math.PI * 2);
+    ctx.lineWidth = 4;
+    ctx.strokeStyle = TRAIL_POI_PHOTO_RING;
+    ctx.stroke();
+  }
   ctx.fillStyle = color;
   if (text) {
     ctx.font = "bold 26px Arial, sans-serif";
@@ -673,7 +705,7 @@ function trailPoiImage(kind) {
       ctx.fill(new Path2D(white));
     }
   }
-  map.addImage(`trail-poi-${kind}`, ctx.getImageData(0, 0, size, size), { pixelRatio: 2 });
+  map.addImage(id, ctx.getImageData(0, 0, size, size), { pixelRatio: 2 });
 }
 
 // QLever (SPARQL по всему OSM) отвечает за 8–17 с почти независимо от размера квадрата —
@@ -723,22 +755,33 @@ const TRAIL_POI_SPARQL = `{ ?osm osmkey:tourism "viewpoint" . BIND("viewpoint" A
   UNION { ?osm osmkey:man_made "tower" . ?osm <https://www.openstreetmap.org/wiki/Key:tower:type> "observation" . BIND("tower" AS ?kind) }
   UNION { ?osm osmkey:amenity "drinking_water" . BIND("drinking_water" AS ?kind) }
   UNION { ?osm osmkey:leisure "firepit" . BIND("firepit" AS ?kind) }
-  UNION { ?osm osmkey:tourism "information" . BIND("info" AS ?kind) OPTIONAL { ?osm osmkey:information ?info } }`;
+  UNION { ?osm osmkey:tourism "information" . BIND("info" AS ?kind) OPTIONAL { ?osm osmkey:information ?info }
+    OPTIONAL { ?osm osmkey:image ?img } }`;
 
 async function loadTrailPoiCell(cx, cy) {
   const key = `${cx}:${cy}`;
   try {
-    for (const { osm, coordinates, b } of await loadQleverCell(cx, cy, "?info", TRAIL_POI_SPARQL)) {
+    let newPhotoTile = false;
+    for (const { osm, coordinates, b } of await loadQleverCell(cx, cy, "?info ?img", TRAIL_POI_SPARQL)) {
       let kind = b.kind.value;
       if (kind === "info") {
         const info = b.info?.value;
         if (info === "route_marker") continue;
         if (["guidepost", "board", "map"].includes(info)) kind = info;
       }
-      trailPoiFeatures.set(osm, { type: "Feature", geometry: { type: "Point", coordinates }, properties: { kind, osm } });
+      const hasPhoto = TRAIL_POI_PHOTO_KINDS.includes(kind) && Boolean(b.img);
+      if (hasPhoto) {
+        const [type, id] = osm.split("/");
+        const tileId = Number(id) * 10 + OSM_TYPE_SUFFIX[type];
+        if (!trailPoiPhotoTileIds.has(tileId)) newPhotoTile = true;
+        trailPoiPhotoTileIds.add(tileId);
+      }
+      trailPoiFeatures.set(osm, { type: "Feature", geometry: { type: "Point", coordinates },
+        properties: { kind, osm, ...(hasPhoto && { hasPhoto: true }) } });
     }
     trailPoiCells.set(key, true);
     map.getSource("ov-trail-poi-far")?.setData(trailPoiData());
+    if (newPhotoTile) refreshTrailPoiPhotoIcon();
   } catch {
     trailPoiCells.set(key, Date.now() + TRAIL_POI_RETRY_MS);
     // повтор — сам: если стоять на месте, значки всё-таки появятся
@@ -6063,6 +6106,16 @@ map.on("zoomend", updatePoiStatus);
 
 const escapeHtml = (s) => String(s).replace(/[&<>"']/g, (ch) => `&#${ch.charCodeAt(0)};`);
 
+// тег image в OSM у щитов/указателей — прямая ссылка на фото или файл Wikimedia Commons
+// ("File:…"); обводка значка на карте уже говорит, что фото есть, сам снимок — в подсказке
+const osmImageUrl = (image) => {
+  if (!image) return null;
+  if (/^https?:\/\//i.test(image)) return image;
+  const m = image.match(/^File:(.+)$/i);
+  return m ? `https://commons.wikimedia.org/wiki/Special:FilePath/${encodeURIComponent(m[1])}?width=280` : null;
+};
+const osmImagePage = (image) => (/^https?:\/\//i.test(image) ? image : `https://commons.wikimedia.org/wiki/${encodeURIComponent(image)}`);
+
 // id точки в тайлах OpenFreeMap = osm_id * 10 + тип (1 — node, 2 — way, 3 — relation);
 // подробности (часы работы, сайт, телефон) в тайлах не хранятся — по id их отдаёт OSM API
 // одним запросом ~0,15 с
@@ -6181,11 +6234,14 @@ async function showTrailPoiInfo(f) {
   const facts = beachFacts(tags);
   const rows = [facts && facts[0].toUpperCase() + facts.slice(1), tags.description, tags.inscription, tags.destination && `→ ${tags.destination.replace(/;/g, ", ")}`]
     .filter(Boolean).map((t) => `<div class="popup-row">${escapeHtml(t)}</div>`).join("");
+  const imgUrl = osmImageUrl(tags.image);
   trailPoiPopup?.remove();
-  trailPoiPopup = new maplibregl.Popup({ offset: 14, maxWidth: "260px", closeButton: false })
+  trailPoiPopup = new maplibregl.Popup({ offset: 14, maxWidth: imgUrl ? "280px" : "260px", closeButton: false })
     .setLngLat(f.geometry.coordinates)
     .setHTML(`<div class="popup-title">${escapeHtml(name || kind)}</div>`
       + (name && kind ? `<div class="popup-kind">${escapeHtml(kind)}</div>` : "")
+      + (imgUrl ? `<a href="${escapeHtml(osmImagePage(tags.image))}" target="_blank" rel="noopener">`
+        + `<img class="popup-photo" width="260" height="170" alt="" src="${escapeHtml(imgUrl)}"></a>` : "")
       + (rows || tags.opening_hours || tags.website ? `<div class="popup-details">${rows}${poiDetailsHtml(tags)}</div>` : ""))
     .addTo(map);
   keepTrailPoiInfoOnHover();
