@@ -6086,10 +6086,11 @@ function pinImage(color, glyph, ink) {
     ctx.textBaseline = "middle";
     ctx.fillText(shape.slice(5), 22, 22);
   } else if (shape) {
-    // значок 24×24 → 22 px в центре головки, при необходимости наклонённый
+    // значок 24×24 → 30 px в центре головки (Грегори, 2026-10-28: «значок внутри мелкий»),
+    // при необходимости наклонённый; головка радиусом 18 (диаметр 36) — запас по краям остаётся
     ctx.translate(22, 21);
     ctx.rotate(((shape.rotate || 0) * Math.PI) / 180);
-    ctx.scale(22 / 24, 22 / 24);
+    ctx.scale(30 / 24, 30 / 24);
     ctx.translate(-12, -12);
     ctx.fill(new Path2D(shape.path || shape));
   } else {
