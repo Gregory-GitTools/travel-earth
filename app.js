@@ -514,7 +514,7 @@ function addTrailLines(id, before) {
 // остальными значками. Верхний слой и расставляется первым: при тесноте уступают нижние
 // (Грегори: «наши приоритеты должны быть сверху»)
 const TRAIL_POI_ORDER = ["ov-mly-lines", "ov-mly-images", "ov-mly-pos", "ov-photo-dots", "ov-photos", "ov-photo-selected",
-  "ov-my-dots", "ov-my-photos", "ov-my-selected", "ov-my-albums", "ov-trail-poi-near", "ov-trail-poi-near-far", "ov-trail-poi-extra-near", "ov-beaches",
+  "ov-my-dots", "ov-my-photos", "ov-my-selected", "ov-my-albums", "ov-trail-poi-near", "ov-trail-poi-water", "ov-trail-poi-near-far", "ov-trail-poi-extra-near", "ov-beaches",
   "ov-trail-poi", "ov-trail-poi-extra", "ov-trail-poi-far", "ov-surf"];
 function raiseTrailPoi() {
   for (const id of TRAIL_POI_ORDER) if (map.getLayer(id)) map.moveLayer(id, firstPoiLayer());
@@ -542,9 +542,14 @@ const TRAIL_POI_ZOOM = 14;
 // густо). Пороги зависят от широты
 const TRAIL_POI_MAX_METERS_PER_100PX = 5000;
 const TRAIL_POI_NEAR_MAX_METERS_PER_100PX = 1000;
+// капли воды — самые частые значки на тропе, поэтому им отдельный, более строгий порог
+// (Грегори, 2026-10-28: «сделай видимость капель на масштабе 30 м», «значки в каплях крупными») —
+// позже остальных «ближних» и заметно крупнее, чтобы не сливались в кашу при частой расстановке
+const TRAIL_POI_WATER_MAX_METERS_PER_100PX = 30;
 const TRAIL_POI_FAR_KINDS = ["tower", "viewpoint", "lighthouse", "picnic_site"];
 const trailPoiMinZoom = () => Math.min(zoomForScale(TRAIL_POI_MAX_METERS_PER_100PX), TRAIL_POI_ZOOM);
 const trailPoiNearZoom = () => Math.min(zoomForScale(TRAIL_POI_NEAR_MAX_METERS_PER_100PX), TRAIL_POI_ZOOM);
+const trailPoiWaterZoom = () => Math.max(TRAIL_POI_ZOOM, zoomForScale(TRAIL_POI_WATER_MAX_METERS_PER_100PX));
 const TRAIL_POI_CLASSES = ["information", "picnic_site", "campsite", "drinking_water", "attraction", "toilets"];
 const TRAIL_POI_RETRY_MS = 60000;
 const TRAIL_POI_CELL = 0.5;
@@ -609,7 +614,7 @@ const TRAIL_POI_KIND = ["match", ["get", "class"],
 const TRAIL_POI_OVERPASS_ONLY = ["tower", "lighthouse"];
 const TRAIL_POI_OVERPASS_ONLY_NEAR = ["firepit"];
 const TRAIL_POI_LAYERS = ["ov-trail-poi", "ov-trail-poi-near", "ov-trail-poi-far", "ov-trail-poi-near-far",
-  "ov-trail-poi-extra", "ov-trail-poi-extra-near"];
+  "ov-trail-poi-extra", "ov-trail-poi-extra-near", "ov-trail-poi-water"];
 // щиты, указатели, карты и инфостенды — у части из них в OSM есть тег image (фото щита);
 // такие помечаем на карте обводкой значка, без нового значка и нового слоя (Грегори, 2026-10-28:
 // «не надо целится в новый значек с камерой и нет неоднозначного понимания»), само фото — в
@@ -650,13 +655,18 @@ function addTrailPoi() {
   const tileFilter = ["all", ["in", ["get", "class"], ["literal", TRAIL_POI_CLASSES]], ["!=", ["get", "subclass"], "route_marker"]];
   const layers = [
     { id: "ov-trail-poi", source: "te-poi", always: true, minzoom: TRAIL_POI_ZOOM, filter: ["all", tileFilter, ["in", TRAIL_POI_KIND, far]] },
-    { id: "ov-trail-poi-near", source: "te-poi", minzoom: TRAIL_POI_ZOOM, filter: ["all", tileFilter, ["!", ["in", TRAIL_POI_KIND, far]]] },
+    { id: "ov-trail-poi-near", source: "te-poi", minzoom: TRAIL_POI_ZOOM,
+      filter: ["all", tileFilter, ["!", ["in", TRAIL_POI_KIND, far]], ["!=", ["get", "class"], "drinking_water"]] },
     { id: "ov-trail-poi-far", always: true, minzoom: trailPoiMinZoom(), maxzoom: TRAIL_POI_ZOOM, filter: ["in", ["get", "kind"], far],
       size: ["interpolate", ["linear"], ["zoom"], 11, 0.8, 14, 1] },
     { id: "ov-trail-poi-near-far", minzoom: trailPoiNearZoom(), maxzoom: TRAIL_POI_ZOOM,
-      filter: ["!", ["in", ["get", "kind"], ["literal", [...TRAIL_POI_FAR_KINDS, ...TRAIL_POI_OVERPASS_ONLY_NEAR]]]] },
+      filter: ["!", ["in", ["get", "kind"], ["literal", [...TRAIL_POI_FAR_KINDS, ...TRAIL_POI_OVERPASS_ONLY_NEAR, "drinking_water"]]]] },
     { id: "ov-trail-poi-extra", always: true, minzoom: TRAIL_POI_ZOOM, filter: ["in", ["get", "kind"], ["literal", TRAIL_POI_OVERPASS_ONLY]] },
     { id: "ov-trail-poi-extra-near", minzoom: trailPoiNearZoom(), filter: ["in", ["get", "kind"], ["literal", TRAIL_POI_OVERPASS_ONLY_NEAR]] },
+    // капли — реже и крупнее остальных «ближних» значков (Грегори, 2026-10-28), свой порог и свой размер
+    { id: "ov-trail-poi-water", source: "te-poi", minzoom: trailPoiWaterZoom(),
+      filter: ["all", tileFilter, ["==", ["get", "class"], "drinking_water"]],
+      size: ["interpolate", ["linear"], ["zoom"], trailPoiWaterZoom(), 1.6, trailPoiWaterZoom() + 2, 2] },
   ];
   map.addSource("ov-trail-poi-far", { type: "geojson", data: trailPoiData() });
   for (const { id, source = "ov-trail-poi-far", size = nearSize, maxzoom = 24, always = false, ...rest } of layers) {
@@ -5840,7 +5850,7 @@ function showStatus(text) {
 }
 
 // станции и места, остановки, станции фуникулёров и канатных дорог, аэропорты
-const POI_LAYERS = ["poi", "poi-stops", "poi-funicular", "poi-cable", "poi-air", "poi-air-far"];
+const POI_LAYERS = ["poi", "poi-stops", "poi-funicular", "poi-station", "poi-cable", "poi-air", "poi-air-far"];
 const AIRPORT_PIN = { glyph: "plane", color: "#546e7a" };
 // ядовито-зелёный с чёрным значком — фуникулёры трудно найти, пусть бросаются в глаза
 const FUNICULAR_PIN = { glyph: "funicular", color: "#39ff14", ink: "#000" };
@@ -5853,6 +5863,7 @@ function applyPoiLayer() {
     "poi": !!activePoi?.subclasses.length,
     "poi-stops": !!activePoi?.stops,
     "poi-funicular": !!activePoi?.lifts,
+    "poi-station": !!activePoi?.subclasses.length,
     "poi-cable": !!activePoi?.lifts,
     "poi-lift-line": !!activePoi?.lifts,
     "poi-air": !!activePoi?.airports,
@@ -5863,6 +5874,7 @@ function applyPoiLayer() {
   const icon = modeIcon(activePoi);
   map.setLayoutProperty("poi", "icon-image", icon);
   map.setLayoutProperty("poi-stops", "icon-image", icon);
+  map.setLayoutProperty("poi-station", "icon-image", icon);
   map.setLayoutProperty("poi-funicular", "icon-image", pinImage(FUNICULAR_PIN.color, FUNICULAR_PIN.glyph, FUNICULAR_PIN.ink));
   map.setLayoutProperty("poi-cable", "icon-image", pinImage(CABLE_PIN.color, CABLE_PIN.glyph, CABLE_PIN.ink));
   map.setLayoutProperty("poi-air", "icon-image", pinImage(AIRPORT_PIN.color, AIRPORT_PIN.glyph));
@@ -5882,9 +5894,12 @@ function modeIcon(poi) {
 function applyPoiFilters() {
   if (!activePoi) return;
   const funicular = ["in", ["id"], ["literal", funicularIds]];
-  map.setFilter("poi", ["all", ["in", ["get", "subclass"], ["literal", activePoi.subclasses]], ["!", funicular]]);
+  // вокзалы — отдельно от прочего транспорта, у них свой (более ранний) порог видимости
+  const station = ["in", ["get", "subclass"], ["literal", ["station", "halt"]]];
+  map.setFilter("poi", ["all", ["in", ["get", "subclass"], ["literal", activePoi.subclasses]], ["!", funicular], ["!", station]]);
   map.setFilter("poi-stops", ["in", ["get", "subclass"], ["literal", activePoi.stops || []]]);
   map.setFilter("poi-funicular", funicular);
+  map.setFilter("poi-station", ["all", station, ["!", funicular]]);
 }
 
 // пороги "по шкале" зависят от широты — пересчитываются после каждого движения
@@ -5893,7 +5908,12 @@ function updateScaleZooms() {
     map.setLayerZoomRange("ov-trail-poi-far", trailPoiMinZoom(), TRAIL_POI_ZOOM);
     map.setLayerZoomRange("ov-trail-poi-near-far", trailPoiNearZoom(), TRAIL_POI_ZOOM);
     map.setLayerZoomRange("ov-trail-poi-extra-near", trailPoiNearZoom(), 24);
+    map.setLayerZoomRange("ov-trail-poi-water", trailPoiWaterZoom(), 24);
   }
+  // фуникулёры и вокзалы видны так же издалека, как вышки и смотровые площадки (Грегори, 2026-10-28:
+  // «подними до видимости смотровых вышек и красивых видов»)
+  if (map.getLayer("poi-funicular")) map.setLayerZoomRange("poi-funicular", trailPoiMinZoom(), 24);
+  if (map.getLayer("poi-station")) map.setLayerZoomRange("poi-station", trailPoiMinZoom(), 24);
   for (const id of BEACH_LAYERS) if (map.getLayer(id)) map.setLayerZoomRange(id, beachMinZoom(), 24);
   for (const id of ["ov-hiking", "ov-cycling", "ov-mtb"]) {
     if (map.getLayer(id)) map.setLayerZoomRange(id, Math.min(trailsMinZoom(), TRAILS_VECTOR_ZOOM), TRAILS_VECTOR_ZOOM);
@@ -6577,7 +6597,8 @@ map.on("style.load", () => {
   // остановки ниже станций — станция не прячется под флажком остановки
   pinLayer("poi-stops", "poi");
   pinLayer("poi", "poi");
-  pinLayer("poi-funicular", "poi");
+  pinLayer("poi-funicular", "poi", { minzoom: trailPoiMinZoom() });
+  pinLayer("poi-station", "poi", { minzoom: trailPoiMinZoom() });
   map.addSource("te-cable", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
   pinLayer("poi-cable", undefined, { source: "te-cable", maxzoom: POI_FULL_ZOOM });
   showCableStations();
