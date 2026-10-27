@@ -5615,6 +5615,57 @@ SELECT ?osm ?iata ?name ?nameRu (geof:centroid(?g) AS ?c) WHERE {
   farAirportsLoading = false;
 }
 
+// Вокзалы и станции фуникулёров — видны так же издалека, как вышки и смотровые площадки
+// (Грегори, 2026-10-28: «подними видимость до вышек», «если сделаем с транспортом то же,
+// что с тропами — получим возможность поднимать видимость любого транспорта — делаем»).
+// В тайлах такие точки есть только с zoom POI_MIN_ZOOM — раньше их показывает QLever, по
+// клеткам рядом с экраном, как у троп и пляжей. funicular=yes/station=funicular в OSM
+// отмечает станции фуникулёров напрямую — надёжнее прежнего определения по близости к рельсам
+const TRANSPORT_CELL = 1;
+const transportCells = new Map(); // "12:41" → true | "loading" | когда можно повторить
+const transportFeatures = new Map(); // osm → feature, subclass: "station" | "halt" | "funicular"
+let transportQueue = Promise.resolve();
+const transportData = () => ({ type: "FeatureCollection", features: [...transportFeatures.values()] });
+const TRANSPORT_TYPES = { node: 1, way: 2, relation: 3 };
+const TRANSPORT_SPARQL = `{ ?osm osmkey:railway "station" . BIND("station" AS ?kind)
+    OPTIONAL { ?osm osmkey:station ?st } OPTIONAL { ?osm osmkey:funicular ?fun } }
+  UNION { ?osm osmkey:railway "halt" . BIND("halt" AS ?kind)
+    OPTIONAL { ?osm osmkey:station ?st } OPTIONAL { ?osm osmkey:funicular ?fun } }`;
+
+// subway/light_rail/monorail в тайлах — отдельный подкласс ("метро"), не "станция": видны
+// иначе (Грегори про них не просил, а метро в городе сплошным ковром только мешает)
+const TRANSPORT_SKIP_STATION = ["subway", "light_rail", "monorail"];
+async function loadTransportCell(cx, cy) {
+  const key = `${cx}:${cy}`;
+  try {
+    for (const { osm, coordinates, b } of await loadQleverCell(cx, cy, "?st ?fun", TRANSPORT_SPARQL, TRANSPORT_CELL)) {
+      const funicular = b.st?.value === "funicular" || b.fun?.value === "yes";
+      if (!funicular && TRANSPORT_SKIP_STATION.includes(b.st?.value)) continue;
+      const [type, id] = osm.split("/");
+      transportFeatures.set(osm, { type: "Feature", id: Number(id) * 10 + TRANSPORT_TYPES[type],
+        geometry: { type: "Point", coordinates },
+        properties: { class: "railway", subclass: funicular ? "funicular" : b.kind.value } });
+    }
+    transportCells.set(key, true);
+    map.getSource("te-transport")?.setData(transportData());
+  } catch {
+    transportCells.set(key, Date.now() + TRAIL_POI_RETRY_MS);
+    setTimeout(updateTransport, TRAIL_POI_RETRY_MS + 100);
+  }
+}
+
+function updateTransport() {
+  if (!activePoi?.lifts || map.getZoom() >= POI_MIN_ZOOM) return;
+  for (const [cx, cy] of qleverCells(TRANSPORT_CELL, 1)) {
+    const key = `${cx}:${cy}`;
+    const state = transportCells.get(key);
+    if (state === true || state === "loading" || state > Date.now()) continue;
+    transportCells.set(key, "loading");
+    transportQueue = transportQueue.then(() => loadTransportCell(cx, cy));
+  }
+}
+map.on("idle", updateTransport);
+
 // остановки автобусов и трамваев — только когда шкала показывает 100 м и меньше,
 // иначе они засыпают город флажками
 const STOP_MAX_METERS_PER_100PX = 200;
@@ -5850,7 +5901,8 @@ function showStatus(text) {
 }
 
 // станции и места, остановки, станции фуникулёров и канатных дорог, аэропорты
-const POI_LAYERS = ["poi", "poi-stops", "poi-funicular", "poi-station", "poi-cable", "poi-air", "poi-air-far"];
+const POI_LAYERS = ["poi", "poi-stops", "poi-funicular", "poi-station", "poi-funicular-far", "poi-station-far",
+  "poi-cable", "poi-air", "poi-air-far"];
 const AIRPORT_PIN = { glyph: "plane", color: "#546e7a" };
 // ядовито-зелёный с чёрным значком — фуникулёры трудно найти, пусть бросаются в глаза
 const FUNICULAR_PIN = { glyph: "funicular", color: "#39ff14", ink: "#000" };
@@ -5864,6 +5916,8 @@ function applyPoiLayer() {
     "poi-stops": !!activePoi?.stops,
     "poi-funicular": !!activePoi?.lifts,
     "poi-station": !!activePoi?.subclasses.length,
+    "poi-funicular-far": !!activePoi?.lifts,
+    "poi-station-far": !!activePoi?.lifts,
     "poi-cable": !!activePoi?.lifts,
     "poi-lift-line": !!activePoi?.lifts,
     "poi-air": !!activePoi?.airports,
@@ -5875,11 +5929,14 @@ function applyPoiLayer() {
   map.setLayoutProperty("poi", "icon-image", icon);
   map.setLayoutProperty("poi-stops", "icon-image", icon);
   map.setLayoutProperty("poi-station", "icon-image", icon);
+  map.setLayoutProperty("poi-station-far", "icon-image", icon);
   map.setLayoutProperty("poi-funicular", "icon-image", pinImage(FUNICULAR_PIN.color, FUNICULAR_PIN.glyph, FUNICULAR_PIN.ink));
+  map.setLayoutProperty("poi-funicular-far", "icon-image", pinImage(FUNICULAR_PIN.color, FUNICULAR_PIN.glyph, FUNICULAR_PIN.ink));
   map.setLayoutProperty("poi-cable", "icon-image", pinImage(CABLE_PIN.color, CABLE_PIN.glyph, CABLE_PIN.ink));
   map.setLayoutProperty("poi-air", "icon-image", pinImage(AIRPORT_PIN.color, AIRPORT_PIN.glyph));
   map.setLayoutProperty("poi-air-far", "icon-image", pinImage(AIRPORT_PIN.color, AIRPORT_PIN.glyph));
   if (activePoi.airports) loadFarAirports();
+  if (activePoi.lifts) updateTransport();
   applyPoiFilters();
   updateScaleZooms();
 }
@@ -5911,9 +5968,12 @@ function updateScaleZooms() {
     map.setLayerZoomRange("ov-trail-poi-water", trailPoiWaterZoom(), 24);
   }
   // фуникулёры и вокзалы видны так же издалека, как вышки и смотровые площадки (Грегори, 2026-10-28:
-  // «подними до видимости смотровых вышек и красивых видов»)
-  if (map.getLayer("poi-funicular")) map.setLayerZoomRange("poi-funicular", trailPoiMinZoom(), 24);
-  if (map.getLayer("poi-station")) map.setLayerZoomRange("poi-station", trailPoiMinZoom(), 24);
+  // «подними до видимости смотровых вышек и красивых видов») — ниже POI_MIN_ZOOM тайлов ещё нет,
+  // эту часть шкалы закрывают -far слои из QLever
+  if (map.getLayer("poi-funicular")) map.setLayerZoomRange("poi-funicular", POI_MIN_ZOOM, 24);
+  if (map.getLayer("poi-station")) map.setLayerZoomRange("poi-station", POI_MIN_ZOOM, 24);
+  if (map.getLayer("poi-funicular-far")) map.setLayerZoomRange("poi-funicular-far", trailPoiMinZoom(), POI_MIN_ZOOM);
+  if (map.getLayer("poi-station-far")) map.setLayerZoomRange("poi-station-far", trailPoiMinZoom(), POI_MIN_ZOOM);
   for (const id of BEACH_LAYERS) if (map.getLayer(id)) map.setLayerZoomRange(id, beachMinZoom(), 24);
   for (const id of ["ov-hiking", "ov-cycling", "ov-mtb"]) {
     if (map.getLayer(id)) map.setLayerZoomRange(id, Math.min(trailsMinZoom(), TRAILS_VECTOR_ZOOM), TRAILS_VECTOR_ZOOM);
@@ -6176,7 +6236,7 @@ map.on("click", POI_LAYERS, async (evt) => {
   const name = p[`name:${uiLanguageCode()}`] || p.name;
   const kind = f.layer.id.startsWith("poi-air")
     ? [AIRPORT_KIND_NAMES[p.class] || "Аэропорт", p.iata].filter(Boolean).join(" · ")
-    : f.layer.id === "poi-funicular" ? "Станция фуникулёра"
+    : f.layer.id.startsWith("poi-funicular") ? "Станция фуникулёра"
     : POI_CLASS_KIND_NAMES[p.class] || POI_KIND_NAMES[p.subclass] || p.subclass;
   const click = ++poiClick;
   poiPopup?.remove();
@@ -6598,8 +6658,13 @@ map.on("style.load", () => {
   // остановки ниже станций — станция не прячется под флажком остановки
   pinLayer("poi-stops", "poi");
   pinLayer("poi", "poi");
-  pinLayer("poi-funicular", "poi", { minzoom: trailPoiMinZoom() });
-  pinLayer("poi-station", "poi", { minzoom: trailPoiMinZoom() });
+  pinLayer("poi-funicular", "poi", { minzoom: POI_MIN_ZOOM });
+  pinLayer("poi-station", "poi", { minzoom: POI_MIN_ZOOM });
+  map.addSource("te-transport", { type: "geojson", data: transportData() });
+  pinLayer("poi-funicular-far", undefined, { source: "te-transport", minzoom: 0, maxzoom: POI_MIN_ZOOM,
+    filter: ["==", ["get", "subclass"], "funicular"] });
+  pinLayer("poi-station-far", undefined, { source: "te-transport", minzoom: 0, maxzoom: POI_MIN_ZOOM,
+    filter: ["in", ["get", "subclass"], ["literal", ["station", "halt"]]] });
   map.addSource("te-cable", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
   pinLayer("poi-cable", undefined, { source: "te-cable", maxzoom: POI_FULL_ZOOM });
   showCableStations();
