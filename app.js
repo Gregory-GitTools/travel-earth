@@ -400,7 +400,7 @@ const OVERLAYS = [
   { id: "contours", name: "Горизонтали", icon: CHIP_ICONS.contours, hint: "Линии равной высоты с подписями в метрах",
     layers: ["ov-contours", "ov-contour-labels"], available: () => !!demSource },
   { id: "terrain3d", name: "3D-рельеф", icon: CHIP_ICONS.terrain3d, hint: "Настоящий объёмный рельеф — наклоните карту (правая кнопка мыши или два пальца)", layers: [] },
-  { id: "hiking", name: "Пешие тропы", icon: CHIP_ICONS.hiking, hint: "Маркированные пешие маршруты — видны с масштаба около 20 км, вблизи — с номерами", trails: "hiking",
+  { id: "hiking", name: "Тропы", icon: CHIP_ICONS.hiking, hint: "Маркированные пешеходные маршруты — видны с масштаба около 20 км, вблизи — с номерами", trails: "hiking",
     layers: ["ov-hiking", "ov-hiking-line", "ov-hiking-label"] },
   { id: "cycling", name: "Велодорожки", icon: CHIP_ICONS.cycling, hint: "Веломаршруты — видны с масштаба около 20 км, вблизи — с номерами", trails: "cycling",
     layers: ["ov-cycling", "ov-cycling-line", "ov-cycling-label"] },
